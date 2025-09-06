@@ -1,0 +1,21 @@
+Lattice — 32‑Sprint Plan (v3, 2025-09-06)
+
+• S1‑4  Core Network (GhostDAG): tip selection, mergeset, blue score; finality gadget α; DAG explorer basics.
+• S5‑6  Sequencer & Mempool: tx classes, bundle policy for model updates; timestamping & logging spec.
+• S7‑8  LVM & Precompiles: MCP helpers, LoRA apply/merge, artifact commits; gas schedule.
+• S9‑10 Primitives v1: ModelRegistry, StorageRegistry.
+• S11‑12 InferenceRouter v1: job escrow, provider registry, SLA receipts.
+• S13‑14 LoRAFactory v1: mint/merge deltas, royalties.
+• S15‑16 ComputeMarket α: staking, GPU supply; scheduler prototype.
+• S17‑18 Trainer α: fine‑tune orchestration; checkpoint lineage.
+• S19‑20 Eval/Attest α: standard benchmarks; PoT/PoE receipts.
+• S21‑22 Bridge α: ZK light‑client proofs; custody‑free transfers.
+• S23‑24 Enterprise: RBAC, data residency, private validators.
+• S25‑26 Security Audit + PenTest; fuzzing; economic sims.
+• S27‑29 Performance: sustained 10k TPS, <12s finality, global propagation <1s.
+• S30‑31 Privacy: encrypted prompts, proofs‑of‑access.
+• S32     Operations: SRE runbooks, DR/backup, on‑call.
+
+Success Metrics & QA remain as v2 with MCP/AI additions (coverage >80%, bug escape <5%, 99.5% uptime testnet).
+
+Deliverables by milestone: testnet α (S12), β (S22), mainnet (S32).

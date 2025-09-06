@@ -1,0 +1,30 @@
+[package]
+name = "lattice-node"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lattice"
+path = "src/main.rs"
+
+[dependencies]
+# Local dependencies
+lattice-consensus = { path = "../core/consensus" }
+lattice-storage = { path = "../core/storage" }
+lattice-execution = { path = "../core/execution" }
+lattice-network = { path = "../core/network" }
+lattice-sequencer = { path = "../core/sequencer" }
+lattice-api = { path = "../core/api" }
+
+# External dependencies
+tokio = { version = "1.32", features = ["full"] }
+clap = { version = "4.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+dirs = "5.0"
+hex = "0.4"
+chrono = "0.4"

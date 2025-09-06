@@ -1,0 +1,46 @@
+[package]
+name = "lattice-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Local dependencies
+lattice-consensus = { path = "../consensus" }
+lattice-sequencer = { path = "../sequencer" }
+lattice-network = { path = "../network" }
+lattice-execution = { path = "../execution" }
+lattice-storage = { path = "../storage" }
+
+# RPC Server
+jsonrpc-core = "18.0"
+jsonrpc-http-server = "18.0"
+jsonrpc-ws-server = "18.0"
+jsonrpc-derive = "18.0"
+
+# Web Framework
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Additional
+hex = "0.4"
+futures = "0.3"
+primitive-types = "0.12"
+bincode = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+reqwest = { version = "0.11", features = ["json"] }
+tokio-test = "0.4"
+tempfile = "3.0"

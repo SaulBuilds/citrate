@@ -2,6 +2,7 @@ use crate::methods::{ChainApi, StateApi, TransactionApi, MempoolApi, NetworkApi,
 use crate::types::error::ApiError;
 use anyhow::Result;
 use jsonrpc_core::{IoHandler, Params, Value, Error as RpcError};
+use serde_json::json;
 use jsonrpc_http_server::{ServerBuilder, Server, DomainsValidation, AccessControlAllowOrigin};
 use lattice_storage::StorageManager;
 use lattice_sequencer::mempool::Mempool;
@@ -49,7 +50,7 @@ impl RpcServer {
         peer_manager: Arc<PeerManager>,
         executor: Arc<Executor>,
     ) -> Self {
-        let io_handler = IoHandler::new();
+        let mut io_handler = IoHandler::new();
         
         // API instances are created but not yet integrated
         // This is a placeholder implementation to make Sprint 7 compile
@@ -61,8 +62,30 @@ impl RpcServer {
         let _network_api = NetworkApi::new(peer_manager.clone());
         let _ai_api = AiApi::new(storage.clone());
         
-        // Note: Method registration requires async runtime integration
-        // which would be completed in the next sprint
+        // Minimal method registration (read-only), async runtime provided by caller
+        {
+            // chain_getHeight
+            let storage_h = storage.clone();
+            io_handler.add_async_method("chain_getHeight", move |_| {
+                let storage = storage_h.clone();
+                async move {
+                    let api = ChainApi::new(storage);
+                    let h = api.get_height().await.map_err(ApiError::into)?;
+                    Ok(json!(h))
+                }
+            });
+
+            // chain_getTips
+            let storage_t = storage.clone();
+            io_handler.add_async_method("chain_getTips", move |_| {
+                let storage = storage_t.clone();
+                async move {
+                    let api = ChainApi::new(storage);
+                    let tips = api.get_tips().await.map_err(ApiError::into)?;
+                    Ok(serde_json::to_value(&tips).unwrap_or(json!([])))
+                }
+            });
+        }
         
         Self {
             config,

@@ -85,8 +85,9 @@ impl GhostDag {
             blue_set.blocks.extend(parent_blue_set.blocks);
         }
         
-        // Add current block to blue set
-        blue_set.insert(block.hash());
+        // Add current block to blue set and recompute score from set size
+        blue_set.blocks.insert(block.hash());
+        blue_set.score = blue_set.blocks.len() as u64;
         
         // Cache the result
         self.blue_cache.write().await.insert(block.hash(), blue_set.clone());
@@ -219,15 +220,42 @@ impl GhostDag {
             return Ok(cached.clone());
         }
         
-        // For non-cached blocks, we need the block to calculate
-        // This should only be called for parent blocks that are already stored
-        // The calling function should ensure the block exists
-        
-        // Return a default blue set for now - in production this would
-        // recursively calculate for parents
-        let mut blue_set = BlueSet::new();
-        blue_set.insert(*hash);
-        Ok(blue_set)
+        // Fetch the block from DAG store
+        let block = self
+            .dag_store
+            .get_block(hash)
+            .await
+            .map_err(|_| GhostDagError::BlockNotFound(*hash))?;
+
+        // Genesis: blue set is itself
+        if block.is_genesis() {
+            let mut blue = BlueSet::new();
+            blue.blocks.insert(*hash);
+            blue.score = 1;
+            self.blue_cache.write().await.insert(*hash, blue.clone());
+            return Ok(blue);
+        }
+
+        // Recursively compose from selected parent and qualified merge parents
+        let selected_parent_blue = self.get_or_calculate_blue_set(&block.selected_parent()).await?;
+
+        // Determine blue merge parents using the same rule as top-level calculation
+        let blue_merge_parents = self
+            .calculate_blue_merge_parents(&block, &selected_parent_blue)
+            .await?;
+
+        let mut all_blocks = selected_parent_blue.blocks.clone();
+        for p in &blue_merge_parents {
+            let pset = self.get_or_calculate_blue_set(p).await?;
+            all_blocks.extend(pset.blocks);
+        }
+        all_blocks.insert(*hash);
+
+        let mut blue = BlueSet::new();
+        blue.blocks = all_blocks;
+        blue.score = blue.blocks.len() as u64;
+        self.blue_cache.write().await.insert(*hash, blue.clone());
+        Ok(blue)
     }
     
     /// Add a block to the DAG
@@ -462,5 +490,52 @@ mod tests {
         
         let best_tip = ghostdag.select_tip().await.unwrap();
         assert_eq!(best_tip, genesis.hash());
+    }
+
+    #[tokio::test]
+    async fn test_blue_set_with_merge_parents_unions_parents() {
+        let params = GhostDagParams::default();
+        let dag_store = Arc::new(DagStore::new());
+        let ghostdag = GhostDag::new(params, dag_store.clone());
+
+        // Genesis
+        let genesis = create_test_block_with_parents([0xAA; 32], Hash::default(), vec![], 0);
+        dag_store.store_block(genesis.clone()).await.unwrap();
+
+        // Prime relations/cache for genesis
+        let mut gset = BlueSet::new();
+        gset.insert(genesis.hash());
+        ghostdag.blue_cache.write().await.insert(genesis.hash(), gset.clone());
+        let grel = DagRelation {
+            block: genesis.hash(),
+            selected_parent: Hash::default(),
+            merge_parents: vec![],
+            children: vec![],
+            blue_set: gset,
+            is_chain_block: true,
+        };
+        ghostdag.relations.write().await.insert(genesis.hash(), grel);
+        ghostdag.tips.write().await.insert(genesis.hash());
+
+        // Two parallel children of genesis: b and c
+        let b = create_test_block_with_parents([0xB1; 32], genesis.hash(), vec![], 1);
+        let c = create_test_block_with_parents([0xC1; 32], genesis.hash(), vec![], 1);
+        dag_store.store_block(b.clone()).await.unwrap();
+        dag_store.store_block(c.clone()).await.unwrap();
+        ghostdag.add_block(&b).await.unwrap();
+        ghostdag.add_block(&c).await.unwrap();
+
+        // d references b as selected parent and c as merge parent
+        let d = create_test_block_with_parents([0xD1; 32], b.hash(), vec![c.hash()], 2);
+        dag_store.store_block(d.clone()).await.unwrap();
+        ghostdag.add_block(&d).await.unwrap();
+
+        // Blue set for d should include at least {genesis, b, c, d}
+        let blue = ghostdag.calculate_blue_set(&d).await.unwrap();
+        assert!(blue.contains(&genesis.hash()));
+        assert!(blue.contains(&b.hash()));
+        assert!(blue.contains(&c.hash()));
+        assert!(blue.contains(&d.hash()));
+        assert!(blue.score >= 4);
     }
 }

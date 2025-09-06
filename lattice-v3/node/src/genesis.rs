@@ -1,8 +1,36 @@
-use lattice_consensus::{Block, BlockHeader, Transaction, Hash, PublicKey, Signature};
+use lattice_consensus::types::{Block, BlockHeader, Transaction, Hash, PublicKey, Signature, VrfProof, GhostDagParams};
 use lattice_storage::StorageManager;
-use lattice_execution::{Executor, StateDB};
-use chrono::Utc;
+use lattice_execution::executor::Executor;
+use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
+
+/// Calculate block hash using SHA3-256
+fn calculate_block_hash(block: &Block) -> Hash {
+    let mut hasher = Sha3_256::new();
+    
+    // Hash header fields
+    hasher.update(&block.header.version.to_le_bytes());
+    hasher.update(block.header.selected_parent_hash.as_bytes());
+    for parent in &block.header.merge_parent_hashes {
+        hasher.update(parent.as_bytes());
+    }
+    hasher.update(&block.header.timestamp.to_le_bytes());
+    hasher.update(&block.header.height.to_le_bytes());
+    hasher.update(&block.header.blue_score.to_le_bytes());
+    hasher.update(&block.header.blue_work.to_le_bytes());
+    hasher.update(block.header.pruning_point.as_bytes());
+    
+    // Hash roots
+    hasher.update(block.state_root.as_bytes());
+    hasher.update(block.tx_root.as_bytes());
+    hasher.update(block.receipt_root.as_bytes());
+    hasher.update(block.artifact_root.as_bytes());
+    
+    let hash_bytes = hasher.finalize();
+    let mut hash_array = [0u8; 32];
+    hash_array.copy_from_slice(&hash_bytes[..32]);
+    Hash::new(hash_array)
+}
 
 /// Genesis block configuration
 pub struct GenesisConfig {
@@ -15,7 +43,7 @@ impl Default for GenesisConfig {
     fn default() -> Self {
         Self {
             chain_id: 1337,
-            timestamp: Utc::now().timestamp() as u64,
+            timestamp: chrono::Utc::now().timestamp() as u64,
             initial_accounts: vec![
                 // Dev account with initial balance
                 (PublicKey::new([1; 32]), 1_000_000_000_000_000_000), // 1 ETH worth
@@ -29,30 +57,29 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Block {
     let header = BlockHeader {
         version: 1,
         block_hash: Hash::new([0; 32]), // Will be computed
-        parent_hashes: vec![], // No parents for genesis
-        height: 0,
+        selected_parent_hash: Hash::default(), // No parent for genesis
+        merge_parent_hashes: vec![], // No merge parents for genesis
         timestamp: config.timestamp,
-        difficulty: 1,
-        nonce: 0,
-        merkle_root: Hash::default(),
-        state_root: Hash::default(),
-        receipts_root: Hash::default(),
-        proposer: PublicKey::new([0; 32]),
-        signature: Signature::new([0; 64]),
+        height: 0,
         blue_score: 0,
         blue_work: 0,
-        pruning_point: 0,
-        
-        // DAG specific
-        selected_parent: None,
-        blues: vec![],
-        reds: vec![],
+        pruning_point: Hash::default(),
+        proposer_pubkey: PublicKey::new([0; 32]),
+        vrf_reveal: VrfProof {
+            proof: vec![],
+            output: Hash::default(),
+        },
     };
     
     Block {
         header,
+        state_root: Hash::default(),
+        tx_root: Hash::default(),
+        receipt_root: Hash::default(),
+        artifact_root: Hash::default(),
+        ghostdag_params: GhostDagParams::default(),
         transactions: vec![],
-        uncles: vec![],
+        signature: Signature::new([0; 64]),
     }
 }
 
@@ -69,33 +96,35 @@ pub async fn initialize_genesis_state(
     for (address, balance) in &config.initial_accounts {
         // Convert PublicKey to Address (first 20 bytes of hash)
         let addr_bytes = {
-            let hash = Hash::hash(&address.0);
+            let mut hasher = Sha3_256::new();
+            hasher.update(&address.0);
+            let hash_bytes = hasher.finalize();
             let mut addr = [0u8; 20];
-            addr.copy_from_slice(&hash.0[..20]);
-            lattice_execution::Address(addr)
+            addr.copy_from_slice(&hash_bytes[..20]);
+            lattice_execution::types::Address(addr)
         };
         
         // Set initial balance
-        executor.state_db.accounts.set_balance(&addr, *balance);
+        // TODO: Need public API to set balance
+        // executor.state_db.accounts.set_balance(&addr_bytes, *balance);
     }
     
     // Calculate state root after initializing accounts
-    let state_root = executor.calculate_state_root();
-    genesis.header.state_root = state_root;
+    // TODO: Need public API to calculate state root
+    genesis.state_root = Hash::default();
     
     // Calculate block hash
-    genesis.header.block_hash = genesis.header.compute_hash();
+    genesis.header.block_hash = calculate_block_hash(&genesis);
     
     // Store genesis block
-    storage.chain.put_block(&genesis)?;
-    storage.chain.put_block_header(&genesis.header)?;
+    storage.blocks.put_block(&genesis)?;
     
-    // Mark as genesis
-    storage.chain.put_genesis_hash(&genesis.header.block_hash)?;
+    // TODO: Initialize DAG tracking for genesis block
+    // This would be done through consensus module, not storage directly
     
     tracing::info!(
         "Genesis block created: {:?} at height 0",
-        hex::encode(&genesis.header.block_hash.0[..8])
+        hex::encode(&genesis.header.block_hash.as_bytes()[..8])
     );
     
     Ok(genesis.header.block_hash)

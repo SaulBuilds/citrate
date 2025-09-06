@@ -1,16 +1,19 @@
 use crate::methods::{ChainApi, StateApi, TransactionApi, MempoolApi, NetworkApi, AiApi};
-use crate::types::error::ApiError;
+use crate::types::{error::ApiError, request::{BlockId, TransactionRequest, CallRequest}};
 use anyhow::Result;
-use jsonrpc_core::{IoHandler, Params, Value, Error as RpcError};
-use serde_json::json;
+use jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::{ServerBuilder, Server, DomainsValidation, AccessControlAllowOrigin};
 use lattice_storage::StorageManager;
 use lattice_sequencer::mempool::Mempool;
 use lattice_network::peer::PeerManager;
 use lattice_execution::executor::Executor;
+use lattice_execution::types::Address;
+use lattice_consensus::types::Hash;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::info;
+use futures::executor::block_on;
+use serde_json::json;
 
 /// RPC Server configuration
 #[derive(Clone)]
@@ -52,40 +55,232 @@ impl RpcServer {
     ) -> Self {
         let mut io_handler = IoHandler::new();
         
-        // API instances are created but not yet integrated
-        // This is a placeholder implementation to make Sprint 7 compile
-        // In production, these would be properly integrated with async handlers
-        let _chain_api = ChainApi::new(storage.clone());
-        let _state_api = StateApi::new(storage.clone(), executor.clone());
-        let _tx_api = TransactionApi::new(mempool.clone(), executor.clone());
-        let _mempool_api = MempoolApi::new(mempool.clone());
-        let _network_api = NetworkApi::new(peer_manager.clone());
-        let _ai_api = AiApi::new(storage.clone());
+        // ========== Chain Methods ==========
         
-        // Minimal method registration (read-only), async runtime provided by caller
-        {
-            // chain_getHeight
-            let storage_h = storage.clone();
-            io_handler.add_async_method("chain_getHeight", move |_| {
-                let storage = storage_h.clone();
-                async move {
-                    let api = ChainApi::new(storage);
-                    let h = api.get_height().await.map_err(ApiError::into)?;
-                    Ok(json!(h))
-                }
-            });
-
-            // chain_getTips
-            let storage_t = storage.clone();
-            io_handler.add_async_method("chain_getTips", move |_| {
-                let storage = storage_t.clone();
-                async move {
-                    let api = ChainApi::new(storage);
-                    let tips = api.get_tips().await.map_err(ApiError::into)?;
-                    Ok(serde_json::to_value(&tips).unwrap_or(json!([])))
-                }
-            });
-        }
+        // chain_getHeight
+        let storage_h = storage.clone();
+        io_handler.add_sync_method("chain_getHeight", move |_params: Params| {
+            let api = ChainApi::new(storage_h.clone());
+            match block_on(api.get_height()) {
+                Ok(height) => Ok(Value::Number(height.into())),
+                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+        
+        // chain_getTips
+        let storage_t = storage.clone();
+        io_handler.add_sync_method("chain_getTips", move |_params: Params| {
+            let api = ChainApi::new(storage_t.clone());
+            match block_on(api.get_tips()) {
+                Ok(tips) => Ok(serde_json::to_value(tips).unwrap_or(Value::Array(vec![]))),
+                Err(_) => Ok(Value::Array(vec![])),
+            }
+        });
+        
+        // chain_getBlock
+        let storage_b = storage.clone();
+        io_handler.add_sync_method("chain_getBlock", move |params: Params| {
+            let api = ChainApi::new(storage_b.clone());
+            
+            let block_id: BlockId = match params.parse() {
+                Ok(id) => id,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match block_on(api.get_block(block_id)) {
+                Ok(block) => Ok(serde_json::to_value(block).unwrap_or(Value::Null)),
+                Err(ApiError::BlockNotFound(_)) => Ok(Value::Null),
+                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+        
+        // chain_getTransaction
+        let storage_tx = storage.clone();
+        io_handler.add_sync_method("chain_getTransaction", move |params: Params| {
+            let api = ChainApi::new(storage_tx.clone());
+            
+            let hash: Hash = match params.parse() {
+                Ok(h) => h,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match block_on(api.get_transaction(hash)) {
+                Ok(tx) => Ok(serde_json::to_value(tx).unwrap_or(Value::Null)),
+                Err(ApiError::TransactionNotFound(_)) => Ok(Value::Null),
+                Err(_) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+        
+        // ========== State Methods ==========
+        
+        // state_getBalance
+        let storage_bal = storage.clone();
+        let executor_bal = executor.clone();
+        io_handler.add_sync_method("state_getBalance", move |params: Params| {
+            let api = StateApi::new(storage_bal.clone(), executor_bal.clone());
+            
+            let address: Address = match params.parse() {
+                Ok(addr) => addr,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match block_on(api.get_balance(address)) {
+                Ok(balance) => Ok(serde_json::to_value(balance).unwrap_or(Value::String("0".to_string()))),
+                Err(_) => Ok(Value::String("0".to_string())),
+            }
+        });
+        
+        // state_getNonce
+        let storage_n = storage.clone();
+        let executor_n = executor.clone();
+        io_handler.add_sync_method("state_getNonce", move |params: Params| {
+            let api = StateApi::new(storage_n.clone(), executor_n.clone());
+            
+            let address: Address = match params.parse() {
+                Ok(addr) => addr,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match block_on(api.get_nonce(address)) {
+                Ok(nonce) => Ok(Value::Number(nonce.into())),
+                Err(_) => Ok(Value::Number(0.into())),
+            }
+        });
+        
+        // state_getCode
+        let storage_c = storage.clone();
+        let executor_c = executor.clone();
+        io_handler.add_sync_method("state_getCode", move |params: Params| {
+            let api = StateApi::new(storage_c.clone(), executor_c.clone());
+            
+            let address: Address = match params.parse() {
+                Ok(addr) => addr,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match block_on(api.get_code(address)) {
+                Ok(code) => Ok(Value::String(hex::encode(code))),
+                Err(_) => Ok(Value::String("0x".to_string())),
+            }
+        });
+        
+        // ========== Transaction Methods ==========
+        
+        // tx_sendRawTransaction
+        let mempool_raw = mempool.clone();
+        let executor_raw = executor.clone();
+        io_handler.add_sync_method("tx_sendRawTransaction", move |params: Params| {
+            let api = TransactionApi::new(mempool_raw.clone(), executor_raw.clone());
+            
+            let raw_hex: String = match params.parse() {
+                Ok(hex) => hex,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            let raw_bytes = match hex::decode(raw_hex.trim_start_matches("0x")) {
+                Ok(bytes) => bytes,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(format!("Invalid hex: {}", e))),
+            };
+            
+            match block_on(api.send_raw_transaction(raw_bytes)) {
+                Ok(hash) => Ok(Value::String(format!("0x{}", hex::encode(hash.as_bytes())))),
+                Err(e) => Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            }
+        });
+        
+        // tx_estimateGas
+        let mempool_gas = mempool.clone();
+        let executor_gas = executor.clone();
+        io_handler.add_sync_method("tx_estimateGas", move |params: Params| {
+            let api = TransactionApi::new(mempool_gas.clone(), executor_gas.clone());
+            
+            let request: CallRequest = match params.parse() {
+                Ok(req) => req,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match block_on(api.estimate_gas(request)) {
+                Ok(gas) => Ok(Value::String(format!("0x{:x}", gas))),
+                Err(_) => Ok(Value::String("0x5208".to_string())), // Default 21000
+            }
+        });
+        
+        // tx_getGasPrice
+        let mempool_price = mempool.clone();
+        let executor_price = executor.clone();
+        io_handler.add_sync_method("tx_getGasPrice", move |_params: Params| {
+            let api = TransactionApi::new(mempool_price.clone(), executor_price.clone());
+            
+            match block_on(api.get_gas_price()) {
+                Ok(price) => Ok(Value::String(format!("0x{:x}", price))),
+                Err(_) => Ok(Value::String("0x3b9aca00".to_string())), // 1 Gwei
+            }
+        });
+        
+        // ========== Mempool Methods ==========
+        
+        // mempool_getStatus
+        let mempool_status = mempool.clone();
+        io_handler.add_sync_method("mempool_getStatus", move |_params: Params| {
+            let api = MempoolApi::new(mempool_status.clone());
+            
+            match block_on(api.get_status()) {
+                Ok(status) => Ok(serde_json::to_value(status).unwrap_or(Value::Null)),
+                Err(_) => Ok(serde_json::json!({
+                    "pending": 0,
+                    "queued": 0,
+                    "total_size": 0,
+                    "max_size": 10000000
+                })),
+            }
+        });
+        
+        // mempool_getPending
+        let mempool_pending = mempool.clone();
+        io_handler.add_sync_method("mempool_getPending", move |params: Params| {
+            let api = MempoolApi::new(mempool_pending.clone());
+            
+            let limit: Option<usize> = params.parse().ok();
+            
+            match block_on(api.get_pending(limit)) {
+                Ok(txs) => Ok(serde_json::to_value(txs).unwrap_or(Value::Array(vec![]))),
+                Err(_) => Ok(Value::Array(vec![])),
+            }
+        });
+        
+        // ========== Network Methods ==========
+        
+        // net_peerCount
+        let peers_count = peer_manager.clone();
+        io_handler.add_sync_method("net_peerCount", move |_params: Params| {
+            let api = NetworkApi::new(peers_count.clone());
+            
+            match block_on(api.get_peer_count()) {
+                Ok(count) => Ok(Value::String(format!("0x{:x}", count))),
+                Err(_) => Ok(Value::String("0x0".to_string())),
+            }
+        });
+        
+        // net_listening
+        let peers_listen = peer_manager.clone();
+        io_handler.add_sync_method("net_listening", move |_params: Params| {
+            let api = NetworkApi::new(peers_listen.clone());
+            
+            match block_on(api.is_listening()) {
+                Ok(listening) => Ok(Value::Bool(listening)),
+                Err(_) => Ok(Value::Bool(true)),
+            }
+        });
+        
+        // net_version (chain ID)
+        io_handler.add_sync_method("net_version", |_params: Params| {
+            Ok(Value::String("1337".to_string()))
+        });
+        
+        // eth_chainId (compatibility)
+        io_handler.add_sync_method("eth_chainId", |_params: Params| {
+            Ok(Value::String("0x539".to_string())) // 1337 in hex
+        });
         
         Self {
             config,

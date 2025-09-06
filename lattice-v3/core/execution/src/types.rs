@@ -221,9 +221,20 @@ pub struct GasSchedule {
     // Arithmetic operations
     pub add: u64,
     pub mul: u64,
+    pub sub: u64,
     pub div: u64,
     pub exp: u64,
     pub sha3: u64,
+    
+    // Stack operations
+    pub push: u64,
+    pub pop: u64,
+    pub mload: u64,
+    pub mstore: u64,
+    
+    // Control flow
+    pub jump: u64,
+    pub jumpi: u64,
 }
 
 impl Default for GasSchedule {
@@ -246,9 +257,16 @@ impl Default for GasSchedule {
             // Arithmetic operations
             add: 3,
             mul: 5,
+            sub: 3,
             div: 5,
             exp: 10,
             sha3: 30,
+            push: 3,
+            pop: 2,
+            mload: 3,
+            mstore: 3,
+            jump: 8,
+            jumpi: 10,
         }
     }
 }
@@ -285,4 +303,19 @@ pub enum ExecutionError {
     
     #[error("Execution reverted: {0}")]
     Reverted(String),
+    
+    #[error("Stack underflow")]
+    StackUnderflow,
+    
+    #[error("Invalid model")]
+    InvalidModel,
+    
+    #[error("Invalid tensor")]
+    InvalidTensor,
+    
+    #[error("Tensor shape mismatch")]
+    TensorShapeMismatch,
+    
+    #[error("Invalid opcode")]
+    InvalidOpcodeGeneric,
 }

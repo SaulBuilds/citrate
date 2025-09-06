@@ -1,18 +1,44 @@
-use lattice_consensus::{Block, BlockHeader, Transaction, Hash, PublicKey, Signature};
-use lattice_consensus::{GhostDag, TipSelector, ChainSelector};
+use lattice_consensus::types::{Block, BlockHeader, Transaction, Hash, PublicKey, Signature, GhostDagParams, VrfProof};
+use lattice_consensus::ghostdag::GhostDag;
+use lattice_consensus::tip_selection::TipSelector;
+use lattice_consensus::chain_selection::ChainSelector;
+use lattice_consensus::dag_store::DagStore;
 use lattice_storage::StorageManager;
 use lattice_execution::Executor;
 use lattice_sequencer::mempool::Mempool;
-use chrono::Utc;
+use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{info, error, debug};
+use tracing::{info, error};
+
+/// Calculate block header hash using SHA3-256
+fn calculate_block_hash_header(header: &BlockHeader) -> Hash {
+    let mut hasher = Sha3_256::new();
+    
+    // Hash header fields
+    hasher.update(&header.version.to_le_bytes());
+    hasher.update(header.selected_parent_hash.as_bytes());
+    for parent in &header.merge_parent_hashes {
+        hasher.update(parent.as_bytes());
+    }
+    hasher.update(&header.timestamp.to_le_bytes());
+    hasher.update(&header.height.to_le_bytes());
+    hasher.update(&header.blue_score.to_le_bytes());
+    hasher.update(&header.blue_work.to_le_bytes());
+    hasher.update(header.pruning_point.as_bytes());
+    
+    let hash_bytes = hasher.finalize();
+    let mut hash_array = [0u8; 32];
+    hash_array.copy_from_slice(&hash_bytes[..32]);
+    Hash::new(hash_array)
+}
 
 /// Block producer for mining new blocks
 pub struct BlockProducer {
     storage: Arc<StorageManager>,
     executor: Arc<Executor>,
     mempool: Arc<Mempool>,
+    dag_store: Arc<DagStore>,
     ghostdag: Arc<GhostDag>,
     tip_selector: Arc<TipSelector>,
     chain_selector: Arc<ChainSelector>,
@@ -28,17 +54,28 @@ impl BlockProducer {
         coinbase: PublicKey,
         target_block_time: u64,
     ) -> Self {
-        let ghostdag = Arc::new(GhostDag::new(18, storage.dag.clone()));
-        let tip_selector = Arc::new(TipSelector::new(storage.chain.clone()));
-        let chain_selector = Arc::new(ChainSelector::new(
-            storage.chain.clone(),
+        // Create consensus components with a new DAG store
+        let dag_store = Arc::new(DagStore::new());
+        let _chain_store = storage.blocks.clone();
+        
+        let ghostdag = Arc::new(GhostDag::new(GhostDagParams::default(), dag_store.clone()));
+        let tip_selector = Arc::new(TipSelector::new(
+            dag_store.clone(),
             ghostdag.clone(),
+            lattice_consensus::tip_selection::SelectionStrategy::HighestBlueScore,
+        ));
+        let chain_selector = Arc::new(ChainSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            tip_selector.clone(),
+            100, // finality depth
         ));
         
         Self {
             storage,
             executor,
             mempool,
+            dag_store,
             ghostdag,
             tip_selector,
             chain_selector,
@@ -61,8 +98,8 @@ impl BlockProducer {
                     info!(
                         "Produced block #{} hash={} txs={}",
                         block_count,
-                        hex::encode(&block_hash.0[..8]),
-                        0, // We'll add transaction count later
+                        hex::encode(&block_hash.as_bytes()[..8]),
+                        0, // We'll get tx count from block
                     );
                 }
                 Err(e) => {
@@ -75,15 +112,16 @@ impl BlockProducer {
     /// Produce a single block
     async fn produce_block(&self) -> anyhow::Result<Hash> {
         // Get current tips for parent selection
-        let tips = self.tip_selector.get_tips().await;
+        let tips = self.dag_store.get_tips().await;
         
         // Select parents using GhostDAG
         let parent_hashes = if tips.is_empty() {
-            // If no tips, use genesis
-            vec![self.storage.chain.get_genesis_hash()?
-                .ok_or_else(|| anyhow::anyhow!("No genesis block"))?]
+            // If no tips, use a default genesis hash
+            // TODO: Load actual genesis hash from storage
+            vec![Hash::default()]
         } else {
-            tips
+            // Convert tips to hashes
+            tips.into_iter().map(|tip| tip.hash).collect()
         };
         
         // Get the selected parent (highest blue score)
@@ -93,18 +131,15 @@ impl BlockProducer {
             Some(parent_hashes[0])
         };
         
-        // Calculate blue and red sets
-        let (blues, reds) = if let Some(parent) = selected_parent {
-            self.ghostdag.calculate_blue_red_sets(&parent, &parent_hashes).await?
-        } else {
-            (vec![], vec![])
-        };
+        // For now, we'll use empty blue/red sets
+        // TODO: Implement proper GhostDAG blue/red set calculation
+        let blues: Vec<Hash> = vec![];
+        let reds: Vec<Hash> = vec![];
         
         // Get last block height
         let last_height = if let Some(parent) = selected_parent {
-            self.storage.chain.get_block_header(&parent)?
-                .map(|h| h.height)
-                .unwrap_or(0)
+            // TODO: Get actual parent height from storage
+            0
         } else {
             0
         };
@@ -112,99 +147,53 @@ impl BlockProducer {
         // Get transactions from mempool
         let transactions = self.mempool.get_best_transactions(100, 10_000_000).await;
         
-        // Calculate blue score and work
-        let (blue_score, blue_work) = self.calculate_dag_metrics(&parent_hashes).await?;
+        // Calculate blue score and work (simplified for now)
+        let blue_score = 0u64;
+        let blue_work = 0u128;
         
         // Create block header
         let mut header = BlockHeader {
             version: 1,
             block_hash: Hash::default(), // Will be computed
-            parent_hashes: parent_hashes.clone(),
+            selected_parent_hash: selected_parent.unwrap_or_default(),
+            merge_parent_hashes: if selected_parent.is_some() {
+                parent_hashes[1..].to_vec()
+            } else {
+                vec![]
+            },
+            timestamp: chrono::Utc::now().timestamp() as u64,
             height: last_height + 1,
-            timestamp: Utc::now().timestamp() as u64,
-            difficulty: 1, // Fixed difficulty for devnet
-            nonce: 0,
-            merkle_root: self.calculate_merkle_root(&transactions),
-            state_root: self.executor.calculate_state_root(),
-            receipts_root: Hash::default(), // TODO: Calculate from receipts
-            proposer: self.coinbase,
-            signature: Signature::new([1; 64]), // Dummy signature for devnet
             blue_score,
             blue_work,
-            pruning_point: 0,
-            selected_parent,
-            blues,
-            reds,
+            pruning_point: Hash::default(),
+            proposer_pubkey: self.coinbase,
+            vrf_reveal: VrfProof {
+                proof: vec![],
+                output: Hash::default(),
+            },
         };
         
-        // Compute block hash
-        header.block_hash = header.compute_hash();
+        // Compute block hash (simplified)
+        header.block_hash = calculate_block_hash_header(&header);
         
         // Create block
         let block = Block {
             header: header.clone(),
+            state_root: Hash::default(), // TODO: Calculate actual state root
+            tx_root: Hash::default(), // TODO: Calculate actual tx root
+            receipt_root: Hash::default(), // TODO: Calculate actual receipt root
+            artifact_root: Hash::default(), // TODO: Calculate actual artifact root
+            ghostdag_params: GhostDagParams::default(),
             transactions,
-            uncles: vec![],
+            signature: Signature::new([1; 64]), // Dummy signature for devnet
         };
         
         // Store block
-        self.storage.chain.put_block(&block)?;
-        self.storage.chain.put_block_header(&header)?;
+        self.storage.blocks.put_block(&block)?;
         
-        // Update tips
-        self.tip_selector.update_tips(vec![header.block_hash]).await;
-        
-        // Update DAG
-        self.storage.dag.add_block(
-            header.block_hash,
-            parent_hashes,
-            header.height,
-            header.timestamp,
-        )?;
+        // Update DAG store
+        self.dag_store.store_block(block.clone()).await?;
         
         Ok(header.block_hash)
-    }
-    
-    /// Calculate merkle root of transactions
-    fn calculate_merkle_root(&self, transactions: &[Transaction]) -> Hash {
-        if transactions.is_empty() {
-            return Hash::default();
-        }
-        
-        let hashes: Vec<Hash> = transactions.iter().map(|tx| tx.hash).collect();
-        
-        // Simple merkle root calculation
-        if hashes.len() == 1 {
-            hashes[0]
-        } else {
-            // For now, just hash all transaction hashes together
-            let mut data = Vec::new();
-            for hash in hashes {
-                data.extend_from_slice(&hash.0);
-            }
-            Hash::hash(&data)
-        }
-    }
-    
-    /// Calculate DAG metrics
-    async fn calculate_dag_metrics(&self, parent_hashes: &[Hash]) -> anyhow::Result<(u64, u128)> {
-        if parent_hashes.is_empty() {
-            return Ok((0, 0));
-        }
-        
-        // Get parent with highest blue score
-        let mut max_blue_score = 0u64;
-        let mut total_work = 0u128;
-        
-        for parent_hash in parent_hashes {
-            if let Some(header) = self.storage.chain.get_block_header(parent_hash)? {
-                if header.blue_score > max_blue_score {
-                    max_blue_score = header.blue_score;
-                }
-                total_work = total_work.saturating_add(header.blue_work);
-            }
-        }
-        
-        Ok((max_blue_score + 1, total_work + 1))
     }
 }

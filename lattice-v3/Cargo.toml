@@ -7,6 +7,8 @@ members = [
     "core/primitives",
     "core/api",
     "core/network",
+    "core/mcp",
+    "node",
 ]
 resolver = "2"
 

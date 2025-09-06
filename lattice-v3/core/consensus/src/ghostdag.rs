@@ -214,7 +214,8 @@ impl GhostDag {
     }
     
     /// Get or calculate blue set for a block
-    async fn get_or_calculate_blue_set(&self, hash: &Hash) -> Result<BlueSet, GhostDagError> {
+    fn get_or_calculate_blue_set<'a>(&'a self, hash: &'a Hash) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<BlueSet, GhostDagError>> + Send + 'a>> {
+        Box::pin(async move {
         // Check cache first
         if let Some(cached) = self.blue_cache.read().await.get(hash) {
             return Ok(cached.clone());
@@ -256,6 +257,7 @@ impl GhostDag {
         blue.score = blue.blocks.len() as u64;
         self.blue_cache.write().await.insert(*hash, blue.clone());
         Ok(blue)
+        })
     }
     
     /// Add a block to the DAG

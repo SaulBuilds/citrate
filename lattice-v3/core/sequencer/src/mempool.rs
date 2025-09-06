@@ -281,24 +281,22 @@ impl Mempool {
             }
         }
         
-        // Verify signature
-        // In a real implementation, this would:
-        // 1. Serialize transaction data for signing
-        // 2. Recover public key from signature
-        // 3. Verify signature matches transaction sender
-        
-        // Basic signature presence check
-        let sig_bytes = tx.signature.as_bytes();
-        
-        // Check signature is not all zeros (placeholder)
-        if sig_bytes.iter().all(|&b| b == 0) {
-            return Err(MempoolError::InvalidTransaction(
-                "Invalid signature: all zeros".to_string()
-            ));
+        // Verify signature using real cryptographic verification
+        match lattice_consensus::crypto::verify_transaction(tx) {
+            Ok(true) => {
+                // Signature is valid
+            }
+            Ok(false) => {
+                return Err(MempoolError::InvalidTransaction(
+                    "Invalid signature: verification failed".to_string()
+                ));
+            }
+            Err(e) => {
+                return Err(MempoolError::InvalidTransaction(
+                    format!("Signature error: {}", e)
+                ));
+            }
         }
-        
-        // In production, would use ed25519-dalek or similar to verify
-        // For now, we accept non-zero signatures as valid
         
         Ok(())
     }

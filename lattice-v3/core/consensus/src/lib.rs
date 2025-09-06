@@ -1,4 +1,5 @@
 pub mod types;
+pub mod crypto;
 pub mod ghostdag;
 pub mod dag_store;
 pub mod tip_selection;

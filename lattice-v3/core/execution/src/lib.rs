@@ -1,6 +1,9 @@
 pub mod types;
 pub mod state;
 pub mod executor;
+pub mod vm;
+pub mod tensor;
+pub mod zkp;
 
 pub use types::{
     Address, AccountState, ModelId, ModelState, ModelMetadata, 

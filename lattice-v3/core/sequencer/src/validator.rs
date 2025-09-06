@@ -234,28 +234,15 @@ impl<S: StateProvider> TxValidator<S> {
     
     /// Validate transaction signature
     fn validate_signature(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        // Simplified signature validation
-        // In production, would use proper crypto verification
-        
-        // Create message hash
-        let mut hasher = Sha3_256::new();
-        hasher.update(&tx.nonce.to_le_bytes());
-        hasher.update(tx.from.as_bytes());
-        if let Some(to) = &tx.to {
-            hasher.update(to.as_bytes());
+        // Use real cryptographic signature verification
+        match lattice_consensus::crypto::verify_transaction(tx) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(ValidationError::InvalidSignature),
+            Err(e) => {
+                warn!("Signature verification error: {}", e);
+                Err(ValidationError::InvalidSignature)
+            }
         }
-        hasher.update(&tx.value.to_le_bytes());
-        hasher.update(&tx.gas_limit.to_le_bytes());
-        hasher.update(&tx.gas_price.to_le_bytes());
-        hasher.update(&tx.data);
-        
-        // For now, assume signature is valid if non-zero
-        // In production, would verify against public key
-        if tx.signature == Signature::new([0; 64]) {
-            return Err(ValidationError::InvalidSignature);
-        }
-        
-        Ok(())
     }
     
     /// Validate against current state

@@ -3,6 +3,8 @@ use lattice_consensus::{
     Block, BlockHeader, Hash, PublicKey, Transaction, 
     VrfProof, GhostDagParams, Signature
 };
+use lattice_execution::parallel::ParallelExecutor;
+use lattice_execution::executor::Executor;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
@@ -105,6 +107,8 @@ pub struct BlockBuilder {
     config: BlockBuilderConfig,
     mempool: Arc<Mempool>,
     proposer_key: PublicKey,
+    executor: Option<Arc<Executor>>,
+    parallel_executor: Arc<ParallelExecutor>,
 }
 
 impl BlockBuilder {
@@ -117,7 +121,15 @@ impl BlockBuilder {
             config,
             mempool,
             proposer_key,
+            executor: None,
+            parallel_executor: Arc::new(ParallelExecutor::new()),
         }
+    }
+    
+    /// Set the executor for parallel transaction execution
+    pub fn with_executor(mut self, executor: Arc<Executor>) -> Self {
+        self.executor = Some(executor);
+        self
     }
     
     /// Build a new block

@@ -1,0 +1,19 @@
+# Monorepo ignores
+.DS_Store
+**/.DS_Store
+# Rust targets
+**/target/
+# Logs and temp
+*.log
+/tmp/
+# Cargo build artifacts
+**/**.rlib
+**/**.rmeta
+# IDE
+.vscode/
+.idea/
+
+node_modules/
+.next/
+.env
+

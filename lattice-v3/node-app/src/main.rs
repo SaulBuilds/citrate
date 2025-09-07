@@ -78,7 +78,9 @@ async fn main() -> Result<()> {
     let maddr = metrics_addr();
     tokio::spawn(async move {
         let app = Router::new().route("/metrics", get(metrics_handler));
-        if let Err(e) = hyper::Server::bind(&maddr).serve(app.into_make_service()).await {
+        let listener = tokio::net::TcpListener::bind(&maddr).await.unwrap();
+        info!("Metrics server listening on {}", maddr);
+        if let Err(e) = axum::serve(listener, app).await {
             tracing::error!("metrics server error: {}", e);
         }
     });

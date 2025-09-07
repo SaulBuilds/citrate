@@ -2,6 +2,9 @@ pub mod methods;
 pub mod server;
 pub mod types;
 pub mod metrics;
+pub mod metrics_server;
+pub mod eth_rpc_simple;
+pub mod eth_tx_decoder;
 // pub mod websocket;  // Temporarily disabled - needs async runtime integration
 
 pub use server::{RpcServer, RpcConfig};

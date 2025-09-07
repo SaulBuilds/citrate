@@ -8,8 +8,11 @@ members = [
     "core/api",
     "core/network",
     "core/mcp",
+    "core/economics",
     "node",
     "node-app",
+    "wallet",
+    "faucet",
 ]
 resolver = "2"
 

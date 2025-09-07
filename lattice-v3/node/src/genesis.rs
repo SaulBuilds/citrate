@@ -1,6 +1,9 @@
 use lattice_consensus::types::{Block, BlockHeader, Transaction, Hash, PublicKey, Signature, VrfProof, GhostDagParams};
 use lattice_storage::StorageManager;
 use lattice_execution::executor::Executor;
+use lattice_execution::types::Address;
+use lattice_economics::genesis::{GenesisConfig as EconomicsGenesisConfig, GenesisAccount};
+use primitive_types::U256;
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
 
@@ -92,21 +95,40 @@ pub async fn initialize_genesis_state(
     // Create genesis block
     let mut genesis = create_genesis_block(config);
     
-    // Initialize accounts with balances
-    for (address, balance) in &config.initial_accounts {
-        // Convert PublicKey to Address (first 20 bytes of hash)
-        let addr_bytes = {
-            let mut hasher = Sha3_256::new();
-            hasher.update(&address.0);
-            let hash_bytes = hasher.finalize();
-            let mut addr = [0u8; 20];
-            addr.copy_from_slice(&hash_bytes[..20]);
-            lattice_execution::types::Address(addr)
-        };
+    // Create economics genesis config
+    let economics_config = EconomicsGenesisConfig::default();
+    
+    // Initialize genesis accounts from economics config
+    for account in &economics_config.accounts {
+        // Set initial balance using executor
+        executor.set_balance(&account.address, account.balance);
         
-        // Set initial balance
-        // TODO: Need public API to set balance
-        // executor.state_db.accounts.set_balance(&addr_bytes, *balance);
+        // Set nonce if non-zero
+        if account.nonce > 0 {
+            executor.set_nonce(&account.address, account.nonce);
+        }
+        
+        // Deploy code if provided
+        if let Some(code) = &account.code {
+            executor.set_code(&account.address, code.clone());
+        }
+        
+        tracing::info!(
+            "Initialized genesis account 0x{} with balance {} LATT ({} wei)",
+            hex::encode(&account.address.0),
+            account.balance / U256::from(10).pow(U256::from(18)),
+            account.balance
+        );
+    }
+    
+    // Also initialize legacy initial_accounts if any
+    for (address, balance) in &config.initial_accounts {
+        // Convert PublicKey to Address (first 20 bytes)
+        let addr_bytes = Address(address.0[0..20].try_into().unwrap_or([0; 20]));
+        
+        // Set initial balance (convert to U256)
+        let balance_u256 = U256::from(*balance);
+        executor.set_balance(&addr_bytes, balance_u256);
     }
     
     // Calculate state root after initializing accounts

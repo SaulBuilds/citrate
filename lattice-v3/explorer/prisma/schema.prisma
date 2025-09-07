@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Block {
+  id              String   @id
+  number          BigInt   @unique
+  hash            String   @unique
+  parentHash      String
+  selectedParent  String?
+  mergeParents    String[]
+  timestamp       DateTime
+  miner           String
+  gasUsed         BigInt
+  gasLimit        BigInt
+  blueScore       BigInt?
+  isBlue          Boolean  @default(true)
+  difficulty      BigInt?
+  totalDifficulty BigInt?
+  size            Int
+  stateRoot       String
+  txRoot          String
+  receiptRoot     String
+  
+  transactions    Transaction[]
+  models          Model[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([number])
+  @@index([hash])
+  @@index([timestamp])
+  @@index([miner])
+  @@index([blueScore])
+}
+
+model Transaction {
+  id              String   @id
+  hash            String   @unique
+  blockHash       String
+  blockNumber     BigInt
+  from            String
+  to              String?
+  value           String
+  gas             BigInt
+  gasPrice        String
+  nonce           BigInt
+  data            String?
+  status          Boolean
+  contractAddress String?
+  type            String?  // "transfer", "contract", "model", "inference"
+  
+  block           Block    @relation(fields: [blockHash], references: [hash])
+  logs            Log[]
+  modelOps        ModelOperation[]
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([hash])
+  @@index([from])
+  @@index([to])
+  @@index([blockNumber])
+  @@index([type])
+}
+
+model Log {
+  id              String   @id
+  transactionHash String
+  logIndex        Int
+  address         String
+  topics          String[]
+  data            String
+  eventName       String?
+  
+  transaction     Transaction @relation(fields: [transactionHash], references: [hash])
+  
+  @@index([transactionHash])
+  @@index([address])
+  @@index([eventName])
+}
+
+model Model {
+  id              String   @id
+  modelId         String   @unique
+  owner           String
+  name            String
+  version         String
+  format          String   // "onnx", "pytorch", "tensorflow"
+  dataHash        String
+  metadata        Json
+  blockNumber     BigInt
+  blockHash       String
+  transactionHash String
+  timestamp       DateTime
+  size            BigInt?
+  permissions     String[]
+  
+  block           Block    @relation(fields: [blockHash], references: [hash])
+  operations      ModelOperation[]
+  inferences      Inference[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([modelId])
+  @@index([owner])
+  @@index([name])
+  @@index([format])
+}
+
+model ModelOperation {
+  id              String   @id
+  modelId         String
+  operationType   String   // "deploy", "update", "grant", "revoke"
+  transactionHash String
+  blockNumber     BigInt
+  timestamp       DateTime
+  details         Json?
+  
+  model           Model    @relation(fields: [modelId], references: [modelId])
+  transaction     Transaction @relation(fields: [transactionHash], references: [hash])
+  
+  @@index([modelId])
+  @@index([operationType])
+  @@index([timestamp])
+}
+
+model Inference {
+  id              String   @id
+  inferenceId     String   @unique
+  modelId         String
+  executorAddress String
+  inputHash       String
+  outputHash      String
+  proofId         String?
+  gasUsed         BigInt
+  executionTime   Int      // milliseconds
+  timestamp       DateTime
+  blockNumber     BigInt
+  transactionHash String
+  
+  model           Model    @relation(fields: [modelId], references: [modelId])
+  
+  @@index([inferenceId])
+  @@index([modelId])
+  @@index([executorAddress])
+  @@index([timestamp])
+}
+
+model Account {
+  id              String   @id
+  address         String   @unique
+  balance         String
+  nonce           BigInt
+  isContract      Boolean  @default(false)
+  isModel         Boolean  @default(false)
+  firstSeen       DateTime
+  lastSeen        DateTime
+  transactionCount Int     @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([address])
+  @@index([isContract])
+  @@index([isModel])
+}
+
+model DagStats {
+  id              String   @id @default(uuid())
+  timestamp       DateTime @default(now())
+  totalBlocks     BigInt
+  blueBlocks      BigInt
+  redBlocks       BigInt
+  tipsCount       Int
+  maxBlueScore    BigInt
+  avgBlockTime    Float
+  tps             Float    // transactions per second
+  activeModels    Int
+  totalInferences BigInt
+  
+  @@index([timestamp])
+}
+
+model SearchIndex {
+  id              String   @id @default(uuid())
+  type            String   // "block", "transaction", "address", "model"
+  identifier      String
+  data            Json
+  
+  @@index([type])
+  @@index([identifier])
+  @@unique([type, identifier])
+}

@@ -6,7 +6,7 @@ use crate::types::{
 use lattice_consensus::types::{Block, Transaction, Hash, VrfProof};
 use primitive_types::U256;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, error};
 
 /// Execution context for a transaction
 pub struct ExecutionContext {
@@ -54,13 +54,30 @@ impl ExecutionContext {
 /// Transaction executor
 pub struct Executor {
     state_db: Arc<StateDB>,
+    state_store: Option<Arc<dyn StateStoreTrait>>,
     gas_schedule: GasSchedule,
+}
+
+/// Trait for state storage to avoid circular dependency
+pub trait StateStoreTrait: Send + Sync {
+    fn put_account(&self, address: &Address, account: &crate::types::AccountState) -> anyhow::Result<()>;
+    fn get_account(&self, address: &Address) -> anyhow::Result<Option<crate::types::AccountState>>;
+    fn put_code(&self, code_hash: &Hash, code: &[u8]) -> anyhow::Result<()>;
 }
 
 impl Executor {
     pub fn new(state_db: Arc<StateDB>) -> Self {
         Self {
             state_db,
+            state_store: None,
+            gas_schedule: GasSchedule::default(),
+        }
+    }
+    
+    pub fn with_storage<S: StateStoreTrait + 'static>(state_db: Arc<StateDB>, state_store: Option<Arc<S>>) -> Self {
+        Self {
+            state_db,
+            state_store: state_store.map(|s| s as Arc<dyn StateStoreTrait>),
             gas_schedule: GasSchedule::default(),
         }
     }
@@ -72,6 +89,15 @@ impl Executor {
     
     /// Get account balance
     pub fn get_balance(&self, address: &Address) -> U256 {
+        // Try to load from storage first if available
+        if let Some(store) = &self.state_store {
+            if let Ok(Some(account)) = store.get_account(address) {
+                // Update in-memory state
+                self.state_db.accounts.set_account(*address, account.clone());
+                return account.balance;
+            }
+        }
+        
         self.state_db.accounts.get_balance(address)
     }
     
@@ -83,6 +109,50 @@ impl Executor {
     /// Get contract code hash
     pub fn get_code_hash(&self, address: &Address) -> Hash {
         self.state_db.accounts.get_code_hash(address)
+    }
+    
+    /// Set account balance
+    pub fn set_balance(&self, address: &Address, balance: U256) {
+        self.state_db.accounts.set_balance(*address, balance);
+        
+        // Persist to storage if available
+        if let Some(store) = &self.state_store {
+            let account = self.state_db.accounts.get_account(address);
+            if let Err(e) = store.put_account(address, &account) {
+                error!("Failed to persist account balance: {}", e);
+            }
+        }
+    }
+    
+    /// Set account nonce
+    pub fn set_nonce(&self, address: &Address, nonce: u64) {
+        self.state_db.accounts.set_nonce(*address, nonce);
+        
+        // Persist to storage if available
+        if let Some(store) = &self.state_store {
+            let account = self.state_db.accounts.get_account(address);
+            if let Err(e) = store.put_account(address, &account) {
+                error!("Failed to persist account nonce: {}", e);
+            }
+        }
+    }
+    
+    /// Set contract code
+    pub fn set_code(&self, address: &Address, code: Vec<u8>) {
+        let code_hash = self.state_db.set_code(*address, code.clone());
+        self.state_db.accounts.set_code_hash(*address, code_hash);
+        
+        // Persist to storage if available
+        if let Some(store) = &self.state_store {
+            if let Err(e) = store.put_code(&code_hash, &code) {
+                error!("Failed to persist contract code: {}", e);
+            }
+            
+            let account = self.state_db.accounts.get_account(address);
+            if let Err(e) = store.put_account(address, &account) {
+                error!("Failed to persist account code hash: {}", e);
+            }
+        }
     }
     
     /// Calculate state root

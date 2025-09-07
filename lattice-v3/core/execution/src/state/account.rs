@@ -80,6 +80,13 @@ impl AccountManager {
         self.get_account(address).nonce
     }
     
+    /// Set nonce
+    pub fn set_nonce(&self, address: Address, nonce: u64) {
+        let mut account = self.get_account(&address);
+        account.nonce = nonce;
+        self.set_account(address, account);
+    }
+    
     /// Increment nonce
     pub fn increment_nonce(&self, address: &Address) {
         let mut account = self.get_account(address);

@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: lattice-linux-amd64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: lattice-macos-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: lattice-macos-arm64
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+    
+    - name: Build
+      run: |
+        cargo build --release --target ${{ matrix.target }} -p lattice-node
+        cargo build --release --target ${{ matrix.target }} -p lattice-cli
+    
+    - name: Package
+      run: |
+        mkdir -p dist
+        cp target/${{ matrix.target }}/release/lattice dist/
+        cp target/${{ matrix.target }}/release/lattice-cli dist/
+        tar -czf ${{ matrix.artifact }}.tar.gz -C dist .
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.artifact }}
+        path: ${{ matrix.artifact }}.tar.gz
+
+  docker:
+    name: Docker Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: latticeai/lattice
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  release:
+    name: Create Release
+    needs: [build, docker]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+        git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body: |
+          ## What's Changed
+          ${{ steps.changelog.outputs.CHANGELOG }}
+          
+          ## Docker Images
+          ```bash
+          docker pull latticeai/lattice:${{ github.ref_name }}
+          ```
+          
+          ## Installation
+          
+          ### Linux
+          ```bash
+          curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/lattice-linux-amd64.tar.gz | tar xz
+          sudo mv lattice lattice-cli /usr/local/bin/
+          ```
+          
+          ### macOS (Intel)
+          ```bash
+          curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/lattice-macos-amd64.tar.gz | tar xz
+          sudo mv lattice lattice-cli /usr/local/bin/
+          ```
+          
+          ### macOS (Apple Silicon)
+          ```bash
+          curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/lattice-macos-arm64.tar.gz | tar xz
+          sudo mv lattice lattice-cli /usr/local/bin/
+          ```
+        files: |
+          artifacts/**/*.tar.gz
+        draft: false
+        prerelease: false
+
+  publish-npm:
+    name: Publish NPM Package
+    needs: release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./sdk/javascript
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        registry-url: 'https://registry.npmjs.org'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build
+      run: npm run build
+    
+    - name: Publish
+      run: npm publish --access public
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -120,9 +120,12 @@ async fn init_chain(chain_id: u64) -> Result<()> {
         PruningConfig::default(),
     )?);
     
-    // Create executor
+    // Create executor with persistent storage
     let state_db = Arc::new(StateDB::new());
-    let executor = Arc::new(Executor::new(state_db));
+    let executor = Arc::new(Executor::with_storage(
+        state_db,
+        Some(storage.state.clone())
+    ));
     
     // Initialize genesis
     let genesis_config = GenesisConfig {
@@ -158,7 +161,10 @@ async fn run_devnet() -> Result<()> {
         )?);
         
         let state_db = Arc::new(StateDB::new());
-        let executor = Arc::new(Executor::new(state_db));
+        let executor = Arc::new(Executor::with_storage(
+            state_db,
+            Some(storage.state.clone())
+        ));
         
         let genesis_config = GenesisConfig {
             chain_id: config.chain.chain_id,
@@ -199,9 +205,12 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         },
     )?);
     
-    // Create state DB and executor
+    // Create state DB and executor with persistent storage
     let state_db = Arc::new(StateDB::new());
-    let executor = Arc::new(Executor::new(state_db));
+    let executor = Arc::new(Executor::with_storage(
+        state_db,
+        Some(storage.state.clone())
+    ));
     
     // Create mempool
     let mempool = Arc::new(Mempool::new(MempoolConfig {
@@ -243,11 +252,18 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         );
         
         Some(tokio::spawn(async move {
-            match rpc_server.start().await {
-                Ok(_server) => {
+            match rpc_server.spawn() {
+                Ok((close_handle, join_handle)) => {
                     info!("RPC server started");
                     // Keep server alive
                     tokio::signal::ctrl_c().await.ok();
+                    // Signal server to close and join its OS thread
+                    close_handle.close();
+                    tokio::task::spawn_blocking(move || {
+                        let _ = join_handle.join();
+                    })
+                    .await
+                    .ok();
                 }
                 Err(e) => {
                     error!("Failed to start RPC server: {}", e);

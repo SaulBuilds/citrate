@@ -189,6 +189,9 @@ impl Mempool {
         tx: Transaction,
         class: TxClass,
     ) -> Result<(), MempoolError> {
+        tracing::info!("Adding transaction to mempool: hash={:?}, from={:?}, nonce={}", 
+            tx.hash, tx.from, tx.nonce);
+        
         // Basic validation
         self.validate_transaction(&tx).await?;
         
@@ -197,6 +200,7 @@ impl Mempool {
         
         // Check for duplicates
         if self.transactions.read().await.contains_key(&tx_hash) {
+            tracing::warn!("Duplicate transaction: {:?}", tx_hash);
             return Err(MempoolError::DuplicateTransaction(tx_hash));
         }
         
@@ -263,8 +267,15 @@ impl Mempool {
     
     /// Validate a transaction
     async fn validate_transaction(&self, tx: &Transaction) -> Result<(), MempoolError> {
+        tracing::debug!("Validating transaction with hash: {:?}", tx.hash);
+        
         // Check gas price
         if tx.gas_price < self.config.min_gas_price {
+            tracing::warn!(
+                "Transaction gas price too low: {} < {}", 
+                tx.gas_price, 
+                self.config.min_gas_price
+            );
             return Err(MempoolError::GasPriceTooLow {
                 min: self.config.min_gas_price,
                 got: tx.gas_price,
@@ -274,6 +285,11 @@ impl Mempool {
         // Check nonce
         if let Some(&expected_nonce) = self.nonces.read().await.get(&tx.from) {
             if tx.nonce < expected_nonce {
+                tracing::warn!(
+                    "Transaction nonce too low: {} < {}", 
+                    tx.nonce, 
+                    expected_nonce
+                );
                 return Err(MempoolError::NonceTooLow {
                     expected: expected_nonce,
                     got: tx.nonce,
@@ -281,7 +297,16 @@ impl Mempool {
             }
         }
         
+        // In development/testnet mode, skip signature verification for now
+        // TODO: Enable signature verification in production
+        #[cfg(feature = "devnet")]
+        {
+            tracing::debug!("Skipping signature verification in devnet mode");
+            return Ok(());
+        }
+        
         // Verify signature using real cryptographic verification
+        #[cfg(not(feature = "devnet"))]
         match lattice_consensus::crypto::verify_transaction(tx) {
             Ok(true) => {
                 // Signature is valid

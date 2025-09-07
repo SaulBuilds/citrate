@@ -21,7 +21,6 @@ futures = "0.3"
 
 # Local dependencies
 lattice-consensus = { path = "../consensus" }
-lattice-sequencer = { path = "../sequencer" }
 
 # Execution specific
 primitive-types = { version = "0.12", features = ["serde"] }
@@ -30,6 +29,7 @@ rlp = "0.5"
 hex = "0.4"
 dashmap = "5.5"
 parking_lot = "0.12"
+lru = "0.12"
 
 # Tensor operations
 ndarray = "0.15"

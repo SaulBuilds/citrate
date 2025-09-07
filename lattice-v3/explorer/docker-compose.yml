@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lattice-explorer-db
+    environment:
+      POSTGRES_DB: lattice_explorer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: lattice-explorer-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  explorer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lattice-explorer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/lattice_explorer
+      REDIS_URL: redis://redis:6379
+      RPC_ENDPOINT: ${RPC_ENDPOINT:-http://host.docker.internal:8545}
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    command: npm run dev
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lattice-indexer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/lattice_explorer
+      RPC_ENDPOINT: ${RPC_ENDPOINT:-http://host.docker.internal:8545}
+      INDEXER_ENABLED: "true"
+    command: npm run indexer
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -2,6 +2,7 @@ use crate::db::{column_families::*, RocksDB};
 use anyhow::Result;
 use lattice_consensus::types::Hash;
 use lattice_execution::types::{AccountState, Address, ModelId, ModelState, TrainingJob, JobId};
+use lattice_execution::executor::StateStoreTrait;
 use primitive_types::U256;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -9,6 +10,28 @@ use tracing::{debug, info};
 /// State storage manager
 pub struct StateStore {
     db: Arc<RocksDB>,
+}
+
+impl StateStoreTrait for StateStore {
+    fn put_account(&self, address: &Address, account: &AccountState) -> Result<()> {
+        let account_bytes = bincode::serialize(account)?;
+        self.db.put_cf(CF_ACCOUNTS, &address.0, &account_bytes)?;
+        debug!("Stored account state for {}", address);
+        Ok(())
+    }
+    
+    fn get_account(&self, address: &Address) -> Result<Option<AccountState>> {
+        match self.db.get_cf(CF_ACCOUNTS, &address.0)? {
+            Some(bytes) => Ok(Some(bincode::deserialize(&bytes)?)),
+            None => Ok(None),
+        }
+    }
+    
+    fn put_code(&self, code_hash: &Hash, code: &[u8]) -> Result<()> {
+        self.db.put_cf(CF_CODE, code_hash.as_bytes(), code)?;
+        debug!("Stored contract code with hash {}", code_hash);
+        Ok(())
+    }
 }
 
 impl StateStore {

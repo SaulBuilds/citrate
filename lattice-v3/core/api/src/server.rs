@@ -1,6 +1,7 @@
 use crate::methods::{ChainApi, StateApi, TransactionApi, MempoolApi, NetworkApi, AiApi};
 use crate::types::{error::ApiError, request::{BlockId, TransactionRequest, CallRequest}};
 use crate::metrics::rpc_request;
+use crate::eth_rpc;
 use anyhow::Result;
 use jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::{ServerBuilder, Server, DomainsValidation, AccessControlAllowOrigin};
@@ -56,6 +57,14 @@ impl RpcServer {
         executor: Arc<Executor>,
     ) -> Self {
         let mut io_handler = IoHandler::new();
+        
+        // Register Ethereum-compatible RPC methods
+        eth_rpc::register_eth_methods(
+            &mut io_handler,
+            storage.clone(),
+            mempool.clone(),
+            executor.clone(),
+        );
         
         // ========== Chain Methods ==========
         

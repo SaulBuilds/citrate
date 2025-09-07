@@ -5,7 +5,10 @@ use lattice_consensus::chain_selection::ChainSelector;
 use lattice_consensus::dag_store::DagStore;
 use lattice_storage::StorageManager;
 use lattice_execution::Executor;
+use lattice_execution::types::Address;
 use lattice_sequencer::mempool::Mempool;
+use lattice_economics::{RewardCalculator, RewardConfig};
+use primitive_types::U256;
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
@@ -44,6 +47,7 @@ pub struct BlockProducer {
     chain_selector: Arc<ChainSelector>,
     coinbase: PublicKey,
     target_block_time: u64,
+    reward_calculator: RewardCalculator,
 }
 
 impl BlockProducer {
@@ -71,6 +75,17 @@ impl BlockProducer {
             100, // finality depth
         ));
         
+        // Create reward calculator with default config
+        let reward_config = RewardConfig {
+            block_reward: 10,  // 10 LATT per block
+            halving_interval: 2_100_000,
+            inference_bonus: 1,  // 0.01 LATT per inference  
+            model_deployment_bonus: 1,  // 1 LATT per model deployment
+            treasury_percentage: 10,
+            treasury_address: lattice_execution::types::Address([0x11; 20]),  // Treasury address
+        };
+        let reward_calculator = RewardCalculator::new(reward_config);
+        
         Self {
             storage,
             executor,
@@ -81,6 +96,7 @@ impl BlockProducer {
             chain_selector,
             coinbase,
             target_block_time,
+            reward_calculator,
         }
     }
     
@@ -187,6 +203,26 @@ impl BlockProducer {
             transactions,
             signature: Signature::new([1; 64]), // Dummy signature for devnet
         };
+        
+        // Calculate and distribute block rewards
+        let reward = self.reward_calculator.calculate_reward(&block);
+        
+        // Convert PublicKey to Address for coinbase (validator)
+        let validator_address = lattice_execution::types::Address(self.coinbase.0[0..20].try_into().unwrap_or([0; 20]));
+        let treasury_address = lattice_execution::types::Address([0x11; 20]);
+        
+        // Apply rewards to state
+        if reward.validator_reward > U256::zero() {
+            let current_balance = self.executor.get_balance(&validator_address);
+            self.executor.set_balance(&validator_address, current_balance + reward.validator_reward);
+            info!("Minted {} wei to validator {}", reward.validator_reward, hex::encode(&validator_address.0));
+        }
+        
+        if reward.treasury_reward > U256::zero() {
+            let current_balance = self.executor.get_balance(&treasury_address);
+            self.executor.set_balance(&treasury_address, current_balance + reward.treasury_reward);
+            info!("Minted {} wei to treasury", reward.treasury_reward);
+        }
         
         // Store block
         self.storage.blocks.put_block(&block)?;

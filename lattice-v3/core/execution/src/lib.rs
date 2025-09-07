@@ -1,6 +1,7 @@
 pub mod types;
 pub mod state;
 pub mod executor;
+pub mod parallel;
 pub mod vm;
 pub mod tensor;
 pub mod zkp;
@@ -16,3 +17,4 @@ pub use state::{
 };
 
 pub use executor::{Executor, ExecutionContext};
+pub use parallel::{ParallelExecutor};

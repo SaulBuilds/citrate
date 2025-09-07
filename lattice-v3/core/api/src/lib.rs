@@ -1,6 +1,7 @@
 pub mod methods;
 pub mod server;
 pub mod types;
+pub mod metrics;
 // pub mod websocket;  // Temporarily disabled - needs async runtime integration
 
 pub use server::{RpcServer, RpcConfig};
@@ -48,15 +49,20 @@ impl ApiService {
     
     /// Start both RPC and WebSocket servers
     pub async fn start(self) -> Result<()> {
-        // Start RPC server
-        let _rpc = self.rpc_server.start().await?;
-        
-        // Start WebSocket server (disabled for now)
-        // let _ws = self.ws_server.start().await?;
-        
-        // Keep servers running
+        // Start RPC server on a dedicated OS thread
+        let (close_handle, join_handle) = self.rpc_server.spawn()?;
+
+        // Wait for shutdown signal
         tokio::signal::ctrl_c().await?;
-        
+
+        // Signal server to close and join its OS thread without blocking this async task.
+        close_handle.close();
+        tokio::task::spawn_blocking(move || {
+            let _ = join_handle.join();
+        })
+        .await
+        .ok();
+
         Ok(())
     }
 }

@@ -1980,7 +1980,9 @@ dependencies = [
  "lattice-network",
  "lattice-sequencer",
  "lattice-storage",
+ "once_cell",
  "primitive-types",
+ "prometheus",
  "rand 0.8.5",
  "reqwest",
  "serde",
@@ -2034,8 +2036,10 @@ dependencies = [
  "ark-std",
  "async-trait",
  "bincode",
+ "criterion",
  "dashmap",
  "ethereum-types",
+ "futures",
  "hex",
  "lattice-consensus",
  "lattice-sequencer",
@@ -2453,6 +2457,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "node-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "lattice-api",
+ "lattice-execution",
+ "lattice-network",
+ "lattice-sequencer",
+ "lattice-storage",
+ "prometheus",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.20",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2838,6 +2860,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+dependencies = [
+ "cfg-if 1.0.3",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot 0.12.4",
+ "protobuf",
+ "thiserror",
+]
+
+[[package]]
 name = "proptest"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2856,6 +2893,12 @@ dependencies = [
  "tempfile",
  "unarray",
 ]
+
+[[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "quick-error"

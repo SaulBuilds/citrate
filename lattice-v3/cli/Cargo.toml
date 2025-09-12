@@ -6,7 +6,7 @@ authors = ["Lattice Team"]
 license = "MIT"
 
 [[bin]]
-name = "lattice"
+name = "lattice-cli"
 path = "src/main.rs"
 
 [dependencies]

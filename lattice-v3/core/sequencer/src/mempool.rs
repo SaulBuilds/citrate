@@ -47,6 +47,8 @@ pub enum TxClass {
     Storage,
     /// High-priority system transaction
     System,
+    /// AI compute operations (models, inference, training)
+    Compute,
 }
 
 impl TxClass {
@@ -55,6 +57,7 @@ impl TxClass {
         match self {
             TxClass::System => 1000,
             TxClass::ModelUpdate => 100,
+            TxClass::Compute => 80,
             TxClass::Training => 50,
             TxClass::Inference => 20,
             TxClass::Storage => 10,
@@ -69,6 +72,7 @@ pub struct TxPriority {
     pub gas_price: u64,
     pub class: TxClass,
     pub timestamp: u64,
+    pub ai_priority: u64,
 }
 
 impl TxPriority {
@@ -77,12 +81,27 @@ impl TxPriority {
             gas_price,
             class,
             timestamp,
+            ai_priority: 0,
+        }
+    }
+    
+    pub fn new_with_ai(gas_price: u64, class: TxClass, timestamp: u64, ai_priority: u64) -> Self {
+        Self {
+            gas_price,
+            class,
+            timestamp,
+            ai_priority,
         }
     }
     
     /// Calculate effective priority score
     pub fn score(&self) -> u64 {
-        self.gas_price * self.class.priority_multiplier()
+        // Use AI priority if set, otherwise fall back to class-based priority
+        if self.ai_priority > 0 {
+            self.ai_priority
+        } else {
+            self.gas_price * self.class.priority_multiplier()
+        }
     }
 }
 
@@ -121,6 +140,12 @@ pub struct MempoolConfig {
     
     /// Replacement gas price increase percentage
     pub replacement_factor: u64, // e.g., 110 = 10% increase required
+
+    /// Require valid cryptographic signature on incoming transactions
+    pub require_valid_signature: bool,
+
+    /// Chain ID for Ethereum-style transaction verification (EIP-155)
+    pub chain_id: u64,
 }
 
 impl Default for MempoolConfig {
@@ -132,6 +157,9 @@ impl Default for MempoolConfig {
             tx_expiry_secs: 3600, // 1 hour
             allow_replacement: true,
             replacement_factor: 110,
+            // Tighten by default; tests or devnet can disable explicitly
+            require_valid_signature: true,
+            chain_id: 1337,
         }
     }
 }
@@ -171,6 +199,10 @@ pub struct Mempool {
 }
 
 impl Mempool {
+    /// Return configured chain id
+    pub fn chain_id(&self) -> u64 {
+        self.config.chain_id
+    }
     pub fn new(config: MempoolConfig) -> Self {
         Self {
             config,
@@ -186,11 +218,26 @@ impl Mempool {
     /// Add a transaction to the mempool
     pub async fn add_transaction(
         &self,
-        tx: Transaction,
-        class: TxClass,
+        mut tx: Transaction,
+        mut class: TxClass,
     ) -> Result<(), MempoolError> {
-        tracing::info!("Adding transaction to mempool: hash={:?}, from={:?}, nonce={}", 
-            tx.hash, tx.from, tx.nonce);
+        // Determine transaction type from data
+        tx.determine_type();
+        
+        // Override class based on AI transaction type
+        if let Some(tx_type) = tx.tx_type {
+            class = match tx_type {
+                lattice_consensus::types::TransactionType::ModelDeploy |
+                lattice_consensus::types::TransactionType::ModelUpdate |
+                lattice_consensus::types::TransactionType::TrainingJob |
+                lattice_consensus::types::TransactionType::LoraAdapter => TxClass::Compute,
+                lattice_consensus::types::TransactionType::InferenceRequest => TxClass::Compute,
+                lattice_consensus::types::TransactionType::Standard => class,
+            };
+        }
+        
+        tracing::info!("Adding transaction to mempool: hash={:?}, from={:?}, nonce={}, type={:?}", 
+            tx.hash, tx.from, tx.nonce, tx.tx_type);
         
         // Basic validation
         self.validate_transaction(&tx).await?;
@@ -224,9 +271,12 @@ impl Mempool {
             self.evict_lowest_priority().await?;
         }
         
-        // Create mempool transaction
+        // Create mempool transaction with AI-aware priority
         let timestamp = chrono::Utc::now().timestamp() as u64;
-        let priority = TxPriority::new(tx.gas_price, class, timestamp);
+        
+        // Use transaction's built-in priority calculation which considers AI type
+        let ai_priority = tx.priority();
+        let priority = TxPriority::new_with_ai(tx.gas_price, class, timestamp, ai_priority);
         let tx_size = self.calculate_tx_size(&tx);
         
         let mempool_tx = MempoolTx {
@@ -269,6 +319,34 @@ impl Mempool {
     async fn validate_transaction(&self, tx: &Transaction) -> Result<(), MempoolError> {
         tracing::debug!("Validating transaction with hash: {:?}", tx.hash);
         
+        // Basic sanity checks
+        
+        // For devnet mode, accept test signatures and addresses
+        #[cfg(feature = "devnet")]
+        {
+            // In devnet, we're more lenient with signatures for testing
+            // Just check that from address is not all zeros
+            if tx.from.as_bytes().iter().all(|&b| b == 0) {
+                tracing::warn!("Transaction has empty sender public key");
+                return Err(MempoolError::InvalidTransaction("Empty sender".into()));
+            }
+            // Accept any non-zero signature in devnet mode for testing
+            tracing::debug!("Devnet mode: Accepting test transaction from {:?}", tx.from);
+        }
+        
+        #[cfg(not(feature = "devnet"))]
+        {
+            // Production validation
+            if tx.signature.as_bytes().iter().all(|&b| b == 0) {
+                tracing::warn!("Transaction has empty signature");
+                return Err(MempoolError::InvalidSignature);
+            }
+            if tx.from.as_bytes().iter().all(|&b| b == 0) {
+                tracing::warn!("Transaction has empty sender public key");
+                return Err(MempoolError::InvalidTransaction("Empty sender".into()));
+            }
+        }
+
         // Check gas price
         if tx.gas_price < self.config.min_gas_price {
             tracing::warn!(
@@ -297,24 +375,25 @@ impl Mempool {
             }
         }
         
-        // In development/testnet mode, skip signature verification for now
-        // TODO: Enable signature verification in production
-        #[cfg(feature = "devnet")]
-        {
-            tracing::debug!("Skipping signature verification in devnet mode");
+        // Verify signature using real cryptographic verification unless disabled by config
+        if !self.config.require_valid_signature {
+            tracing::debug!("Signature verification disabled via mempool config");
             return Ok(());
         }
-        
-        // Verify signature using real cryptographic verification
-        #[cfg(not(feature = "devnet"))]
+
         match lattice_consensus::crypto::verify_transaction(tx) {
             Ok(true) => {
                 // Signature is valid
             }
             Ok(false) => {
-                return Err(MempoolError::InvalidTransaction(
-                    "Invalid signature: verification failed".to_string()
-                ));
+                // Try Ethereum-style secp256k1 verification as a fallback
+                if self.verify_eth_ecdsa(tx).unwrap_or(false) {
+                    tracing::info!("Verified transaction via Ethereum-style ECDSA");
+                } else {
+                    return Err(MempoolError::InvalidTransaction(
+                        "Invalid signature: verification failed".to_string()
+                    ));
+                }
             }
             Err(e) => {
                 return Err(MempoolError::InvalidTransaction(
@@ -324,6 +403,75 @@ impl Mempool {
         }
         
         Ok(())
+    }
+
+    /// Attempt Ethereum legacy/EIP-155 ECDSA verification using secp256k1
+    fn verify_eth_ecdsa(&self, tx: &Transaction) -> anyhow::Result<bool> {
+        use rlp::RlpStream;
+        use sha3::{Digest, Keccak256};
+        use secp256k1::{ecdsa::RecoverableSignature, ecdsa::RecoveryId, Message, Secp256k1};
+
+        // Extract 20-byte address from `from` (we expect decoder to set this)
+        let from_addr20 = {
+            let bytes = tx.from.as_bytes();
+            let mut a = [0u8; 20];
+            a.copy_from_slice(&bytes[0..20]);
+            a
+        };
+
+        // Build signable RLP (EIP-155 with configured chain_id)
+        let mut s = RlpStream::new_list(9);
+        s.append(&tx.nonce);
+        s.append(&tx.gas_price);
+        s.append(&tx.gas_limit);
+        // to: empty for contract creation
+        if let Some(to_pk) = &tx.to {
+            // take first 20 bytes
+            let mut to20 = [0u8; 20];
+            to20.copy_from_slice(&to_pk.as_bytes()[0..20]);
+            s.append(&to20.as_slice());
+        } else {
+            s.append_empty_data();
+        }
+        // value as minimal big-endian bytes
+        let mut value_be = tx.value.to_be_bytes().to_vec();
+        while value_be.first() == Some(&0u8) && value_be.len() > 1 { value_be.remove(0); }
+        s.append(&value_be.as_slice());
+        s.append(&tx.data.as_slice());
+        s.append(&self.config.chain_id);
+        s.append(&0u8);
+        s.append(&0u8);
+
+        let rlp_bytes = s.out().freeze();
+        let mut hasher = Keccak256::new();
+        hasher.update(&rlp_bytes);
+        let sighash = hasher.finalize();
+
+        // Build recoverable signature from r||s (no v available; try both recovery ids)
+        let secp = Secp256k1::new();
+        let msg = Message::from_slice(&sighash)?;
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes.copy_from_slice(tx.signature.as_bytes());
+
+        for rec_id in 0..=1 {
+            if let Ok(recid) = RecoveryId::from_i32(rec_id) {
+                if let Ok(recsig) = RecoverableSignature::from_compact(&sig_bytes, recid) {
+                    if let Ok(pubkey) = secp.recover_ecdsa(&msg, &recsig) {
+                        let uncompressed = pubkey.serialize_uncompressed();
+                        // Compute Ethereum address
+                        let mut hasher = Keccak256::new();
+                        hasher.update(&uncompressed[1..]);
+                        let hash = hasher.finalize();
+                        let mut addr = [0u8; 20];
+                        addr.copy_from_slice(&hash[12..]);
+                        if addr == from_addr20 {
+                            return Ok(true);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(false)
     }
     
     /// Remove a transaction from mempool
@@ -348,6 +496,32 @@ impl Mempool {
         debug!("Removed transaction {} from mempool", hash);
         
         Some(mempool_tx.tx)
+    }
+    
+    /// Get AI transactions (model operations, inference requests)
+    pub async fn get_ai_transactions(&self, max_count: usize) -> Vec<Transaction> {
+        let transactions = self.transactions.read().await;
+        let mut ai_txs = Vec::new();
+        
+        for (_, mempool_tx) in transactions.iter() {
+            if let Some(tx_type) = mempool_tx.tx.tx_type {
+                match tx_type {
+                    lattice_consensus::types::TransactionType::ModelDeploy |
+                    lattice_consensus::types::TransactionType::ModelUpdate |
+                    lattice_consensus::types::TransactionType::TrainingJob |
+                    lattice_consensus::types::TransactionType::InferenceRequest |
+                    lattice_consensus::types::TransactionType::LoraAdapter => {
+                        ai_txs.push(mempool_tx.tx.clone());
+                        if ai_txs.len() >= max_count {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        ai_txs
     }
     
     /// Get the best transactions for block inclusion
@@ -562,7 +736,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_add_transaction() {
-        let config = MempoolConfig::default();
+        let config = MempoolConfig { require_valid_signature: false, ..Default::default() };
         let mempool = Mempool::new(config);
         
         let tx = create_test_tx(0, 2_000_000_000, [1; 32]);
@@ -574,7 +748,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_duplicate_transaction() {
-        let config = MempoolConfig::default();
+        let config = MempoolConfig { require_valid_signature: false, ..Default::default() };
         let mempool = Mempool::new(config);
         
         let tx = create_test_tx(0, 2_000_000_000, [1; 32]);
@@ -596,6 +770,7 @@ mod tests {
     async fn test_gas_price_validation() {
         let config = MempoolConfig {
             min_gas_price: 1_000_000_000,
+            require_valid_signature: false,
             ..Default::default()
         };
         let mempool = Mempool::new(config);
@@ -608,7 +783,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_priority_ordering() {
-        let config = MempoolConfig::default();
+        let config = MempoolConfig { require_valid_signature: false, ..Default::default() };
         let mempool = Mempool::new(config);
         
         // Add transactions with different priorities
@@ -630,7 +805,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_tx_class_priority() {
-        let config = MempoolConfig::default();
+        let config = MempoolConfig { require_valid_signature: false, ..Default::default() };
         let mempool = Mempool::new(config);
         
         // Same gas price but different classes
@@ -649,7 +824,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_nonce_ordering() {
-        let config = MempoolConfig::default();
+        let config = MempoolConfig { require_valid_signature: false, ..Default::default() };
         let mempool = Mempool::new(config);
         
         let sender = [1; 32];

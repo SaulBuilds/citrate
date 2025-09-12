@@ -99,15 +99,29 @@ impl RewardCalculator {
     
     /// Count inference transactions in block
     fn count_inferences(&self, block: &Block) -> u64 {
-        // TODO: Parse transactions to count inference calls
-        // For now, return 0
-        0
+        // Heuristic based on execution encoding:
+        // Inference requests are marked with first 4 data bytes [0x02, 0x00, 0x00, 0x00]
+        let mut count = 0u64;
+        for tx in &block.transactions {
+            if tx.data.len() >= 4 && tx.data[0..4] == [0x02, 0x00, 0x00, 0x00] {
+                count += 1;
+            }
+        }
+        count
     }
     
     /// Check if block contains model deployment
     fn has_model_deployment(&self, block: &Block) -> bool {
-        // TODO: Parse transactions to check for model deployments
-        // For now, return false
+        // Consider either a contract deployment (tx.to == None) or
+        // a model registration call (selector [0x01, 0x00, 0x00, 0x00]) as a deployment event.
+        for tx in &block.transactions {
+            if tx.to.is_none() {
+                return true;
+            }
+            if tx.data.len() >= 4 && tx.data[0..4] == [0x01, 0x00, 0x00, 0x00] {
+                return true;
+            }
+        }
         false
     }
     

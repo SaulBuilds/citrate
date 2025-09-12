@@ -121,13 +121,14 @@ mod tests {
         Transaction {
             hash: Hash::default(),
             nonce,
-            from: PublicKey(from),
+            from: PublicKey::new(from),
             to: None,
             value: 100,
             gas_limit: 21000,
             gas_price: 1,
             data: vec![],
             signature: Signature::default(),
+            tx_type: None,
         }
     }
     

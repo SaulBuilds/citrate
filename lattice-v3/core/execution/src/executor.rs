@@ -238,8 +238,19 @@ impl Executor {
         
         if tx.data.is_empty() {
             // Simple transfer
+            // Interpret `to` as either a real public key or a 20-byte Address embedded in a 32-byte field
             let to = tx.to
-                .map(|pk| Address::from_public_key(&pk))
+                .map(|pk| {
+                    let bytes = pk.as_bytes();
+                    // If last 12 bytes are zero, treat first 20 bytes as an address directly
+                    if bytes[20..].iter().all(|&b| b == 0) {
+                        let mut addr = [0u8; 20];
+                        addr.copy_from_slice(&bytes[0..20]);
+                        Address(addr)
+                    } else {
+                        Address::from_public_key(&pk)
+                    }
+                })
                 .ok_or(ExecutionError::InvalidInput)?;
             
             Ok(TransactionType::Transfer {
@@ -437,7 +448,7 @@ impl Executor {
         Ok(())
     }
     
-    /// Execute contract call (simplified)
+    /// Execute contract call with AI opcode support
     async fn execute_call(
         &self,
         from: Address,
@@ -455,19 +466,20 @@ impl Executor {
         
         // Execute contract code with VM
         if let Some(code) = self.state_db.get_code(&self.state_db.accounts.get_code_hash(&to)) {
-            // Basic VM execution stub
-            // In a real implementation, this would:
-            // 1. Initialize VM with context
-            // 2. Load contract code
-            // 3. Execute bytecode
-            // 4. Handle state changes
-            // 5. Return results
+            // Check for AI opcodes in the bytecode
+            let ai_result = self.scan_and_execute_ai_opcodes(&code, &data, context).await?;
             
-            debug!("Executing contract at {} with {} bytes of code", to, code.len());
-            
-            // For now, just consume some gas based on code size
-            let execution_gas = (code.len() as u64 / 32) * self.gas_schedule.sload;
-            context.use_gas(execution_gas)?;
+            if ai_result.is_some() {
+                // AI operation was executed
+                context.output = ai_result.unwrap();
+            } else {
+                // Standard EVM execution
+                debug!("Executing contract at {} with {} bytes of code", to, code.len());
+                
+                // For now, just consume some gas based on code size
+                let execution_gas = (code.len() as u64 / 32) * self.gas_schedule.sload;
+                context.use_gas(execution_gas)?;
+            }
             
             // Add execution log
             context.add_log(Log {
@@ -480,6 +492,181 @@ impl Executor {
         }
         
         Ok(())
+    }
+    
+    /// Scan bytecode for AI opcodes and execute them
+    async fn scan_and_execute_ai_opcodes(
+        &self,
+        code: &[u8],
+        input: &[u8],
+        context: &mut ExecutionContext,
+    ) -> Result<Option<Vec<u8>>, ExecutionError> {
+        // AI opcode definitions
+        const TENSOR_OP: u8 = 0xf0;
+        const MODEL_LOAD: u8 = 0xf1;
+        const MODEL_EXEC: u8 = 0xf2;
+        const ZK_PROVE: u8 = 0xf3;
+        const ZK_VERIFY: u8 = 0xf4;
+        
+        for (i, &byte) in code.iter().enumerate() {
+            match byte {
+                TENSOR_OP => {
+                    debug!("Executing TENSOR_OP at position {}", i);
+                    context.use_gas(self.gas_schedule.tensor_op)?;
+                    return Ok(Some(self.execute_tensor_operation(input, context).await?));
+                }
+                MODEL_LOAD => {
+                    debug!("Executing MODEL_LOAD at position {}", i);
+                    context.use_gas(self.gas_schedule.model_load)?;
+                    return Ok(Some(self.execute_model_load(input, context).await?));
+                }
+                MODEL_EXEC => {
+                    debug!("Executing MODEL_EXEC at position {}", i);
+                    context.use_gas(self.gas_schedule.model_exec)?;
+                    return Ok(Some(self.execute_model_execution(input, context).await?));
+                }
+                ZK_PROVE => {
+                    debug!("Executing ZK_PROVE at position {}", i);
+                    context.use_gas(self.gas_schedule.zk_prove)?;
+                    return Ok(Some(self.execute_zk_prove(input, context).await?));
+                }
+                ZK_VERIFY => {
+                    debug!("Executing ZK_VERIFY at position {}", i);
+                    context.use_gas(self.gas_schedule.zk_verify)?;
+                    return Ok(Some(self.execute_zk_verify(input, context).await?));
+                }
+                _ => continue,
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    /// Execute tensor operation
+    async fn execute_tensor_operation(
+        &self,
+        input: &[u8],
+        context: &mut ExecutionContext,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        // Parse tensor operation from input
+        if input.len() < 8 {
+            return Err(ExecutionError::InvalidInput);
+        }
+        
+        // Simulate tensor operation
+        let op_type = input[0];
+        let dimensions = u32::from_le_bytes([input[1], input[2], input[3], input[4]]);
+        
+        // Gas cost based on tensor dimensions
+        let tensor_gas = dimensions as u64 * 100;
+        context.use_gas(tensor_gas)?;
+        
+        info!("Tensor operation: type={}, dimensions={}", op_type, dimensions);
+        
+        // Return simulated result
+        Ok(vec![0xf0, op_type, 0x01, 0x00])
+    }
+    
+    /// Execute model loading
+    async fn execute_model_load(
+        &self,
+        input: &[u8],
+        context: &mut ExecutionContext,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        if input.len() < 32 {
+            return Err(ExecutionError::InvalidInput);
+        }
+        
+        let model_hash = Hash::new(input[0..32].try_into().unwrap());
+        let model_id = ModelId(model_hash);
+        
+        // Check if model exists
+        let model = self.state_db.get_model(&model_id)
+            .ok_or(ExecutionError::ModelNotFound(model_id))?;
+        
+        // Gas based on model size
+        let load_gas = (model.metadata.size_bytes / 1024) as u64;
+        context.use_gas(load_gas)?;
+        
+        info!("Model loaded: {:?}", model_id);
+        
+        // Return model handle
+        Ok(model_hash.as_bytes().to_vec())
+    }
+    
+    /// Execute model inference
+    async fn execute_model_execution(
+        &self,
+        input: &[u8],
+        context: &mut ExecutionContext,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        if input.len() < 32 {
+            return Err(ExecutionError::InvalidInput);
+        }
+        
+        let model_hash = Hash::new(input[0..32].try_into().unwrap());
+        let model_id = ModelId(model_hash);
+        let inference_data = &input[32..];
+        
+        // Execute inference
+        self.execute_inference(
+            context.origin,
+            model_id,
+            inference_data.to_vec(),
+            context.gas_limit - context.gas_used,
+            context,
+        ).await?;
+        
+        Ok(context.output.clone())
+    }
+    
+    /// Execute ZK proof generation
+    async fn execute_zk_prove(
+        &self,
+        input: &[u8],
+        context: &mut ExecutionContext,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        // Parse proof parameters
+        if input.is_empty() {
+            return Err(ExecutionError::InvalidInput);
+        }
+        
+        // Simulate proof generation
+        let proof_size = input.len().min(1024);
+        let proof_gas = proof_size as u64 * 1000;
+        context.use_gas(proof_gas)?;
+        
+        info!("ZK proof generated for {} bytes of input", input.len());
+        
+        // Return simulated proof
+        Ok(vec![0xf3; 64])
+    }
+    
+    /// Execute ZK proof verification
+    async fn execute_zk_verify(
+        &self,
+        input: &[u8],
+        context: &mut ExecutionContext,
+    ) -> Result<Vec<u8>, ExecutionError> {
+        // Parse proof and public inputs
+        if input.len() < 64 {
+            return Err(ExecutionError::InvalidInput);
+        }
+        
+        let proof = &input[0..64];
+        let public_inputs = &input[64..];
+        
+        // Simulate verification
+        let verify_gas = 5000 + (public_inputs.len() as u64 * 10);
+        context.use_gas(verify_gas)?;
+        
+        // Check if proof is valid (simplified)
+        let is_valid = proof.iter().all(|&b| b == 0xf3);
+        
+        info!("ZK proof verification: valid={}", is_valid);
+        
+        // Return verification result
+        Ok(vec![if is_valid { 0x01 } else { 0x00 }])
     }
     
     /// Execute model registration
@@ -691,6 +878,7 @@ mod tests {
             gas_price: 1000000000,
             data: vec![],
             signature: Signature::new([0; 64]),
+            tx_type: None,
         }
     }
     

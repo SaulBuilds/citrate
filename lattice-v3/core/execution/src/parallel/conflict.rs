@@ -121,14 +121,16 @@ mod tests {
     
     fn make_test_tx(from: [u8; 32], to: Option<[u8; 32]>, nonce: u64) -> Transaction {
         Transaction {
+            hash: Hash::new([1; 32]),
             nonce,
-            from: PublicKey(from),
-            to: to.map(PublicKey),
+            from: PublicKey::new(from),
+            to: to.map(PublicKey::new),
             value: 100,
             gas_limit: 21000,
             gas_price: 1,
             data: vec![],
-            signature: Signature([0; 64]),
+            signature: Signature::new([0; 64]),
+            tx_type: None,
         }
     }
     

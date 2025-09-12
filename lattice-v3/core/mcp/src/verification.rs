@@ -1,6 +1,6 @@
 use crate::types::ExecutionProof;
 use crate::execution::Model;
-use lattice_execution::types::Hash;
+use lattice_execution::Hash;
 use anyhow::Result;
 use sha3::{Digest, Sha3_256};
 use tracing::{debug, warn};
@@ -25,12 +25,28 @@ impl ExecutionVerifier {
         if model.weights.is_empty() {
             return Err(anyhow::anyhow!("Model weights are empty"));
         }
-        
-        // TODO: Add more sophisticated verification
-        // - Check model signature
-        // - Verify against known good hashes
-        // - Validate architecture format
-        
+        if model.metadata.is_empty() {
+            return Err(anyhow::anyhow!("Model metadata is empty"));
+        }
+
+        // Additional sanity checks
+        // - Enforce an upper bound on model size to prevent abuse in dev environments
+        // - Compute and log a stable model hash for reproducibility
+        let max_size_bytes: usize = 500 * 1024 * 1024; // 500 MB
+        if model.weights.len() > max_size_bytes {
+            return Err(anyhow::anyhow!(
+                "Model weights too large: {} bytes (max {})",
+                model.weights.len(),
+                max_size_bytes
+            ));
+        }
+
+        // Derive model hash and ensure it is not the zero hash
+        let model_hash = self.hash_model(model);
+        if model_hash == Hash::default() {
+            return Err(anyhow::anyhow!("Computed model hash is zero"));
+        }
+
         debug!("Model {:?} verified", hex::encode(&model.id.0[..8]));
         Ok(())
     }

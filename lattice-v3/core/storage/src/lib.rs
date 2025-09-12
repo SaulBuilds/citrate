@@ -3,6 +3,7 @@ pub mod chain;
 pub mod db;
 pub mod pruning;
 pub mod state;
+pub mod state_manager;
 
 use anyhow::Result;
 use cache::Cache;
@@ -11,6 +12,7 @@ use db::RocksDB;
 use lattice_consensus::types::Hash;
 use pruning::{Pruner, PruningConfig};
 use state::StateStore;
+use state_manager::StateManager;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::info;

@@ -107,7 +107,7 @@ impl RpcClient {
     pub async fn get_nonce(&self, address: &Address) -> Result<u64, WalletError> {
         let params = json!([
             format!("0x{}", hex::encode(&address.0)),
-            "latest"
+            "pending"
         ]);
         
         let result = self.call("eth_getTransactionCount", params).await?;

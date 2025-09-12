@@ -9,8 +9,11 @@ pub mod zkp;
 pub use types::{
     Address, AccountState, ModelId, ModelState, ModelMetadata, 
     AccessPolicy, TrainingJob, JobId, JobStatus, TransactionType,
-    TransactionReceipt, Log, GasSchedule, ExecutionError,
+    TransactionReceipt, Log, GasSchedule, ExecutionError, UsageStats,
 };
+
+// Re-export Hash from consensus for MCP to use
+pub use lattice_consensus::types::Hash;
 
 pub use state::{
     AccountManager, StateDB, StateRoot, Trie,

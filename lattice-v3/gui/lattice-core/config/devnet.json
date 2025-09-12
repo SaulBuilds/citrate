@@ -1,0 +1,29 @@
+{
+  "dataDir": "./gui-data/devnet",
+  "network": "devnet",
+  "rpcPort": 8545,
+  "wsPort": 8546,
+  "p2pPort": 30303,
+  "restPort": 3000,
+  "maxPeers": 50,
+  "bootnodes": [],
+  "rewardAddress": null,
+  "enableNetwork": false,
+  "discovery": false,
+  "mempool": {
+  "minGasPrice": 1000000000,
+  "maxPerSender": 100,
+  "allowReplacement": true,
+  "chainId": 1337,
+  "maxSize": 10000,
+  "replacementFactor": 125,
+  "requireValidSignature": false,
+  "txExpirySecs": 3600
+  },
+  "consensus": {
+  "kParameter": 18,
+  "pruningWindow": 100000,
+  "blockTimeSeconds": 2,
+  "finalityDepth": 100
+  }
+}

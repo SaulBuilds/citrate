@@ -53,7 +53,7 @@ impl TransactionApi {
         }
         
         // Create transaction
-        let tx = Transaction {
+        let mut tx = Transaction {
             hash: Hash::new(hash_data),
             nonce,
             from: PublicKey::new([0; 32]), // Would need proper key derivation
@@ -63,7 +63,11 @@ impl TransactionApi {
             gas_price: request.gas_price.unwrap_or(1_000_000_000),
             data: request.data.unwrap_or_default(),
             signature: Signature::new([1; 64]), // Would need proper signing
+            tx_type: None,
         };
+        
+        // Determine transaction type from data
+        tx.determine_type();
         
         let hash = tx.hash;
         

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
+use rand::RngCore;
 use sha3::{Digest, Keccak256};
 use std::fs;
 use std::path::PathBuf;
@@ -77,7 +78,18 @@ pub async fn execute(cmd: AccountCommands, config: &Config) -> Result<()> {
 fn create_account(config: &Config, password: Option<String>, output: Option<PathBuf>) -> Result<()> {
     // Generate new keypair
     let secp = Secp256k1::new();
-    let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+    // Generate 32 random bytes and construct a SecretKey (retry on rare invalid draw)
+    let secret_key = {
+        let mut rng = rand::thread_rng();
+        let mut sk = [0u8; 32];
+        loop {
+            rng.fill_bytes(&mut sk);
+            if let Ok(k) = SecretKey::from_slice(&sk) {
+                break k;
+            }
+        }
+    };
+    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
     
     // Derive address from public key
     let address = derive_address(&public_key);

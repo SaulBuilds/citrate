@@ -103,6 +103,9 @@ pub struct GhostDagParams {
     /// K-cluster parameter for blue set calculation
     pub k: u32,
     
+    /// Maximum number of parents a block can have
+    pub max_parents: usize,
+    
     /// Maximum allowed blue score difference for reorg
     pub max_blue_score_diff: u64,
     
@@ -117,6 +120,7 @@ impl Default for GhostDagParams {
     fn default() -> Self {
         Self {
             k: 18,  // Standard k-cluster parameter
+            max_parents: 10,  // Maximum 10 parents per block
             max_blue_score_diff: 1000,
             pruning_window: 100000,
             finality_depth: 100,
@@ -183,6 +187,46 @@ impl Block {
     }
 }
 
+/// AI Transaction Types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransactionType {
+    Standard = 0,
+    ModelDeploy = 1,
+    ModelUpdate = 2,
+    InferenceRequest = 3,
+    TrainingJob = 4,
+    LoraAdapter = 5,
+}
+
+impl TransactionType {
+    pub fn from_data(data: &[u8]) -> Self {
+        if data.len() >= 4 {
+            match &data[0..4] {
+                [0x01, 0x00, 0x00, 0x00] => TransactionType::ModelDeploy,
+                [0x02, 0x00, 0x00, 0x00] => TransactionType::ModelUpdate,
+                [0x03, 0x00, 0x00, 0x00] => TransactionType::InferenceRequest,
+                [0x04, 0x00, 0x00, 0x00] => TransactionType::TrainingJob,
+                [0x05, 0x00, 0x00, 0x00] => TransactionType::LoraAdapter,
+                _ => TransactionType::Standard,
+            }
+        } else {
+            TransactionType::Standard
+        }
+    }
+    
+    /// Get priority weight for mempool ordering
+    pub fn priority_weight(&self) -> u32 {
+        match self {
+            TransactionType::ModelDeploy => 100,      // Highest priority
+            TransactionType::TrainingJob => 90,
+            TransactionType::ModelUpdate => 80,
+            TransactionType::LoraAdapter => 70,
+            TransactionType::InferenceRequest => 60,
+            TransactionType::Standard => 10,          // Lowest priority
+        }
+    }
+}
+
 /// Transaction structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
@@ -195,6 +239,25 @@ pub struct Transaction {
     pub gas_price: u64,
     pub data: Vec<u8>,
     pub signature: Signature,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx_type: Option<TransactionType>,
+}
+
+impl Transaction {
+    /// Determine transaction type from data
+    pub fn determine_type(&mut self) {
+        self.tx_type = Some(TransactionType::from_data(&self.data));
+    }
+    
+    /// Get transaction priority for mempool
+    pub fn priority(&self) -> u64 {
+        let type_weight = self.tx_type
+            .unwrap_or(TransactionType::Standard)
+            .priority_weight() as u64;
+        
+        // Combine type weight with gas price for final priority
+        (type_weight * 1_000_000) + self.gas_price
+    }
 }
 
 /// Blue set information for a block

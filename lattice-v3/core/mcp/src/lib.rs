@@ -6,7 +6,7 @@ pub mod cache;
 pub mod types;
 
 use crate::types::{ModelId, ModelMetadata, ProviderInfo};
-use lattice_execution::types::{Address, Hash};
+use lattice_execution::{Address, Hash};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

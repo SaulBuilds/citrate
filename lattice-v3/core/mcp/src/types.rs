@@ -1,4 +1,4 @@
-use lattice_execution::types::{Address, Hash};
+use lattice_execution::{Address, Hash};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 

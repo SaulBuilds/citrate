@@ -3,7 +3,7 @@ use lattice_consensus::ghostdag::GhostDag;
 use lattice_consensus::tip_selection::TipSelector;
 use lattice_consensus::chain_selection::ChainSelector;
 use lattice_consensus::dag_store::DagStore;
-use lattice_storage::StorageManager;
+use lattice_storage::{StorageManager, state_manager::StateManager as AIStateManager};
 use lattice_execution::Executor;
 use lattice_execution::types::Address;
 use lattice_sequencer::mempool::Mempool;
@@ -45,6 +45,7 @@ pub struct BlockProducer {
     ghostdag: Arc<GhostDag>,
     tip_selector: Arc<TipSelector>,
     chain_selector: Arc<ChainSelector>,
+    ai_state_manager: Arc<AIStateManager>,
     coinbase: PublicKey,
     target_block_time: u64,
     reward_calculator: RewardCalculator,
@@ -86,6 +87,9 @@ impl BlockProducer {
         };
         let reward_calculator = RewardCalculator::new(reward_config);
         
+        // Create AI state manager
+        let ai_state_manager = Arc::new(AIStateManager::new(storage.db.clone()));
+        
         Self {
             storage,
             executor,
@@ -94,6 +98,7 @@ impl BlockProducer {
             ghostdag,
             tip_selector,
             chain_selector,
+            ai_state_manager,
             coinbase,
             target_block_time,
             reward_calculator,
@@ -130,53 +135,68 @@ impl BlockProducer {
         // Get current tips for parent selection
         let tips = self.dag_store.get_tips().await;
         
-        // Select parents using GhostDAG
-        let parent_hashes = if tips.is_empty() {
-            // If no tips, use a default genesis hash
-            // TODO: Load actual genesis hash from storage
-            vec![Hash::default()]
+        // Select parents using GhostDAG algorithm
+        let (selected_parent, merge_parents) = if tips.is_empty() {
+            // Genesis case: no parents
+            (Hash::default(), vec![])
         } else {
-            // Convert tips to hashes
-            tips.into_iter().map(|tip| tip.hash).collect()
+            // Use GhostDAG to select the best parent and merge parents
+            self.select_parents_with_ghostdag(&tips).await?
         };
         
-        // Get the selected parent (highest blue score)
-        let selected_parent = if parent_hashes.is_empty() {
-            None
-        } else {
-            Some(parent_hashes[0])
+        // Calculate blue set for the new block
+        let temp_block = lattice_consensus::types::Block {
+            header: lattice_consensus::types::BlockHeader {
+                version: 1,
+                block_hash: Hash::default(),
+                selected_parent_hash: selected_parent,
+                merge_parent_hashes: merge_parents.clone(),
+                timestamp: chrono::Utc::now().timestamp() as u64,
+                height: 0, // Will be calculated
+                blue_score: 0, // Will be calculated
+                blue_work: 0, // Will be calculated
+                pruning_point: Hash::default(),
+                proposer_pubkey: self.coinbase,
+                vrf_reveal: VrfProof {
+                    proof: vec![],
+                    output: Hash::default(),
+                },
+            },
+            state_root: Hash::default(),
+            tx_root: Hash::default(),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
+            ghostdag_params: lattice_consensus::types::GhostDagParams::default(),
+            transactions: vec![],
+            signature: Signature::new([0; 64]),
         };
         
-        // For now, we'll use empty blue/red sets
-        // TODO: Implement proper GhostDAG blue/red set calculation
-        let blues: Vec<Hash> = vec![];
-        let reds: Vec<Hash> = vec![];
+        let blue_set = self.ghostdag.calculate_blue_set(&temp_block).await?;
+        let blue_score = self.ghostdag.calculate_blue_score(&temp_block).await?;
         
-        // Get last block height
-        let last_height = if let Some(parent) = selected_parent {
-            // TODO: Get actual parent height from storage
+        // Get last block height from selected parent
+        let last_height = if selected_parent != Hash::default() {
+            // Get parent block from storage to determine height
+            self.storage.blocks.get_block(&selected_parent)
+                .ok()
+                .and_then(|b| b.map(|block| block.header.height))
+                .unwrap_or(0)
+        } else {
             0
-        } else {
-            0
         };
         
-        // Get transactions from mempool
-        let transactions = self.mempool.get_best_transactions(100, 10_000_000).await;
+        // Get transactions from mempool with AI priority
+        let transactions = self.select_transactions_with_ai_priority().await?;
         
-        // Calculate blue score and work (simplified for now)
-        let blue_score = 0u64;
-        let blue_work = 0u128;
+        // Blue score and work are already calculated above
+        let blue_work = self.calculate_blue_work(&blue_set, blue_score)?;
         
-        // Create block header
+        // Create block header with GhostDAG consensus data
         let mut header = BlockHeader {
             version: 1,
             block_hash: Hash::default(), // Will be computed
-            selected_parent_hash: selected_parent.unwrap_or_default(),
-            merge_parent_hashes: if selected_parent.is_some() {
-                parent_hashes[1..].to_vec()
-            } else {
-                vec![]
-            },
+            selected_parent_hash: selected_parent,
+            merge_parent_hashes: merge_parents,
             timestamp: chrono::Utc::now().timestamp() as u64,
             height: last_height + 1,
             blue_score,
@@ -192,14 +212,20 @@ impl BlockProducer {
         // Compute block hash (simplified)
         header.block_hash = calculate_block_hash_header(&header);
         
-        // Create block
+        // Execute transactions and calculate state roots
+        let (state_root, receipts) = self.execute_block_transactions(&transactions, &header).await?;
+        let tx_root = self.calculate_tx_root(&transactions)?;
+        let receipt_root = self.calculate_receipt_root(&receipts)?;
+        let artifact_root = self.calculate_artifact_root(&transactions)?;
+        
+        // Create block with all computed data
         let block = Block {
             header: header.clone(),
-            state_root: Hash::default(), // TODO: Calculate actual state root
-            tx_root: Hash::default(), // TODO: Calculate actual tx root
-            receipt_root: Hash::default(), // TODO: Calculate actual receipt root
-            artifact_root: Hash::default(), // TODO: Calculate actual artifact root
-            ghostdag_params: GhostDagParams::default(),
+            state_root,
+            tx_root,
+            receipt_root,
+            artifact_root,
+            ghostdag_params: self.ghostdag.params().clone(),
             transactions,
             signature: Signature::new([1; 64]), // Dummy signature for devnet
         };
@@ -224,12 +250,187 @@ impl BlockProducer {
             info!("Minted {} wei to treasury", reward.treasury_reward);
         }
         
-        // Store block
+        // Persist block and related data
         self.storage.blocks.put_block(&block)?;
-        
+
+        // Store transactions and receipts for RPC visibility
+        if !block.transactions.is_empty() {
+            // Store transactions
+            self.storage.transactions.put_transactions(&block.transactions)?;
+
+            // Pair tx hashes with receipts and store
+            let mut pairs: Vec<(Hash, lattice_execution::types::TransactionReceipt)> = Vec::new();
+            for (i, tx) in block.transactions.iter().enumerate() {
+                if let Some(r) = receipts.get(i) {
+                    pairs.push((tx.hash, r.clone()));
+                }
+            }
+            if !pairs.is_empty() {
+                self.storage.transactions.put_receipts(&pairs)?;
+            }
+
+            // Remove included transactions from mempool
+            for tx in &block.transactions {
+                let _ = self.mempool.remove_transaction(&tx.hash).await;
+            }
+        }
+
         // Update DAG store
         self.dag_store.store_block(block.clone()).await?;
-        
+
         Ok(header.block_hash)
+    }
+    
+    /// Select parents using GhostDAG algorithm
+    async fn select_parents_with_ghostdag(&self, tips: &[lattice_consensus::types::Tip]) -> anyhow::Result<(Hash, Vec<Hash>)> {
+        // Convert tips to hashes
+        let tip_hashes: Vec<Hash> = tips.iter().map(|tip| tip.hash).collect();
+        
+        // Use tip selector to find the best tip (highest blue score)
+        let selected_parent = self.tip_selector.select_tip(&tip_hashes).await?;
+        
+        // Select merge parents from remaining tips
+        let merge_parents: Vec<Hash> = tip_hashes
+            .into_iter()
+            .filter(|h| *h != selected_parent)
+            .take(self.ghostdag.params().max_parents - 1) // Leave room for selected parent
+            .collect();
+        
+        Ok((selected_parent, merge_parents))
+    }
+    
+    /// Select transactions with AI operation priority
+    async fn select_transactions_with_ai_priority(&self) -> anyhow::Result<Vec<Transaction>> {
+        let mut selected = Vec::new();
+        
+        // Define capacity limits
+        const MAX_BLOCK_SIZE: usize = 10_000_000; // 10MB
+        const MAX_AI_TXS_PER_BLOCK: usize = 10;
+        const MAX_STANDARD_TXS: usize = 100;
+        
+        // Get AI transactions first (model operations, inference requests)
+        let ai_txs = self.mempool.get_ai_transactions(MAX_AI_TXS_PER_BLOCK).await;
+        selected.extend(ai_txs);
+        
+        // Fill remaining space with standard transactions
+        let standard_txs = self.mempool.get_best_transactions(
+            MAX_STANDARD_TXS,
+            MAX_BLOCK_SIZE
+        ).await;
+        selected.extend(standard_txs);
+        
+        Ok(selected)
+    }
+    
+    /// Execute all transactions in a block
+    async fn execute_block_transactions(
+        &self,
+        transactions: &[Transaction],
+        header: &BlockHeader,
+    ) -> anyhow::Result<(Hash, Vec<lattice_execution::types::TransactionReceipt>)> {
+        let mut receipts = Vec::new();
+        
+        // Create a temporary block for execution context
+        let temp_block = Block {
+            header: header.clone(),
+            state_root: Hash::default(),
+            tx_root: Hash::default(),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
+            ghostdag_params: self.ghostdag.params().clone(),
+            transactions: vec![],
+            signature: Signature::new([0; 64]),
+        };
+        
+        // Execute each transaction
+        for tx in transactions {
+            match self.executor.execute_transaction(&temp_block, tx).await {
+                Ok(receipt) => receipts.push(receipt),
+                Err(e) => {
+                    error!("Failed to execute transaction {}: {}", tx.hash, e);
+                    // Create failed receipt
+                    receipts.push(lattice_execution::types::TransactionReceipt {
+                        tx_hash: tx.hash,
+                        block_hash: header.block_hash,
+                        block_number: header.height,
+                        from: lattice_execution::types::Address::from_public_key(&tx.from),
+                        to: tx.to.map(|pk| lattice_execution::types::Address::from_public_key(&pk)),
+                        gas_used: tx.gas_limit, // All gas consumed on failure
+                        status: false,
+                        logs: vec![],
+                        output: vec![],
+                    });
+                }
+            }
+        }
+        
+        // Calculate final state root including AI state
+        let state_root = self.ai_state_manager.calculate_state_root().await?;
+        
+        Ok((state_root, receipts))
+    }
+    
+    /// Calculate transaction root
+    fn calculate_tx_root(&self, transactions: &[Transaction]) -> anyhow::Result<Hash> {
+        use sha3::{Digest, Sha3_256};
+        let mut hasher = Sha3_256::new();
+        
+        for tx in transactions {
+            hasher.update(tx.hash.as_bytes());
+        }
+        
+        let hash_bytes = hasher.finalize();
+        let mut hash_array = [0u8; 32];
+        hash_array.copy_from_slice(&hash_bytes[..32]);
+        Ok(Hash::new(hash_array))
+    }
+    
+    /// Calculate receipt root
+    fn calculate_receipt_root(&self, receipts: &[lattice_execution::types::TransactionReceipt]) -> anyhow::Result<Hash> {
+        use sha3::{Digest, Sha3_256};
+        let mut hasher = Sha3_256::new();
+        
+        for receipt in receipts {
+            hasher.update(receipt.tx_hash.as_bytes());
+            hasher.update(&[if receipt.status { 1 } else { 0 }]);
+            hasher.update(&receipt.gas_used.to_le_bytes());
+        }
+        
+        let hash_bytes = hasher.finalize();
+        let mut hash_array = [0u8; 32];
+        hash_array.copy_from_slice(&hash_bytes[..32]);
+        Ok(Hash::new(hash_array))
+    }
+    
+    /// Calculate artifact root for AI models
+    fn calculate_artifact_root(&self, transactions: &[Transaction]) -> anyhow::Result<Hash> {
+        use sha3::{Digest, Sha3_256};
+        let mut hasher = Sha3_256::new();
+        
+        // Hash any AI-related transaction data
+        for tx in transactions {
+            // Check if transaction contains AI operations
+            if tx.data.len() >= 4 {
+                match &tx.data[0..4] {
+                    [0x01, 0x00, 0x00, 0x00] | // Register model
+                    [0x02, 0x00, 0x00, 0x00] => { // Inference request
+                        hasher.update(&tx.data);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        let hash_bytes = hasher.finalize();
+        let mut hash_array = [0u8; 32];
+        hash_array.copy_from_slice(&hash_bytes[..32]);
+        Ok(Hash::new(hash_array))
+    }
+    
+    /// Calculate blue work based on blue set
+    fn calculate_blue_work(&self, blue_set: &lattice_consensus::types::BlueSet, blue_score: u64) -> anyhow::Result<u128> {
+        // Simplified calculation: blue_work = blue_score * difficulty
+        // In production, this would consider actual proof-of-work
+        Ok(blue_score as u128 * 1_000_000)
     }
 }

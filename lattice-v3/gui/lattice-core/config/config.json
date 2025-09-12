@@ -1,0 +1,29 @@
+{
+  "data_dir": "./gui-data/testnet",
+  "network": "testnet",
+  "rpc_port": 8545,
+  "ws_port": 8546,
+  "p2p_port": 30303,
+  "rest_port": 3000,
+  "max_peers": 200,
+  "bootnodes": [],
+  "reward_address": null,
+  "enable_network": true,
+  "discovery": true,
+  "mempool": {
+  "min_gas_price": 1000000000,
+  "max_per_sender": 200,
+  "allow_replacement": true,
+  "chain_id": 42069,
+  "max_size": 20000,
+  "replacement_factor": 125,
+  "require_valid_signature": true,
+  "tx_expiry_secs": 3600
+  },
+  "consensus": {
+  "k_parameter": 18,
+  "pruning_window": 200000,
+  "block_time_seconds": 5,
+  "finality_depth": 200
+  }
+}

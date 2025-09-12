@@ -29,6 +29,8 @@ dashmap = "5.5"
 hex = "0.4"
 num_cpus = "1.16"
 primitive-types = "0.12"
+ethereum-types = "0.14"
+chrono = "0.4"
 
 [dev-dependencies]
 tempfile = "3.8"

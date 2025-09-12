@@ -55,6 +55,54 @@ impl StateStore {
         }
     }
     
+    /// Get all accounts (for state root calculation)
+    pub fn get_all_accounts(&self) -> Result<Vec<(Address, AccountState)>> {
+        let mut accounts = Vec::new();
+        let iter = self.db.iter_cf(CF_ACCOUNTS)?;
+        
+        for (key, value) in iter {
+            if key.len() == 20 {
+                let mut addr_bytes = [0u8; 20];
+                addr_bytes.copy_from_slice(&key);
+                let address = Address(addr_bytes);
+                let account: AccountState = bincode::deserialize(&value)?;
+                accounts.push((address, account));
+            }
+        }
+        
+        Ok(accounts)
+    }
+    
+    /// Get all storage (for state root calculation)
+    pub fn get_all_storage(&self) -> Result<Vec<((Address, Hash), Hash)>> {
+        let mut storage = Vec::new();
+        let iter = self.db.iter_cf(CF_STORAGE)?;
+        
+        for (key, value) in iter {
+            // Key format: address(20) + storage_key(32) = 52 bytes
+            if key.len() == 52 {
+                let mut addr_bytes = [0u8; 20];
+                addr_bytes.copy_from_slice(&key[..20]);
+                let address = Address(addr_bytes);
+                
+                let mut storage_key = [0u8; 32];
+                storage_key.copy_from_slice(&key[20..52]);
+                
+                let mut storage_value = [0u8; 32];
+                if value.len() >= 32 {
+                    storage_value.copy_from_slice(&value[..32]);
+                }
+                
+                storage.push((
+                    (address, Hash::new(storage_key)),
+                    Hash::new(storage_value)
+                ));
+            }
+        }
+        
+        Ok(storage)
+    }
+    
     /// Delete account state
     pub fn delete_account(&self, address: &Address) -> Result<()> {
         self.db.delete_cf(CF_ACCOUNTS, &address.0)?;

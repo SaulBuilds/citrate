@@ -1,5 +1,5 @@
 use crate::types::{ModelId, ModelMetadata, ExecutionRequest, RequestId, RequestStatus};
-use lattice_execution::types::{Address, Hash};
+use lattice_execution::{Address, Hash};
 use lattice_storage::StorageManager;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -185,9 +185,9 @@ impl ModelRegistry {
         // Serialize metadata
         let data = bincode::serialize(metadata)?;
         
-        // Store in state DB with prefix
+        // Store in database directly with prefix using the state column family
         let key = format!("mcp:model:{}", hex::encode(model_id.as_bytes()));
-        self.storage.state.put(key.as_bytes(), &data)?;
+        self.storage.db.put_cf("state", key.as_bytes(), &data)?;
         
         Ok(())
     }

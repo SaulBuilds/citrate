@@ -1,7 +1,7 @@
 use crate::types::{ModelId, ExecutionProof};
 use crate::cache::ModelCache;
 use crate::verification::ExecutionVerifier;
-use lattice_execution::types::{Address, Hash};
+use lattice_execution::{Address, Hash};
 use lattice_execution::vm::VM;
 use std::sync::Arc;
 use anyhow::Result;

@@ -1,6 +1,6 @@
-# CLAUDE.md - Lattice v3 with GhostDAG
+# CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with the Lattice v3 blockchain implementation.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -15,106 +15,168 @@ Lattice is an AI-native Layer-1 BlockDAG blockchain using **GhostDAG consensus**
 - **Total Order**: Selected-parent chain + mergeset, topologically sorted by blue scores
 - **Finality**: Committee BFT checkpoints with optimistic confirmation ≤12s
 
-### Key Components
+### Workspace Structure
 ```
-lattice/
-├─ consensus/         # GhostDAG engine, tip selection, finality
-├─ sequencer/         # Mempool policy, bundling, parent selection
-├─ execution/         # LVM (EVM-compatible) + precompiles
-├─ primitives/        # ModelRegistry, LoRAFactory, InferenceRouter, etc.
-├─ bridge/            # ZK light clients, proof verifier
-├─ storage/           # State DB (MPT), block store, artifact pinning
-├─ api/               # JSON-RPC, REST; OpenAI/Anthropic-compatible
-├─ observability/     # Logs, metrics, tracing, DAG visualizer
-└─ sdk/               # TS/Python/Rust SDKs (MCP native)
+lattice-v3/
+├── cli/                      # CLI tools
+├── core/
+│   ├── consensus/           # GhostDAG engine, tip selection, finality
+│   ├── sequencer/           # Mempool policy, bundling, parent selection
+│   ├── execution/           # LVM (EVM-compatible) + precompiles
+│   ├── storage/             # State DB (MPT), block store, artifact pinning
+│   ├── api/                 # JSON-RPC, REST; OpenAI/Anthropic-compatible
+│   ├── network/             # P2P networking, block propagation
+│   ├── mcp/                 # Model Context Protocol layer
+│   ├── economics/           # Rewards and tokenomics
+│   └── primitives/          # Core types and utilities
+├── node/                    # Main node binary
+├── wallet/                  # CLI wallet (ed25519)
+├── faucet/                  # Test token faucet
+├── gui/lattice-core/        # Tauri-based GUI wallet
+├── contracts/               # Solidity smart contracts
+└── scripts/                 # Deployment and testing scripts
 ```
 
-## Implementation Priorities
+## Development Commands
 
-### Phase 1: Core GhostDAG (Sprints 1-4)
-1. **Consensus Engine**
-   - Selected/merge parent logic
-   - Blue set calculation
-   - Blue score computation
-   - Tip selection algorithm
-   - VRF-based proposer selection
+### Rust/Cargo Commands
+```bash
+# Build entire workspace
+cargo build --release
 
-2. **Block Structure**
-   ```rust
-   struct Block {
-       version: u32,
-       block_hash: Hash,
-       selected_parent_hash: Hash,
-       merge_parent_hashes: Vec<Hash>,
-       timestamp: u64,
-       height: u64,
-       state_root: Hash,
-       tx_root: Hash,
-       receipt_root: Hash,
-       artifact_root: Hash,
-       blue_score: u64,
-       ghostdag_params: GhostDagParams,
-       proposer_pubkey: PublicKey,
-       vrf_reveal: VrfProof,
-       signature: Signature,
-   }
-   ```
+# Build specific package
+cargo build -p lattice-consensus
+cargo build -p lattice-node
 
-3. **DAG Management**
-   - Efficient storage of DAG structure
-   - Parent/child relationships
-   - Anti-past awareness
-   - Pruning strategy
+# Run tests
+cargo test --workspace
+cargo test -p lattice-consensus ghostdag
+cargo test -p lattice-execution
 
-### Phase 2: Execution & MCP (Sprints 5-8)
-1. **LVM (EVM-compatible)**
-   - Transaction execution
-   - State transitions
-   - Gas metering
+# Run specific node
+cargo run --bin lattice-node -- --data-dir .lattice-devnet
 
-2. **MCP Precompiles**
-   - Model operations
-   - LoRA apply/merge
-   - Artifact commits
-   - Inference routing
+# Run wallet CLI
+cargo run --bin lattice-wallet -- --rpc-url http://localhost:8545
 
-### Phase 3: AI Primitives (Sprints 9-14)
-1. **Core Contracts**
-   - ModelRegistry
-   - LoRAFactory
-   - InferenceRouter
-   - StorageRegistry
-   - ComputeMarket
+# Format code
+cargo fmt --all
 
-## Development Guidelines
+# Lint
+cargo clippy --all-targets --all-features
+```
 
-### Consensus Implementation
-- Use Rust for core consensus
-- Prioritize correctness over optimization initially
-- Extensive unit tests for blue set/score calculations
-- Property-based testing for DAG invariants
+### GUI/Tauri Commands
+```bash
+# Navigate to GUI directory
+cd gui/lattice-core
 
-### Code Organization
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build Tauri app
+npm run tauri:build
+
+# Run Tauri in dev mode
+npm run tauri dev
+```
+
+### Solidity/Foundry Commands
+```bash
+# Build contracts
+forge build
+
+# Run contract tests
+forge test
+
+# Deploy contracts
+forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+
+# Format Solidity
+forge fmt
+```
+
+### Testing Scripts
+```bash
+# Start local testnet (from lattice-v3/)
+./scripts/start_testnet.sh --consensus ghostdag
+
+# Deploy test contracts
+./scripts/deploy_contracts.sh
+
+# Send test transaction
+./scripts/send_test_tx.sh
+```
+
+## Critical Transaction Pipeline Issues & Solutions
+
+### Known Issues
+The transaction pipeline has several critical issues that prevent transactions from completing:
+
+1. **GUI Producer Issue**: The Tauri GUI's embedded node producer doesn't execute transactions or persist receipts, only simulates wallet balances locally
+2. **Address Mismatch**: 20-byte EVM addresses embedded in 32-byte fields cause derivation mismatches
+3. **RPC Decoder Gaps**: Limited support for EIP-1559 typed transactions
+4. **Nonce Reading**: Uses "latest" instead of "pending", causing sequential transaction blocks
+5. **Missing Observability**: No mempool snapshot endpoint or clear transaction status visibility
+
+### Transaction Flow Paths
+
+#### CLI Wallet → RPC → Node
+```
+1. wallet/src/transaction.rs - Signs with ed25519
+2. wallet/src/rpc_client.rs - Sends via eth_sendRawTransaction
+3. core/api/src/eth_tx_decoder.rs - Decodes bincode/RLP
+4. core/sequencer/src/mempool.rs - Validates and stores
+5. node/src/producer.rs - Executes and stores receipts
+```
+
+#### GUI Wallet → Embedded Node
+```
+1. gui/../wallet_manager.rs - Creates and signs transaction
+2. gui/../lib.rs:195 - Adds directly to embedded mempool
+3. gui/../block_producer.rs - Produces blocks WITHOUT execution
+4. Problem: No receipts stored, no state changes
+```
+
+### File-Level Fix Points
+
+#### High Priority Fixes
+- `gui/lattice-core/src-tauri/src/block_producer.rs` - Align with node producer execution
+- `core/api/src/eth_tx_decoder.rs` - Add EIP-1559 support
+- `core/execution/src/executor.rs:338` - Fix address mapping for transfers
+- `core/api/src/eth_rpc.rs:389` - Handle "pending" nonce correctly
+
+#### Mempool & Verification
+- `core/sequencer/src/mempool.rs:374` - Unify signature verification paths
+- `core/sequencer/src/mempool.rs:298` - Fix nonce state tracking
+
+#### Storage & Receipts
+- `core/storage/src/chain/transaction_store.rs` - Ensure receipt persistence
+- `node/src/producer.rs` - Reference implementation for GUI
+
+## Block Structure
 ```rust
-// consensus/src/ghostdag.rs
-pub struct GhostDag {
-    k: u32,  // k-cluster parameter
-    window: u64,  // pruning window
-    blue_cache: HashMap<Hash, BlueSet>,
-}
-
-impl GhostDag {
-    pub fn calculate_blue_set(&self, block: &Block) -> BlueSet;
-    pub fn calculate_blue_score(&self, block: &Block) -> u64;
-    pub fn select_tip(&self, tips: &[Hash]) -> Hash;
+struct Block {
+    version: u32,
+    block_hash: Hash,
+    selected_parent_hash: Hash,
+    merge_parent_hashes: Vec<Hash>,
+    timestamp: u64,
+    height: u64,
+    state_root: Hash,
+    tx_root: Hash,
+    receipt_root: Hash,
+    artifact_root: Hash,
+    blue_score: u64,
+    ghostdag_params: GhostDagParams,
+    proposer_pubkey: PublicKey,
+    vrf_reveal: VrfProof,
+    signature: Signature,
 }
 ```
-
-### Testing Strategy
-1. **Unit Tests**: Blue set/score algorithms
-2. **Integration Tests**: Full DAG scenarios
-3. **Simulation Tests**: Network partitions, reorgs
-4. **Performance Tests**: DAG with 10k+ blocks
 
 ## Key Algorithms
 
@@ -135,33 +197,12 @@ impl GhostDag {
 4. Break ties deterministically (by hash)
 ```
 
-## Sprint Plan Overview
-
-### Sprints 1-4: Core Network (GhostDAG)
-- Tip selection, mergeset, blue score
-- Finality gadget (alpha version)
-- DAG explorer basics
-
-### Sprints 5-6: Sequencer & Mempool
-- Transaction classes
-- Bundle policy for model updates
-- Timestamping & logging
-
-### Sprints 7-8: LVM & Precompiles
-- MCP helpers
-- LoRA apply/merge
-- Gas schedule
-
-### Sprints 9-14: AI Primitives
-- ModelRegistry (S9-10)
-- InferenceRouter v1 (S11-12)
-- LoRAFactory v1 (S13-14)
-
-## API Compatibility
+## API Endpoints
 
 ### JSON-RPC (EVM-compatible)
-- Standard `eth_*` methods
+- Standard `eth_*` methods at port 8545
 - Custom `lattice_*` for DAG queries
+- WebSocket support at ws://localhost:8546
 
 ### MCP REST API
 ```
@@ -172,51 +213,102 @@ impl GhostDag {
 /v1/messages        # Anthropic-compatible
 ```
 
-## Performance Targets
+## Testing Strategy
 
+### Unit Tests
+```bash
+# Test specific module
+cargo test -p lattice-consensus
+cargo test -p lattice-execution
+
+# Test with output
+cargo test -- --nocapture
+
+# Test single function
+cargo test test_blue_set_calculation
+```
+
+### Integration Tests
+```bash
+# Full node integration
+cargo test --test integration
+
+# DAG scenarios
+cargo test -p lattice-consensus --test dag_scenarios
+```
+
+### End-to-End Tests
+```bash
+# Start testnet and run E2E
+./scripts/run_e2e_tests.sh
+```
+
+## Performance Targets
 - **Throughput**: 10,000+ TPS
 - **Finality**: ≤12 seconds
 - **Block Time**: 1-2 seconds
 - **DAG Width**: Support 100+ parallel blocks
 
-## Security Considerations
-
-- Gas limits for model operations
-- Sandboxed precompile execution
-- Attestation & challenge flows
-- VRF security for leader election
-- Anti-spam measures in mempool
-
-## Common Commands
-
-```bash
-# Build consensus module
-cargo build -p lattice-consensus
-
-# Run GhostDAG tests
-cargo test -p lattice-consensus ghostdag
-
-# Start local testnet
-./scripts/start_testnet.sh --consensus ghostdag
-
-# Query DAG state
-lattice-cli dag tips
-lattice-cli dag blue-score <block-hash>
-
-# Deploy AI primitives
-forge script scripts/DeployPrimitives.s.sol --broadcast
-```
-
-## Important Notes
+## Important Implementation Notes
 
 1. **GhostDAG vs GHOST**: We use GhostDAG (DAG-based) not GHOST (tree-based)
-2. **Blue/Red Distinction**: Blue blocks are in main history, red blocks are not
-3. **Parent Types**: Selected parent defines chain, merge parents enable parallelism
-4. **MCP Integration**: All AI operations go through MCP standard
-5. **Storage**: Artifacts stored off-chain (IPFS/Arweave), referenced by CID
+2. **Signature Schemes**: Supporting both ed25519 (native) and ECDSA (EVM compatibility)
+3. **Address Format**: 20-byte EVM addresses must be carefully handled when embedded in 32-byte fields
+4. **Nonce Management**: Always use "pending" for wallet queries to avoid transaction blocks
+5. **Producer Execution**: Both GUI and core node producers must execute transactions and store receipts
+6. **MCP Integration**: All AI operations go through MCP standard
+7. **Storage**: Artifacts stored off-chain (IPFS/Arweave), referenced by CID
 
-## Resources
+## Debugging Transaction Issues
 
-- Whitepaper: `lattice-docs-v3/lattice_whitepaper_v3.md`
-- Architecture: `lattice-docs-v3/lattice_architecture_v3.md`
-- Sprint Plan: `lattice-docs-v3/lattice_sprint_plan_expanded_v3.txt`
+### Check Transaction Status
+```bash
+# Get transaction by hash
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_getTransactionByHash","params":["0xHASH"],"id":1}'
+
+# Get receipt
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_getTransactionReceipt","params":["0xHASH"],"id":1}'
+
+# Check mempool (custom endpoint needed)
+curl http://localhost:8545/mempool
+```
+
+### Common Issues
+- **Pending Forever**: Check if GUI producer is executing transactions
+- **Wrong Balance**: Verify address derivation in executor
+- **Invalid Signature**: Check chainId and signature scheme compatibility
+- **Nonce Too Low**: Ensure using "pending" nonce, not "latest"
+
+## Sprint Implementation Plan
+
+### Sprint 1: EVM Transaction Support
+- Full EIP-1559 decoder implementation
+- Unified signature verification
+- ChainId alignment
+
+### Sprint 2: Producer Unification
+- Fix GUI block producer execution
+- Ensure receipt persistence
+- Remove wallet manager simulation
+
+### Sprint 3: Address Handling
+- Standardize 20-byte address embedding
+- Fix transfer address derivation
+- Add comprehensive tests
+
+### Sprint 4: Nonce & UX
+- Implement "pending" nonce support
+- Add mempool visibility endpoint
+- Surface transaction status in UI
+
+### Sprint 5: Observability
+- Transaction lifecycle tracing
+- Mempool metrics
+- Error surfacing in UI
+
+### Sprint 6: EVM Wallet Integration
+- MetaMask compatibility testing
+- Documentation for external wallets
+- Example integration scripts

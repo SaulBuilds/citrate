@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use lattice_consensus::types::{Block, BlockHeader, Transaction, Hash};
 use std::fmt;
 
+/// Model metadata for AI network messages
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelMetadata {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub framework: String,
+    pub input_shape: Vec<usize>,
+    pub output_shape: Vec<usize>,
+    pub size_bytes: u64,
+    pub created_at: u64,
+}
+
 /// Protocol version for compatibility checking
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProtocolVersion {
@@ -96,6 +109,92 @@ pub enum NetworkMessage {
     
     Transactions {
         transactions: Vec<Transaction>,
+    },
+    
+    // AI-specific messages for model and inference data
+    
+    // Model registration and updates
+    ModelAnnounce {
+        model_id: Hash,
+        model_hash: Hash,
+        owner: Vec<u8>,  // Address bytes
+        metadata: ModelMetadata,
+        weight_cid: String,  // IPFS CID for weights
+    },
+    
+    GetModel {
+        model_id: Hash,
+    },
+    
+    ModelData {
+        model_id: Hash,
+        weight_cid: String,
+        metadata: ModelMetadata,
+    },
+    
+    // Inference requests and results
+    InferenceRequest {
+        request_id: Hash,
+        model_id: Hash,
+        input_hash: Hash,
+        requester: Vec<u8>,
+        max_fee: u128,
+    },
+    
+    InferenceResponse {
+        request_id: Hash,
+        output_hash: Hash,
+        proof: Vec<u8>,  // ZK proof of computation
+        provider: Vec<u8>,
+    },
+    
+    // Training coordination
+    TrainingJobAnnounce {
+        job_id: Hash,
+        model_id: Hash,
+        dataset_hash: Hash,
+        participants_needed: u32,
+        reward_per_gradient: u128,
+    },
+    
+    GradientSubmission {
+        job_id: Hash,
+        gradient_hash: Hash,
+        epoch: u32,
+        participant: Vec<u8>,
+    },
+    
+    // LoRA adapter sharing
+    LoraAdapterAnnounce {
+        adapter_id: Hash,
+        base_model: Hash,
+        weight_cid: String,
+        rank: u32,
+        alpha: f32,
+    },
+    
+    GetLoraAdapter {
+        adapter_id: Hash,
+    },
+    
+    // Model weight synchronization
+    WeightSync {
+        model_id: Hash,
+        version: u32,
+        weight_delta: Vec<u8>,  // Compressed weight update
+    },
+    
+    // AI state synchronization
+    GetAIState {
+        from_height: u64,
+    },
+    
+    AIStateUpdate {
+        height: u64,
+        models_root: Hash,
+        training_root: Hash,
+        inference_root: Hash,
+        lora_root: Hash,
     },
     
     GetMempool,

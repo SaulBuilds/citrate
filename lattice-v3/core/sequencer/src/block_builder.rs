@@ -6,7 +6,7 @@ use lattice_consensus::{
 use lattice_execution::parallel::ParallelExecutor;
 use lattice_execution::executor::Executor;
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_256};
+use sha3::{Digest, Sha3_256, Keccak256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info};
@@ -288,7 +288,8 @@ impl BlockBuilder {
     
     /// Calculate transaction root
     fn calculate_tx_root(&self, transactions: &[Transaction]) -> Hash {
-        let mut hasher = Sha3_256::new();
+        // Use Keccak-256 for transaction root to align with tx.hash generation
+        let mut hasher = Keccak256::new();
         
         for tx in transactions {
             hasher.update(tx.hash.as_bytes());

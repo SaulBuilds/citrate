@@ -1,9 +1,10 @@
 use crate::errors::WalletError;
-use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey};
+use ed25519_dalek::SigningKey;
 use lattice_consensus::types::{Hash, PublicKey, Signature, Transaction};
+use lattice_consensus::crypto as consensus_crypto;
 use lattice_execution::types::Address;
 use primitive_types::U256;
-use sha3::{Digest, Sha3_256};
+use sha3::{Digest, Keccak256};
 use serde::{Deserialize, Serialize};
 
 /// Signed transaction ready for broadcast
@@ -112,15 +113,16 @@ impl TransactionBuilder {
             gas_price: self.gas_price,
             gas_limit: self.gas_limit,
             signature: Signature::new([0; 64]), // Will be replaced
+            tx_type: None, // Will be determined if needed
         };
-        
-        // Calculate transaction hash
+
+        // Calculate transaction hash (UI/display). Consensus verification uses canonical bytes.
         tx.hash = calculate_tx_hash(&tx, self.chain_id);
-        
-        // Sign transaction hash
-        let signature = signing_key.sign(tx.hash.as_bytes());
-        tx.signature = Signature::new(signature.to_bytes());
-        
+
+        // Sign canonical transaction bytes using consensus crypto so mempool verification passes
+        consensus_crypto::sign_transaction(&mut tx, signing_key)
+            .map_err(|e| WalletError::Other(format!("Transaction signing failed: {}", e)))?;
+
         // Serialize for raw format
         let raw = bincode::serialize(&tx)?;
         
@@ -133,7 +135,8 @@ impl TransactionBuilder {
 
 /// Calculate transaction hash including chain ID (EIP-155 style)
 fn calculate_tx_hash(tx: &Transaction, chain_id: u64) -> Hash {
-    let mut hasher = Sha3_256::new();
+    // Use Keccak-256 to align with Ethereum-style hashing across the stack
+    let mut hasher = Keccak256::new();
     
     // Hash transaction fields
     hasher.update(&tx.nonce.to_le_bytes());

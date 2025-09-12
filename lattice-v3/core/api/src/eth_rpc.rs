@@ -21,6 +21,7 @@ pub fn register_eth_methods(
     storage: Arc<StorageManager>,
     mempool: Arc<Mempool>,
     executor: Arc<Executor>,
+    chain_id: u64,
 ) {
     // eth_blockNumber - Returns the latest block number
     let storage_bn = storage.clone();
@@ -50,6 +51,11 @@ pub fn register_eth_methods(
             return Err(jsonrpc_core::Error::invalid_params("Missing block number"));
         }
         
+        // Parse includeTransactions flag (default false)
+        let include_transactions = params.get(1)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        
         // Parse block number from hex string or "latest"
         let block_number = match params[0].as_str() {
             Some("latest") => {
@@ -70,6 +76,31 @@ pub fn register_eth_methods(
         // Get block from storage
         match block_on(api.get_block(crate::types::request::BlockId::Number(block_number))) {
             Ok(block) => {
+                // Build transactions array based on includeTransactions flag
+                let transactions = if include_transactions {
+                    // Return full transaction objects
+                    block.transactions.iter().enumerate().map(|(index, tx)| {
+                        json!({
+                            "hash": format!("0x{}", hex::encode(tx.hash.as_bytes())),
+                            "from": format!("0x{}", tx.from),
+                            "to": tx.to.as_ref().map(|addr| format!("0x{}", addr)),
+                            "value": format!("0x{:x}", tx.value),
+                            "gas": format!("0x{:x}", tx.gas_limit),
+                            "gasPrice": format!("0x{:x}", tx.gas_price),
+                            "nonce": format!("0x{:x}", tx.nonce),
+                            "input": format!("0x{}", hex::encode(&tx.data)),
+                            "blockHash": format!("0x{}", hex::encode(block.hash.as_bytes())),
+                            "blockNumber": format!("0x{:x}", block.height),
+                            "transactionIndex": format!("0x{:x}", index)
+                        })
+                    }).collect::<Vec<_>>()
+                } else {
+                    // Return just transaction hashes
+                    block.transactions.iter()
+                        .map(|tx| Value::String(format!("0x{}", hex::encode(tx.hash.as_bytes()))))
+                        .collect::<Vec<_>>()
+                };
+                
                 // Convert to Ethereum-compatible format
                 Ok(json!({
                     "number": format!("0x{:x}", block.height),
@@ -80,9 +111,7 @@ pub fn register_eth_methods(
                     "gasUsed": "0x5208",
                     "difficulty": "0x0", // PoS
                     "totalDifficulty": "0x0",
-                    "transactions": block.transactions.iter()
-                        .map(|tx| format!("0x{}", hex::encode(tx.hash.as_bytes())))
-                        .collect::<Vec<_>>(),
+                    "transactions": transactions,
                     "miner": "0x0000000000000000000000000000000000000000",
                     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
                     "nonce": "0x0000000000000000",
@@ -115,6 +144,11 @@ pub fn register_eth_methods(
             return Err(jsonrpc_core::Error::invalid_params("Missing block hash"));
         }
         
+        // Parse includeTransactions flag (default false)
+        let include_transactions = params.get(1)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        
         // Parse block hash
         let hash_str = match params[0].as_str() {
             Some(h) if h.starts_with("0x") => &h[2..],
@@ -133,6 +167,31 @@ pub fn register_eth_methods(
         
         match block_on(api.get_block(crate::types::request::BlockId::Hash(Hash::new(hash_bytes)))) {
             Ok(block) => {
+                // Build transactions array based on includeTransactions flag
+                let transactions = if include_transactions {
+                    // Return full transaction objects
+                    block.transactions.iter().enumerate().map(|(index, tx)| {
+                        json!({
+                            "hash": format!("0x{}", hex::encode(tx.hash.as_bytes())),
+                            "from": format!("0x{}", tx.from),
+                            "to": tx.to.as_ref().map(|addr| format!("0x{}", addr)),
+                            "value": format!("0x{:x}", tx.value),
+                            "gas": format!("0x{:x}", tx.gas_limit),
+                            "gasPrice": format!("0x{:x}", tx.gas_price),
+                            "nonce": format!("0x{:x}", tx.nonce),
+                            "input": format!("0x{}", hex::encode(&tx.data)),
+                            "blockHash": format!("0x{}", hex::encode(block.hash.as_bytes())),
+                            "blockNumber": format!("0x{:x}", block.height),
+                            "transactionIndex": format!("0x{:x}", index)
+                        })
+                    }).collect::<Vec<_>>()
+                } else {
+                    // Return just transaction hashes
+                    block.transactions.iter()
+                        .map(|tx| Value::String(format!("0x{}", hex::encode(tx.hash.as_bytes()))))
+                        .collect::<Vec<_>>()
+                };
+                
                 Ok(json!({
                     "number": format!("0x{:x}", block.height),
                     "hash": format!("0x{}", hex::encode(block.hash.as_bytes())),
@@ -142,9 +201,7 @@ pub fn register_eth_methods(
                     "gasUsed": "0x5208",
                     "difficulty": "0x0",
                     "totalDifficulty": "0x0",
-                    "transactions": block.transactions.iter()
-                        .map(|tx| format!("0x{}", hex::encode(tx.hash.as_bytes())))
-                        .collect::<Vec<_>>(),
+                    "transactions": transactions,
                     "miner": "0x0000000000000000000000000000000000000000",
                     "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
                     "nonce": "0x0000000000000000",
@@ -166,7 +223,7 @@ pub fn register_eth_methods(
     // eth_getTransactionByHash - Returns transaction by hash
     let storage_tx = storage.clone();
     io_handler.add_sync_method("eth_getTransactionByHash", move |params: Params| {
-        let api = TransactionApi::new(storage_tx.clone());
+        let api = ChainApi::new(storage_tx.clone());
         
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
@@ -219,7 +276,7 @@ pub fn register_eth_methods(
     // eth_getTransactionReceipt - Returns transaction receipt
     let storage_rcpt = storage.clone();
     io_handler.add_sync_method("eth_getTransactionReceipt", move |params: Params| {
-        let api = TransactionApi::new(storage_rcpt.clone());
+        let api = ChainApi::new(storage_rcpt.clone());
         
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
@@ -247,6 +304,13 @@ pub fn register_eth_methods(
         
         match block_on(api.get_receipt(Hash::new(hash_bytes))) {
             Ok(receipt) => {
+                // Derive contractAddress if deployment output encodes address
+                let contract_address = if receipt.to.is_none() && receipt.output.len() == 20 {
+                    Some(format!("0x{}", hex::encode(&receipt.output)))
+                } else {
+                    None
+                };
+
                 Ok(json!({
                     "transactionHash": format!("0x{}", hex::encode(receipt.tx_hash.as_bytes())),
                     "transactionIndex": "0x0",
@@ -256,25 +320,24 @@ pub fn register_eth_methods(
                     "to": receipt.to.as_ref().map(|t| format!("0x{}", hex::encode(&t.0))),
                     "cumulativeGasUsed": format!("0x{:x}", receipt.gas_used),
                     "gasUsed": format!("0x{:x}", receipt.gas_used),
-                    "contractAddress": receipt.contract_address.as_ref()
-                        .map(|a| format!("0x{}", hex::encode(&a.0))),
+                    "contractAddress": contract_address,
                     "logs": receipt.logs.iter().map(|log| json!({
                         "address": format!("0x{}", hex::encode(&log.address.0)),
                         "topics": log.topics.iter()
-                            .map(|t| format!("0x{}", hex::encode(t)))
+                            .map(|t| format!("0x{}", hex::encode(t.as_bytes())))
                             .collect::<Vec<_>>(),
                         "data": format!("0x{}", hex::encode(&log.data)),
-                        "logIndex": format!("0x{:x}", log.index),
-                        "transactionIndex": format!("0x{:x}", receipt.tx_index),
-                        "transactionHash": format!("0x{}", hex::encode(&receipt.tx_hash)),
-                        "blockHash": format!("0x{}", hex::encode(&receipt.block_hash)),
+                        "logIndex": "0x0",
+                        "transactionIndex": "0x0",
+                        "transactionHash": format!("0x{}", hex::encode(receipt.tx_hash.as_bytes())),
+                        "blockHash": format!("0x{}", hex::encode(receipt.block_hash.as_bytes())),
                         "blockNumber": format!("0x{:x}", receipt.block_number),
                         "removed": false
                     })).collect::<Vec<_>>(),
-                    "status": if receipt.success { "0x1" } else { "0x0" },
+                    "status": if receipt.status { "0x1" } else { "0x0" },
                     "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
                     "type": "0x0",
-                    "effectiveGasPrice": format!("0x{:x}", receipt.gas_price)
+                    "effectiveGasPrice": "0x0"
                 }))
             },
             Err(_) => Ok(Value::Null),
@@ -283,8 +346,8 @@ pub fn register_eth_methods(
 
     // eth_chainId - Returns the chain ID
     io_handler.add_sync_method("eth_chainId", move |_params: Params| {
-        // Return testnet chain ID
-        Ok(Value::String("0x539".to_string())) // 1337 in hex
+        // Return configured chain ID in hex
+        Ok(Value::String(format!("0x{:x}", chain_id)))
     });
 
     // eth_syncing - Returns sync status
@@ -380,6 +443,7 @@ pub fn register_eth_methods(
     // eth_getTransactionCount - Returns account nonce
     let storage_nonce = storage.clone();
     let executor_nonce = executor.clone();
+    let mempool_nonce = mempool.clone();
     io_handler.add_sync_method("eth_getTransactionCount", move |params: Params| {
         let state_api = StateApi::new(storage_nonce.clone(), executor_nonce.clone());
         
@@ -406,11 +470,36 @@ pub fn register_eth_methods(
             },
             _ => return Err(jsonrpc_core::Error::invalid_params("Invalid address length")),
         };
-        
-        match block_on(state_api.get_nonce(Address(addr_bytes))) {
-            Ok(nonce) => Ok(Value::String(format!("0x{:x}", nonce))),
-            Err(_) => Ok(Value::String("0x0".to_string())),
+
+        // Optional second param: block tag ("latest" | "pending" | "earliest")
+        let tag = params.get(1).and_then(|v| v.as_str()).unwrap_or("latest");
+
+        let base_nonce = match block_on(state_api.get_nonce(Address(addr_bytes))) {
+            Ok(nonce) => nonce,
+            Err(_) => 0u64,
+        };
+
+        if tag.eq_ignore_ascii_case("pending") {
+            // Include pending mempool transactions from this sender
+            let mp = mempool_nonce.clone();
+            let total = block_on(mp.stats()).total_transactions;
+            let txs = block_on(mp.get_transactions(total));
+            let mut max_nonce = None;
+            for tx in txs {
+                // Derive sender address from tx.from
+                let sender_addr = Address::from_public_key(&tx.from);
+                if sender_addr.0 == addr_bytes {
+                    max_nonce = Some(max_nonce.map_or(tx.nonce, |m: u64| m.max(tx.nonce)));
+                }
+            }
+            let pending_nonce = match max_nonce {
+                Some(m) if m + 1 > base_nonce => m + 1,
+                _ => base_nonce,
+            };
+            return Ok(Value::String(format!("0x{:x}", pending_nonce)));
         }
+
+        Ok(Value::String(format!("0x{:x}", base_nonce)))
     });
 
     // eth_sendRawTransaction - Submit signed transaction
@@ -480,7 +569,7 @@ pub fn register_eth_methods(
             },
             Err(e) => {
                 tracing::error!("✗ Failed to submit transaction to mempool: {:?}", e);
-                Err(jsonrpc_core::Error::invalid_request(
+                Err(jsonrpc_core::Error::invalid_params(
                     format!("Failed to submit transaction: {:?}", e)
                 ))
             }
@@ -490,8 +579,140 @@ pub fn register_eth_methods(
     // eth_call - Execute call without creating transaction
     let executor_call = executor.clone();
     io_handler.add_sync_method("eth_call", move |params: Params| {
-        // TODO: Implement eth_call
-        Ok(Value::String("0x".to_string()))
+        use lattice_consensus::types::{Block, BlockHeader, PublicKey, Signature, VrfProof};
+
+        let exec = executor_call.clone();
+
+        // Parse params: [callObject, blockTag]
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing call object"));
+        }
+
+        // call object
+        let obj = match &params[0] {
+            Value::Object(map) => map,
+            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid call object")),
+        };
+
+        // to (required)
+        let to_str = match obj.get("to").and_then(|v| v.as_str()) {
+            Some(s) => s.trim().trim_start_matches("0x"),
+            None => return Err(jsonrpc_core::Error::invalid_params("Missing 'to' address")),
+        };
+        let to_bytes = match hex::decode(to_str) {
+            Ok(b) if b.len() == 20 => b,
+            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid 'to' address")),
+        };
+        let mut to_pk_bytes = [0u8; 32];
+        to_pk_bytes[..20].copy_from_slice(&to_bytes);
+        let to_pk = Some(lattice_consensus::types::PublicKey::new(to_pk_bytes));
+
+        // from (optional)
+        let from_pk = if let Some(from_s) = obj.get("from").and_then(|v| v.as_str()) {
+            let fs = from_s.trim().trim_start_matches("0x");
+            let fbytes = match hex::decode(fs) {
+                Ok(b) if b.len() == 20 => b,
+                _ => return Err(jsonrpc_core::Error::invalid_params("Invalid 'from' address")),
+            };
+            let mut pkb = [0u8; 32];
+            pkb[..20].copy_from_slice(&fbytes);
+            PublicKey::new(pkb)
+        } else {
+            PublicKey::new([0u8; 32])
+        };
+
+        // data (optional but usually required)
+        let data = if let Some(d) = obj.get("data").and_then(|v| v.as_str()) {
+            let ds = d.trim();
+            let ds = ds.strip_prefix("0x").unwrap_or(ds);
+            match hex::decode(ds) {
+                Ok(b) => b,
+                Err(_) => return Err(jsonrpc_core::Error::invalid_params("Invalid data hex")),
+            }
+        } else {
+            Vec::new()
+        };
+
+        // value (optional)
+        let value_u128: u128 = if let Some(vs) = obj.get("value").and_then(|v| v.as_str()) {
+            let s = vs.trim();
+            if let Some(hexs) = s.strip_prefix("0x") {
+                u128::from_str_radix(hexs, 16).unwrap_or(0u128)
+            } else {
+                s.parse::<u128>().unwrap_or(0u128)
+            }
+        } else { 0u128 };
+
+        // gas and gasPrice (optional)
+        let gas_limit: u64 = if let Some(gs) = obj.get("gas").and_then(|v| v.as_str()) {
+            let s = gs.trim();
+            if let Some(hexs) = s.strip_prefix("0x") {
+                u64::from_str_radix(hexs, 16).unwrap_or(1_000_000)
+            } else { s.parse::<u64>().unwrap_or(1_000_000) }
+        } else { 1_000_000 };
+
+        let gas_price: u64 = if let Some(gps) = obj.get("gasPrice").and_then(|v| v.as_str()) {
+            let s = gps.trim();
+            if let Some(hexs) = s.strip_prefix("0x") {
+                u64::from_str_radix(hexs, 16).unwrap_or(1)
+            } else { s.parse::<u64>().unwrap_or(1) }
+        } else { 1 };
+
+        // Build a lightweight block context
+        let blk = Block {
+            header: BlockHeader {
+                version: 1,
+                block_hash: lattice_consensus::types::Hash::default(),
+                selected_parent_hash: lattice_consensus::types::Hash::default(),
+                merge_parent_hashes: vec![],
+                timestamp: 0,
+                height: 0,
+                blue_score: 0,
+                blue_work: 0,
+                pruning_point: lattice_consensus::types::Hash::default(),
+                proposer_pubkey: PublicKey::new([0u8; 32]),
+                vrf_reveal: VrfProof { proof: vec![], output: lattice_consensus::types::Hash::default() },
+            },
+            state_root: lattice_consensus::types::Hash::default(),
+            tx_root: lattice_consensus::types::Hash::default(),
+            receipt_root: lattice_consensus::types::Hash::default(),
+            artifact_root: lattice_consensus::types::Hash::default(),
+            ghostdag_params: Default::default(),
+            transactions: vec![],
+            signature: Signature::new([0u8; 64]),
+        };
+
+        // Create a pseudo-transaction
+        let mut tx = lattice_consensus::types::Transaction {
+            hash: lattice_consensus::types::Hash::default(),
+            nonce: 0,
+            from: from_pk,
+            to: to_pk,
+            value: value_u128,
+            gas_limit,
+            gas_price,
+            data,
+            signature: Signature::new([0u8; 64]),
+            tx_type: None,
+        };
+        
+        // Determine transaction type from data
+        tx.determine_type();
+
+        // Snapshot state, execute, then restore
+        let snapshot = exec.state_db().snapshot();
+        let res = block_on(exec.execute_transaction(&blk, &tx));
+        exec.state_db().restore(snapshot);
+
+        match res {
+            Ok(receipt) => Ok(Value::String(format!("0x{}", hex::encode(receipt.output)))),
+            Err(e) => Err(jsonrpc_core::Error::invalid_params(format!("eth_call failed: {}", e))),
+        }
     });
 
     // eth_estimateGas - Estimate gas for transaction
@@ -515,5 +736,53 @@ pub fn register_eth_methods(
     io_handler.add_sync_method("eth_maxPriorityFeePerGas", move |params: Params| {
         // Return 1 gwei max priority fee
         Ok(Value::String("0x3b9aca00".to_string()))
+    });
+
+    // lattice_getMempoolSnapshot - Get all pending transactions in mempool
+    let mempool_snapshot = mempool.clone();
+    io_handler.add_sync_method("lattice_getMempoolSnapshot", move |_params: Params| {
+        let mp = mempool_snapshot.clone();
+        
+        // Get mempool stats to know how many transactions to fetch
+        let stats = block_on(mp.stats());
+        let total = stats.total_transactions;
+        
+        // Get all transactions from mempool
+        let txs = block_on(mp.get_transactions(total));
+        
+        // Convert to JSON format
+        let mut tx_list = Vec::new();
+        for tx in txs {
+            let mut tx_obj = serde_json::Map::new();
+            tx_obj.insert("hash".to_string(), Value::String(format!("0x{}", hex::encode(tx.hash.as_bytes()))));
+            
+            // Convert from address
+            let from_addr = lattice_execution::types::Address::from_public_key(&tx.from);
+            tx_obj.insert("from".to_string(), Value::String(format!("0x{}", hex::encode(from_addr.0))));
+            
+            // Convert to address
+            if let Some(to_pk) = tx.to {
+                let to_addr = lattice_execution::types::Address::from_public_key(&to_pk);
+                tx_obj.insert("to".to_string(), Value::String(format!("0x{}", hex::encode(to_addr.0))));
+            } else {
+                tx_obj.insert("to".to_string(), Value::Null);
+            }
+            
+            tx_obj.insert("value".to_string(), Value::String(format!("0x{:x}", tx.value)));
+            tx_obj.insert("nonce".to_string(), Value::String(format!("0x{:x}", tx.nonce)));
+            tx_obj.insert("gasPrice".to_string(), Value::String(format!("0x{:x}", tx.gas_price)));
+            tx_obj.insert("gasLimit".to_string(), Value::String(format!("0x{:x}", tx.gas_limit)));
+            tx_obj.insert("dataSize".to_string(), Value::Number(tx.data.len().into()));
+            
+            tx_list.push(Value::Object(tx_obj));
+        }
+        
+        // Return mempool info
+        let mut result = serde_json::Map::new();
+        result.insert("pending".to_string(), Value::Array(tx_list));
+        result.insert("totalTransactions".to_string(), Value::Number(total.into()));
+        result.insert("totalBytes".to_string(), Value::Number(stats.total_size.into()));
+        
+        Ok(Value::Object(result))
     });
 }

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "cli",
     "core/consensus",
     "core/sequencer", 
     "core/execution",
@@ -13,6 +14,7 @@ members = [
     "node-app",
     "wallet",
     "faucet",
+    "gui/lattice-core/src-tauri",
 ]
 resolver = "2"
 
@@ -47,6 +49,12 @@ quinn = "0.11"
 # Storage
 rocksdb = "0.22"
 sled = "0.34"
+
+# Time
+chrono = "0.4"
+
+# Concurrency
+parking_lot = "0.12"
 
 # Logging
 tracing = "0.1"

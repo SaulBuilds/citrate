@@ -1,0 +1,26 @@
+{
+  "mainnet": [
+    "# Mainnet bootstrap nodes will be added here when network launches",
+    "# Format: /ip4/1.2.3.4/tcp/30303/p2p/12D3KooWAbcdef..."
+  ],
+  "testnet": [
+    "# Testnet bootstrap nodes",
+    "# Note: These are example addresses - replace with actual bootstrap node addresses",
+    "# US East",
+    "/ip4/54.123.45.67/tcp/30303/p2p/12D3KooWDEFHPNm3Nb2FBJNs9tFaHSLApUK5xkzDCp9oJvgLUCVQ",
+    "# US West",
+    "/ip4/54.234.56.78/tcp/30303/p2p/12D3KooWKPRQFBgFShwjdrpNTQRnUqPBibw5RPvGEitcvGzMPRkv",
+    "# Europe",
+    "/ip4/35.123.45.67/tcp/30303/p2p/12D3KooWLQPbB5DYfNBhSjKDrpNDEkpRUGVGk8rUjgLUbcVxGzMN",
+    "# Asia",
+    "/ip4/13.234.56.78/tcp/30303/p2p/12D3KooWQYV9dGFShwjrpNTRnUqPBibw5RPvgLEitcvGzMNPRkx"
+  ],
+  "devnet": [
+    "# Local devnet bootstrap nodes",
+    "/ip4/127.0.0.1/tcp/30303/p2p/12D3KooWLocalDevNode1",
+    "/ip4/127.0.0.1/tcp/30304/p2p/12D3KooWLocalDevNode2"
+  ],
+  "local": [
+    "# Local testing - no bootstrap nodes needed"
+  ]
+}

@@ -1,5 +1,5 @@
 use crate::types::{ProviderInfo, ComputeCapacity, HardwareType, ModelId};
-use lattice_execution::types::Address;
+use lattice_execution::Address;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

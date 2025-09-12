@@ -19,13 +19,17 @@ anyhow = { workspace = true }
 # Local dependencies
 lattice-consensus = { path = "../consensus" }
 lattice-sequencer = { path = "../sequencer" }
-
+lattice-storage = { path = "../storage" }
+lattice-execution = { path = "../execution" }
 # Network specific
+primitive-types = "0.12"
 futures = "0.3"
 bytes = "1.5"
 tokio-util = { version = "0.7", features = ["codec"] }
 dashmap = "5.5"
 rand = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

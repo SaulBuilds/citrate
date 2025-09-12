@@ -475,18 +475,195 @@ async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::
     anyhow::bail!("Transaction receipt not found after 60 seconds");
 }
 
-fn encode_method_call(method_sig: &str, _args: serde_json::Value) -> Result<String> {
-    // Simple method signature encoding (would use ethers-rs in production)
+fn encode_method_call(method_sig: &str, args: serde_json::Value) -> Result<String> {
+    use anyhow::bail;
     use sha3::{Digest, Keccak256};
-    
+
+    // Compute 4-byte selector from full signature
     let mut hasher = Keccak256::new();
     hasher.update(method_sig.as_bytes());
     let hash = hasher.finalize();
-    
-    // Take first 4 bytes as method selector
     let selector = &hash[..4];
-    
-    // TODO: Properly encode arguments based on ABI
-    // For now, just return the selector
-    Ok(format!("0x{}", hex::encode(selector)))
+
+    // Parse types from signature, e.g. "transfer(address,uint256)"
+    let open = method_sig
+        .find('(')
+        .context("Invalid method signature: missing '
+'")?;
+    let close = method_sig
+        .rfind(')')
+        .context("Invalid method signature: missing ')'")?;
+    let types_str = &method_sig[open + 1..close];
+    let mut types: Vec<String> = if types_str.trim().is_empty() {
+        vec![]
+    } else {
+        types_str
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .collect()
+    };
+
+    // Args must be an array
+    let args_arr = match args {
+        serde_json::Value::Array(v) => v,
+        serde_json::Value::Null => vec![],
+        _ => bail!("Method arguments must be a JSON array"),
+    };
+
+    if args_arr.len() != types.len() {
+        bail!(
+            "Argument count mismatch: expected {}, got {}",
+            types.len(),
+            args_arr.len()
+        );
+    }
+
+    // Encode static arguments (subset of ABI: address, uint{8,16,32,64,128,256}, bool, bytes32)
+    let mut encoded: Vec<u8> = Vec::new();
+    for (ty, val) in types.iter().zip(args_arr.into_iter()) {
+        match ty.as_str() {
+            // address: 20 bytes, left-padded to 32
+            "address" => {
+                let s = val
+                    .as_str()
+                    .context("address must be a hex string")?;
+                let hexstr = s.trim().trim_start_matches("0x");
+                let bytes = hex::decode(hexstr).context("invalid address hex")?;
+                if bytes.len() != 20 {
+                    bail!("address must be 20 bytes (40 hex chars)");
+                }
+                let mut word = [0u8; 32];
+                word[12..32].copy_from_slice(&bytes);
+                encoded.extend_from_slice(&word);
+            }
+            // bool: 0 or 1 in last byte, left-padded
+            "bool" => {
+                let b = match val {
+                    serde_json::Value::Bool(b) => b,
+                    serde_json::Value::Number(n) => n.as_u64().unwrap_or(0) != 0,
+                    serde_json::Value::String(s) => {
+                        let sl = s.to_lowercase();
+                        sl == "true" || sl == "1"
+                    }
+                    _ => bail!("bool must be true/false or 0/1"),
+                };
+                let mut word = [0u8; 32];
+                if b {
+                    word[31] = 1u8;
+                }
+                encoded.extend_from_slice(&word);
+            }
+            // bytes32: fixed 32 bytes (or shorter and right-padded with zeros)
+            "bytes32" => {
+                let s = val
+                    .as_str()
+                    .context("bytes32 must be a hex string")?;
+                let hexstr = s.trim().trim_start_matches("0x");
+                let mut bytes = hex::decode(hexstr).context("invalid bytes32 hex")?;
+                if bytes.len() > 32 {
+                    bail!("bytes32 must be <= 32 bytes");
+                }
+                bytes.resize(32, 0u8);
+                encoded.extend_from_slice(&bytes);
+            }
+            // uint types
+            ty if ty.starts_with("uint") => {
+                // Determine bit size (default 256)
+                let bits: u16 = ty[4..].parse().unwrap_or(256);
+                if bits == 0 || bits % 8 != 0 || bits > 256 {
+                    bail!("unsupported uint size: {}", bits);
+                }
+                // Accept number or hex string
+                let mut word = [0u8; 32];
+                match val {
+                    serde_json::Value::Number(n) => {
+                        // Encode as big-endian; support up to u128 directly
+                        if let Some(u) = n.as_u64() {
+                            let be = (u as u128).to_be_bytes();
+                            word[16..32].copy_from_slice(&be);
+                        } else {
+                            // Fallback: parse string representation
+                            bail!("uint must be a positive integer within u64 for now");
+                        }
+                    }
+                    serde_json::Value::String(s) => {
+                        let ss = s.trim();
+                        if let Some(stripped) = ss.strip_prefix("0x") {
+                            let bytes = hex::decode(stripped).context("invalid uint hex")?;
+                            if bytes.len() > 32 {
+                                bail!("uint hex too large (max 32 bytes)");
+                            }
+                            word[32 - bytes.len()..32].copy_from_slice(&bytes);
+                        } else {
+                            // Decimal string, parse into u128
+                            let val = ss
+                                .parse::<u128>()
+                                .context("invalid uint decimal string")?;
+                            let be = val.to_be_bytes();
+                            word[16..32].copy_from_slice(&be);
+                        }
+                    }
+                    _ => bail!("uint must be a number or string (hex or decimal)"),
+                }
+                encoded.extend_from_slice(&word);
+            }
+            // unsupported dynamic types
+            ty if ty == "string" || ty == "bytes" => {
+                bail!("dynamic types (string, bytes) are not supported in this CLI encoder yet")
+            }
+            other => bail!("unsupported or unknown type in signature: {}", other),
+        }
+    }
+
+    let mut out = Vec::with_capacity(4 + encoded.len());
+    out.extend_from_slice(selector);
+    out.extend_from_slice(&encoded);
+    Ok(format!("0x{}", hex::encode(out)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_method_call;
+    use sha3::{Digest, Keccak256};
+
+    #[test]
+    fn test_encode_transfer_address_uint256() {
+        let addr = "0x1111111111111111111111111111111111111111";
+        let json = serde_json::json!([addr, "1000"]);
+        let sig = "transfer(address,uint256)";
+        let out = encode_method_call(sig, json).expect("encode");
+
+        // selector correctness
+        let mut hasher = Keccak256::new();
+        hasher.update(sig.as_bytes());
+        let selector = hex::encode(&hasher.finalize()[..4]);
+        assert!(out.starts_with(&format!("0x{}", selector)));
+
+        // length = 4 bytes selector + 2 words
+        // hex length: 2 chars per byte, plus 2 for '0x'
+        let expected_hex_len = 2 + (4 + 32 + 32) * 2;
+        assert_eq!(out.len(), expected_hex_len);
+
+        // address should be right-padded in last 40 hex of the first word after selector
+        // Skip '0x' + 8 selector hex = 10 chars; next 64 hex is first word
+        let first_word_hex = &out[10..10 + 64];
+        // last 40 of word equals address without 0x
+        assert_eq!(&first_word_hex[24..], &addr[2..]);
+    }
+
+    #[test]
+    fn test_encode_bool_and_bytes32() {
+        let bytes32 = "0x".to_string() + &"aa".repeat(32);
+        let json = serde_json::json!([true, bytes32]);
+        let sig = "setFlagAndHash(bool,bytes32)";
+        let out = encode_method_call(sig, json).expect("encode");
+
+        // Expect selector + 2 words
+        let expected_hex_len = 2 + (4 + 32 + 32) * 2;
+        assert_eq!(out.len(), expected_hex_len);
+
+        // Bool word ends with 01
+        let bool_word = &out[10..10 + 64];
+        assert!(bool_word.ends_with("01"));
+    }
 }

@@ -62,8 +62,38 @@ impl TipSelector {
         }
     }
     
-    /// Select the best tip according to the configured strategy
-    pub async fn select_tip(&self) -> Result<Hash, TipSelectionError> {
+    /// Select the best tip from given hashes
+    pub async fn select_tip(&self, tip_hashes: &[Hash]) -> Result<Hash, TipSelectionError> {
+        if tip_hashes.is_empty() {
+            return Err(TipSelectionError::NoTips);
+        }
+        
+        // If only one tip, return it
+        if tip_hashes.len() == 1 {
+            return Ok(tip_hashes[0]);
+        }
+        
+        // Get blue scores for each tip
+        let mut best_tip = tip_hashes[0];
+        let mut best_score = 0u64;
+        
+        for &hash in tip_hashes {
+            // Try to get block from DAG store
+            if let Ok(block) = self.dag_store.get_block(&hash).await {
+                if let Ok(score) = self.ghostdag.calculate_blue_score(&block).await {
+                    if score > best_score || (score == best_score && hash > best_tip) {
+                        best_tip = hash;
+                        best_score = score;
+                    }
+                }
+            }
+        }
+        
+        Ok(best_tip)
+    }
+    
+    /// Select the best tip according to the configured strategy (using current DAG tips)
+    pub async fn select_current_tip(&self) -> Result<Hash, TipSelectionError> {
         let tips = self.dag_store.get_tips().await;
         
         if tips.is_empty() {

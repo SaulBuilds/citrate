@@ -9,14 +9,26 @@ pub struct Address(pub [u8; 20]);
 
 impl Address {
     pub fn from_public_key(pubkey: &PublicKey) -> Self {
-        use sha3::{Digest, Keccak256};
-        let mut hasher = Keccak256::default();
-        hasher.update(&pubkey.0);
-        let hash = hasher.finalize();
+        // Check if this is an embedded EVM address (first 20 bytes non-zero, last 12 bytes zero)
+        let is_evm_address = pubkey.0[20..].iter().all(|&b| b == 0) && 
+                             !pubkey.0[..20].iter().all(|&b| b == 0);
         
-        let mut addr = [0u8; 20];
-        addr.copy_from_slice(&hash[12..32]);
-        Address(addr)
+        if is_evm_address {
+            // This is an embedded 20-byte EVM address, use it directly
+            let mut addr = [0u8; 20];
+            addr.copy_from_slice(&pubkey.0[..20]);
+            Address(addr)
+        } else {
+            // This is a full 32-byte public key, derive address by hashing
+            use sha3::{Digest, Keccak256};
+            let mut hasher = Keccak256::default();
+            hasher.update(&pubkey.0);
+            let hash = hasher.finalize();
+            
+            let mut addr = [0u8; 20];
+            addr.copy_from_slice(&hash[12..32]);
+            Address(addr)
+        }
     }
     
     pub fn zero() -> Self {
@@ -218,6 +230,13 @@ pub struct GasSchedule {
     pub inference_per_mb: u64,
     pub training_submit: u64,
     
+    // AI opcodes
+    pub tensor_op: u64,
+    pub model_load: u64,
+    pub model_exec: u64,
+    pub zk_prove: u64,
+    pub zk_verify: u64,
+    
     // Arithmetic operations
     pub add: u64,
     pub mul: u64,
@@ -253,6 +272,13 @@ impl Default for GasSchedule {
             inference_base: 50_000,
             inference_per_mb: 10_000,
             training_submit: 200_000,
+            
+            // AI opcodes
+            tensor_op: 10_000,
+            model_load: 50_000,
+            model_exec: 100_000,
+            zk_prove: 200_000,
+            zk_verify: 50_000,
             
             // Arithmetic operations
             add: 3,

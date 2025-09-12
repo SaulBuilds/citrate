@@ -7,6 +7,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, info, warn};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use bytes::BytesMut;
+use futures::{SinkExt, StreamExt};
 
 /// Unique peer identifier
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -143,6 +147,7 @@ pub struct PeerManager {
     peers: Arc<DashMap<PeerId, Arc<Peer>>>,
     banned_peers: Arc<RwLock<Vec<SocketAddr>>>,
     stats: Arc<RwLock<PeerStats>>,
+    incoming: Arc<RwLock<Option<mpsc::Sender<(PeerId, NetworkMessage)>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -182,7 +187,13 @@ impl PeerManager {
             peers: Arc::new(DashMap::new()),
             banned_peers: Arc::new(RwLock::new(Vec::new())),
             stats: Arc::new(RwLock::new(PeerStats::default())),
+            incoming: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Set incoming message sink
+    pub async fn set_incoming(&self, tx: mpsc::Sender<(PeerId, NetworkMessage)>) {
+        *self.incoming.write().await = Some(tx);
     }
     
     /// Get max peers configuration
@@ -338,6 +349,222 @@ impl PeerManager {
             self.remove_peer(&peer_id).await;
         }
     }
+    
+    /// Broadcast a message to all connected peers
+    pub async fn broadcast(&self, message: &NetworkMessage) -> Result<(), NetworkError> {
+        let peers = self.get_all_peers();
+        let mut send_count = 0;
+        
+        for peer in peers {
+            if let Ok(_) = peer.send(message.clone()).await {
+                send_count += 1;
+            }
+        }
+        
+        debug!("Broadcasted message to {} peers", send_count);
+        Ok(())
+    }
+    
+    /// Send message to specific peers
+    pub async fn send_to_peers(&self, peer_ids: &[PeerId], message: &NetworkMessage) -> Result<(), NetworkError> {
+        for peer_id in peer_ids {
+            if let Some(peer) = self.get_peer(peer_id) {
+                peer.send(message.clone()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Start a TCP listener for inbound peer connections
+    pub async fn start_listener(
+        self: &Arc<Self>,
+        listen_addr: SocketAddr,
+        network_id: u32,
+        genesis_hash: Hash,
+        head_height: u64,
+        head_hash: Hash,
+    ) -> Result<(), NetworkError> {
+        let listener = TcpListener::bind(listen_addr)
+            .await
+            .map_err(|e| NetworkError::Io(e))?;
+        let this = self.clone();
+        tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((stream, addr)) => {
+                        let pm = this.clone();
+                        let g = genesis_hash;
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_incoming(stream, addr, pm, network_id, g, head_height, head_hash).await {
+                                warn!("Inbound connection error from {}: {}", addr, e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Accept error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+        info!("Listening for peers on {}", listen_addr);
+        Ok(())
+    }
+
+    /// Dial a remote peer and perform handshake
+    pub async fn connect_bootnode_real(
+        self: Arc<Self>,
+        peer_id_hint: Option<PeerId>,
+        addr: SocketAddr,
+        network_id: u32,
+        genesis_hash: Hash,
+        head_height: u64,
+        head_hash: Hash,
+    ) -> Result<(), NetworkError> {
+        let stream = TcpStream::connect(addr).await.map_err(|e| NetworkError::Io(e))?;
+        let peer_id = peer_id_hint.unwrap_or_else(PeerId::random);
+        perform_handshake_outbound(self, stream, addr, peer_id, network_id, genesis_hash, head_height, head_hash).await
+    }
+}
+
+async fn handle_incoming(
+    stream: TcpStream,
+    addr: SocketAddr,
+    pm: Arc<PeerManager>,
+    network_id: u32,
+    genesis_hash: Hash,
+    head_height: u64,
+    head_hash: Hash,
+) -> Result<(), NetworkError> {
+    let mut framed = Framed::new(stream, LengthDelimitedCodec::new());
+    // Expect Hello
+    let bytes = framed.next().await.ok_or_else(|| NetworkError::ProtocolError("EOF before hello".into()))
+        .map_err(|_| NetworkError::ProtocolError("Stream closed".into()))??;
+    let hello: NetworkMessage = bincode::deserialize(&bytes)
+        .map_err(|e| NetworkError::DecodeError(format!("handshake decode: {}", e)))?;
+    let (peer_id_str, ver, net_ok) = match hello {
+        NetworkMessage::Hello { version, network_id: nid, peer_id, .. } => {
+            (peer_id, version, nid == network_id)
+        }
+        _ => return Err(NetworkError::ProtocolError("Expected Hello".into())),
+    };
+    if !ver.is_compatible(&ProtocolVersion::CURRENT) || !net_ok {
+        // send disconnect
+        let _ = send_msg(&mut framed, &NetworkMessage::Disconnect { reason: "incompatible".into() }).await;
+        return Err(NetworkError::ProtocolError("incompatible version or network".into()));
+    }
+    // Register peer
+    let peer_id = PeerId::new(peer_id_str);
+    // Channels for app-level messaging
+    let (send_tx, mut send_rx) = mpsc::channel(256);
+    let (recv_tx_app, recv_rx) = mpsc::channel(256);
+    let info = PeerInfo::new(peer_id.clone(), addr, Direction::Inbound);
+    let peer = Arc::new(Peer::new(info, send_tx.clone(), recv_rx));
+    pm.add_peer(peer.clone()).await?;
+    // Reply HelloAck
+    let ack = NetworkMessage::HelloAck { version: ProtocolVersion::CURRENT, head_height, head_hash };
+    send_msg(&mut framed, &ack).await?;
+    // Split framed into sink and stream
+    let (mut sink, mut stream) = framed.split();
+    let writer = tokio::spawn(async move {
+        while let Some(msg) = send_rx.recv().await {
+            if let Err(e) = send_msg_sink(&mut sink, &msg).await { break; }
+        }
+    });
+    // Reader
+    while let Some(frame) = stream.next().await {
+        let bytes = match frame { Ok(b) => b, Err(_) => break };
+        if let Ok(msg) = bincode::deserialize::<NetworkMessage>(&bytes) {
+            // Basic responses
+            match msg {
+                NetworkMessage::Ping { nonce } => { let _ = send_tx.send(NetworkMessage::Pong { nonce }).await; },
+                other => {
+                    // publish to global incoming
+                    if let Some(tx) = pm.incoming.read().await.clone() {
+                        let _ = tx.send((peer_id.clone(), other.clone())).await;
+                    }
+                    let _ = recv_tx_app.send(other).await;
+                }
+            }
+            let mut inf = peer.info.write().await;
+            inf.messages_received += 1;
+            inf.update_last_seen();
+        } else {
+            break;
+        }
+    }
+    writer.abort();
+    pm.remove_peer(&peer_id).await;
+    Ok(())
+}
+
+async fn perform_handshake_outbound(
+    pm: Arc<PeerManager>,
+    stream: TcpStream,
+    addr: SocketAddr,
+    peer_id: PeerId,
+    network_id: u32,
+    genesis_hash: Hash,
+    head_height: u64,
+    head_hash: Hash,
+) -> Result<(), NetworkError> {
+    let mut framed = Framed::new(stream, LengthDelimitedCodec::new());
+    // Send Hello
+    let hello = NetworkMessage::Hello {
+        version: ProtocolVersion::CURRENT,
+        network_id,
+        genesis_hash,
+        head_height,
+        head_hash,
+        peer_id: peer_id.0.clone(),
+    };
+    send_msg(&mut framed, &hello).await?;
+    // Expect Ack
+    let bytes = framed.next().await.ok_or_else(|| NetworkError::ProtocolError("EOF before ack".into()))
+        .map_err(|_| NetworkError::ProtocolError("Stream closed".into()))??;
+    let ack: NetworkMessage = bincode::deserialize(&bytes)
+        .map_err(|e| NetworkError::DecodeError(format!("ack decode: {}", e)))?;
+    match ack { NetworkMessage::HelloAck { version, .. } if version.is_compatible(&ProtocolVersion::CURRENT) => {}, _ => {
+        return Err(NetworkError::ProtocolError("invalid ack".into()));
+    }}
+    // Register peer and spawn IO
+    let (send_tx, mut send_rx) = mpsc::channel(256);
+    let (_recv_tx, recv_rx) = mpsc::channel(256);
+    let info = PeerInfo::new(peer_id.clone(), addr, Direction::Outbound);
+    let peer = Arc::new(Peer::new(info, send_tx.clone(), recv_rx));
+    pm.add_peer(peer.clone()).await?;
+    let (mut sink, mut stream) = framed.split();
+    let writer = tokio::spawn(async move {
+        while let Some(msg) = send_rx.recv().await {
+            if let Err(_e) = send_msg_sink(&mut sink, &msg).await { break; }
+        }
+    });
+    let pm2 = pm.clone();
+    tokio::spawn(async move {
+        while let Some(frame) = stream.next().await {
+            if let Ok(bytes) = frame {
+                if let Ok(msg) = bincode::deserialize::<NetworkMessage>(&bytes) {
+                    if let Some(tx) = pm2.incoming.read().await.clone() {
+                        let _ = tx.send((peer_id.clone(), msg)).await;
+                    }
+                }
+            } else { break }
+        }
+        writer.abort();
+    });
+    info!("Connected to bootnode {}", addr);
+    Ok(())
+}
+
+async fn send_msg(framed: &mut Framed<TcpStream, LengthDelimitedCodec>, msg: &NetworkMessage) -> Result<(), NetworkError> {
+    let bytes = bincode::serialize(msg).map_err(|e| NetworkError::DecodeError(e.to_string()))?;
+    framed.send(bytes.into()).await.map_err(|e| NetworkError::Io(e))
+}
+
+async fn send_msg_sink<S>(sink: &mut S, msg: &NetworkMessage) -> Result<(), NetworkError>
+where S: futures::Sink<bytes::Bytes, Error = std::io::Error> + Unpin {
+    let bytes = bincode::serialize(msg).map_err(|e| NetworkError::DecodeError(e.to_string()))?;
+    sink.send(bytes.into()).await.map_err(NetworkError::Io)
 }
 
 #[cfg(test)]

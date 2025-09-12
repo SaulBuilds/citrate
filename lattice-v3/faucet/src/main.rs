@@ -88,7 +88,7 @@ async fn main() {
         .unwrap();
     
     info!("Faucet listening on http://0.0.0.0:3001");
-    info!("Request test tokens: POST /faucet with {{\"address\": \"0x...\"}}}");
+    info!("Request test tokens: POST /faucet with {{\"address\": \"0x...\"}}");
     
     axum::serve(listener, app).await.unwrap();
 }
@@ -138,10 +138,15 @@ async fn request_tokens(
     to_pk_bytes[..20].copy_from_slice(&recipient.0);
     let to_pubkey = PublicKey::new(to_pk_bytes);
     
+    // Convert faucet address to PublicKey for transaction
+    let mut from_pk_bytes = [0u8; 32];
+    from_pk_bytes[..20].copy_from_slice(&state.faucet_address.0);
+    let from_pubkey = PublicKey::new(from_pk_bytes);
+    
     // Build transaction
     let mut tx = Transaction {
         hash: Hash::default(),
-        from: state.faucet_address,
+        from: from_pubkey,
         to: Some(to_pubkey),
         value: 10_000_000_000_000_000_000u128, // 10 LATT
         data: vec![],
@@ -149,13 +154,15 @@ async fn request_tokens(
         gas_price: 1_000_000_000, // 1 gwei
         gas_limit: 21000,
         signature: Signature::new([0; 64]),
+        tx_type: None,
     };
     
     // Calculate transaction hash
     tx.hash = calculate_tx_hash(&tx, state.chain_id);
     
-    // Sign transaction
-    let signature = state.signing_key.sign(tx.hash.as_bytes());
+    // Sign transaction with the inner signing key
+    use ed25519_dalek::Signer;
+    let signature = state.signing_key.as_ref().sign(tx.hash.as_bytes());
     tx.signature = Signature::new(signature.to_bytes());
     
     // Serialize transaction

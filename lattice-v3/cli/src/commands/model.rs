@@ -4,6 +4,7 @@ use colored::Colorize;
 use std::fs;
 use std::path::PathBuf;
 use serde_json::json;
+use sha3::Digest; // for Keccak256::digest
 
 use crate::config::Config;
 
@@ -428,7 +429,7 @@ async fn verify_proof(
         "proof": proof_json,
     });
     
-    if let Some(hash) = output_hash {
+    if let Some(hash) = output_hash.as_ref() {
         params["output_hash"] = json!(hash);
     }
     
@@ -459,7 +460,7 @@ async fn verify_proof(
                 if let Some(computed_hash) = details["output_hash"].as_str() {
                     println!("  Output Hash: {}", computed_hash);
                     
-                    if let Some(expected) = output_hash {
+                    if let Some(expected) = output_hash.as_ref() {
                         if computed_hash == expected {
                             println!("  {}", "✓ Output hash matches expected value".green());
                         } else {

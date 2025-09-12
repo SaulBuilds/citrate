@@ -56,9 +56,8 @@ pub fn sign_transaction(tx: &mut Transaction, signing_key: &SigningKey) -> Resul
 fn canonical_tx_bytes(tx: &Transaction) -> Result<Vec<u8>, CryptoError> {
     let mut data = Vec::new();
     
-    // Fixed-size fields first
+    // Fixed-size fields first (exclude tx.hash to avoid circular dependency)
     data.extend_from_slice(&tx.nonce.to_le_bytes());
-    data.extend_from_slice(tx.hash.as_bytes());
     data.extend_from_slice(tx.from.as_bytes());
     
     // Optional to field
@@ -106,6 +105,7 @@ mod tests {
             gas_price: 1_000_000_000,
             data: vec![1, 2, 3],
             signature: Signature::new([0; 64]), // Will be updated by sign
+            tx_type: None,
         };
         
         // Sign it
@@ -133,6 +133,7 @@ mod tests {
             gas_price: 1_000_000_000,
             data: vec![5, 6, 7],
             signature: Signature::new([8; 64]),
+            tx_type: None,
         };
         
         // Should produce same bytes every time

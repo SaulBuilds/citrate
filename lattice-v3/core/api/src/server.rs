@@ -55,6 +55,7 @@ impl RpcServer {
         mempool: Arc<Mempool>,
         peer_manager: Arc<PeerManager>,
         executor: Arc<Executor>,
+        chain_id: u64,
     ) -> Self {
         let mut io_handler = IoHandler::new();
         
@@ -64,6 +65,7 @@ impl RpcServer {
             storage.clone(),
             mempool.clone(),
             executor.clone(),
+            chain_id,
         );
         
         // ========== Chain Methods ==========
@@ -304,9 +306,195 @@ impl RpcServer {
         });
         
         // eth_chainId (compatibility)
-        io_handler.add_sync_method("eth_chainId", |_params: Params| {
+        let chain_id_for_handler = chain_id;
+        io_handler.add_sync_method("eth_chainId", move |_params: Params| {
             rpc_request("eth_chainId");
-            Ok(Value::String("0x539".to_string())) // 1337 in hex
+            Ok(Value::String(format!("0x{:x}", chain_id_for_handler)))
+        });
+        
+        // ========== AI/ML Methods ==========
+        
+        // lattice_deployModel
+        let storage_ai_deploy = storage.clone();
+        let mempool_ai_deploy = mempool.clone();
+        let executor_ai_deploy = executor.clone();
+        io_handler.add_sync_method("lattice_deployModel", move |params: Params| {
+            rpc_request("lattice_deployModel");
+            let api = AiApi::new(storage_ai_deploy.clone(), mempool_ai_deploy.clone(), executor_ai_deploy.clone());
+            
+            // Parse parameters (simplified - would parse proper DeployModelRequest)
+            match block_on(async {
+                // Placeholder implementation - would parse actual request
+                Ok::<serde_json::Value, ApiError>(serde_json::json!({
+                    "status": "success",
+                    "message": "Model deployment not fully implemented yet"
+                }))
+            }) {
+                Ok(result) => Ok(result),
+                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+        
+        // lattice_getModel
+        let storage_ai_get = storage.clone();
+        let mempool_ai_get = mempool.clone();
+        let executor_ai_get = executor.clone();
+        io_handler.add_sync_method("lattice_getModel", move |params: Params| {
+            rpc_request("lattice_getModel");
+            let api = AiApi::new(storage_ai_get.clone(), mempool_ai_get.clone(), executor_ai_get.clone());
+            
+            let model_id_str: String = match params.parse() {
+                Ok(id) => id,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            // Parse model ID from hex string
+            match hex::decode(&model_id_str) {
+                Ok(model_id_bytes) if model_id_bytes.len() == 32 => {
+                    let mut model_id_array = [0u8; 32];
+                    model_id_array.copy_from_slice(&model_id_bytes);
+                    let model_id = lattice_execution::types::ModelId(Hash::new(model_id_array));
+                    
+                    match block_on(api.get_model(model_id)) {
+                        Ok(model) => Ok(serde_json::to_value(model).unwrap_or(Value::Null)),
+                        Err(ApiError::ModelNotFound(_)) => Ok(Value::Null),
+                        Err(_) => Err(jsonrpc_core::Error::internal_error()),
+                    }
+                },
+                _ => Err(jsonrpc_core::Error::invalid_params("Invalid model ID format".to_string())),
+            }
+        });
+        
+        // lattice_listModels
+        let storage_ai_list = storage.clone();
+        let mempool_ai_list = mempool.clone();
+        let executor_ai_list = executor.clone();
+        io_handler.add_sync_method("lattice_listModels", move |params: Params| {
+            rpc_request("lattice_listModels");
+            let api = AiApi::new(storage_ai_list.clone(), mempool_ai_list.clone(), executor_ai_list.clone());
+            
+            // Parse optional parameters
+            let (owner, limit): (Option<String>, Option<usize>) = params.parse().unwrap_or((None, None));
+            
+            let parsed_owner = owner.and_then(|addr_str| {
+                hex::decode(addr_str.trim_start_matches("0x")).ok()
+                    .and_then(|bytes| {
+                        if bytes.len() == 20 {
+                            let mut addr_array = [0u8; 20];
+                            addr_array.copy_from_slice(&bytes);
+                            Some(Address(addr_array))
+                        } else {
+                            None
+                        }
+                    })
+            });
+            
+            match block_on(api.list_models(parsed_owner, limit)) {
+                Ok(models) => {
+                    let model_strings: Vec<String> = models.iter()
+                        .map(|id| hex::encode(id.0.as_bytes()))
+                        .collect();
+                    Ok(serde_json::to_value(model_strings).unwrap_or(Value::Array(vec![])))
+                },
+                Err(_) => Ok(Value::Array(vec![])),
+            }
+        });
+        
+        // lattice_requestInference
+        let storage_ai_inf = storage.clone();
+        let mempool_ai_inf = mempool.clone();
+        let executor_ai_inf = executor.clone();
+        io_handler.add_sync_method("lattice_requestInference", move |params: Params| {
+            rpc_request("lattice_requestInference");
+            let api = AiApi::new(storage_ai_inf.clone(), mempool_ai_inf.clone(), executor_ai_inf.clone());
+            
+            // Parse inference request (simplified)
+            match block_on(async {
+                // Placeholder - would parse actual InferenceRequest
+                Ok::<serde_json::Value, ApiError>(serde_json::json!({
+                    "status": "success",
+                    "message": "Inference request not fully implemented yet"
+                }))
+            }) {
+                Ok(result) => Ok(result),
+                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+        
+        // lattice_getInferenceResult
+        let storage_ai_result = storage.clone();
+        let mempool_ai_result = mempool.clone();
+        let executor_ai_result = executor.clone();
+        io_handler.add_sync_method("lattice_getInferenceResult", move |params: Params| {
+            rpc_request("lattice_getInferenceResult");
+            let api = AiApi::new(storage_ai_result.clone(), mempool_ai_result.clone(), executor_ai_result.clone());
+            
+            let request_id_str: String = match params.parse() {
+                Ok(id) => id,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match hex::decode(&request_id_str) {
+                Ok(hash_bytes) if hash_bytes.len() == 32 => {
+                    let mut hash_array = [0u8; 32];
+                    hash_array.copy_from_slice(&hash_bytes);
+                    let request_hash = Hash::new(hash_array);
+                    
+                    match block_on(api.get_inference_result(request_hash)) {
+                        Ok(result) => Ok(serde_json::to_value(result).unwrap_or(Value::Null)),
+                        Err(_) => Ok(Value::Null),
+                    }
+                },
+                _ => Err(jsonrpc_core::Error::invalid_params("Invalid request ID format".to_string())),
+            }
+        });
+        
+        // lattice_createTrainingJob
+        let storage_ai_job = storage.clone();
+        let mempool_ai_job = mempool.clone();
+        let executor_ai_job = executor.clone();
+        io_handler.add_sync_method("lattice_createTrainingJob", move |params: Params| {
+            rpc_request("lattice_createTrainingJob");
+            let api = AiApi::new(storage_ai_job.clone(), mempool_ai_job.clone(), executor_ai_job.clone());
+            
+            match block_on(async {
+                // Placeholder - would parse actual CreateTrainingJobRequest
+                Ok::<serde_json::Value, ApiError>(serde_json::json!({
+                    "status": "success",
+                    "message": "Training job creation not fully implemented yet"
+                }))
+            }) {
+                Ok(result) => Ok(result),
+                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+        
+        // lattice_getTrainingJob
+        let storage_ai_job_get = storage.clone();
+        let mempool_ai_job_get = mempool.clone();
+        let executor_ai_job_get = executor.clone();
+        io_handler.add_sync_method("lattice_getTrainingJob", move |params: Params| {
+            rpc_request("lattice_getTrainingJob");
+            let api = AiApi::new(storage_ai_job_get.clone(), mempool_ai_job_get.clone(), executor_ai_job_get.clone());
+            
+            let job_id_str: String = match params.parse() {
+                Ok(id) => id,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            
+            match hex::decode(&job_id_str) {
+                Ok(job_id_bytes) if job_id_bytes.len() == 32 => {
+                    let mut job_id_array = [0u8; 32];
+                    job_id_array.copy_from_slice(&job_id_bytes);
+                    let job_id = lattice_execution::types::JobId(Hash::new(job_id_array));
+                    
+                    match block_on(api.get_training_job(job_id)) {
+                        Ok(job) => Ok(serde_json::to_value(job).unwrap_or(Value::Null)),
+                        Err(_) => Ok(Value::Null),
+                    }
+                },
+                _ => Err(jsonrpc_core::Error::invalid_params("Invalid job ID format".to_string())),
+            }
         });
         
         Self {

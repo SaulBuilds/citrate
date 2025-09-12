@@ -224,7 +224,7 @@ mod tests {
     fn test_account_cache() {
         let cache = StateCache::new(10, 100, 10);
         
-        let addr = Address::from([1u8; 20]);
+        let addr = Address([1u8; 20]);
         let account = AccountState {
             nonce: 1,
             balance: U256::from(1000),
@@ -247,7 +247,7 @@ mod tests {
     fn test_storage_cache() {
         let cache = StateCache::new(10, 100, 10);
         
-        let addr = Address::from([1u8; 20]);
+        let addr = Address([1u8; 20]);
         let key = U256::from(42);
         let value = U256::from(100);
         
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_hit_rates() {
         let cache = StateCache::new(10, 100, 10);
-        let addr = Address::from([1u8; 20]);
+        let addr = Address([1u8; 20]);
         
         // Initial hit rate is 0
         assert_eq!(cache.stats().account_hit_rate(), 0.0);

@@ -50,6 +50,11 @@ impl GhostDag {
         }
     }
     
+    /// Get consensus parameters
+    pub fn params(&self) -> &GhostDagParams {
+        &self.params
+    }
+    
     /// Calculate blue set for a block following GhostDAG rules
     pub async fn calculate_blue_set(&self, block: &Block) -> Result<BlueSet, GhostDagError> {
         // Check cache first

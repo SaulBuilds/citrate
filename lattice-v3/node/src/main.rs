@@ -284,10 +284,83 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         let (in_tx, mut in_rx) = tokio::sync::mpsc::channel::<(PeerId, lattice_network::NetworkMessage)>(512);
         peer_manager.set_incoming(in_tx).await;
         let pm_for_rx = peer_manager.clone();
+        let storage_for_handler = storage.clone();
+        let mempool_for_handler = mempool.clone();
         tokio::spawn(async move {
+            use lattice_network::NetworkMessage;
+            use lattice_consensus::types::Hash;
+            use lattice_sequencer::mempool::TxClass;
             while let Some((pid, msg)) = in_rx.recv().await {
                 tracing::debug!("[P2P] from={} msg={:?}", pid.0, msg);
-                // Future: hook protocol handlers here
+                // Handle protocol messages
+                match msg {
+                    NetworkMessage::GetBlocks { from, count, .. } => {
+                        tracing::info!("Received GetBlocks request from peer {} for {} blocks starting from {:?}", 
+                                     pid.0, count, from);
+                        let mut blocks = Vec::new();
+                        
+                        // Handle genesis request (zero hash)
+                        if from == Hash::new([0u8; 32]) {
+                            tracing::info!("Serving blocks from genesis");
+                            let mut h = 0u64;
+                            let end_h = count as u64;
+                            while h < end_h && blocks.len() < count as usize {
+                                if let Ok(Some(hash)) = storage_for_handler.blocks.get_block_by_height(h) {
+                                    if let Ok(Some(block)) = storage_for_handler.blocks.get_block(&hash) {
+                                        blocks.push(block);
+                                    }
+                                }
+                                h += 1;
+                            }
+                        } else {
+                            // Get blocks after the specified hash
+                            if let Ok(Some(start_block)) = storage_for_handler.blocks.get_block(&from) {
+                                let start_h = start_block.header.height + 1;
+                                let end_h = start_h.saturating_add(count as u64);
+                                let mut h = start_h;
+                                while h < end_h && blocks.len() < count as usize {
+                                    if let Ok(Some(hash)) = storage_for_handler.blocks.get_block_by_height(h) {
+                                        if let Ok(Some(block)) = storage_for_handler.blocks.get_block(&hash) {
+                                            blocks.push(block);
+                                        }
+                                    }
+                                    h += 1;
+                                }
+                            }
+                        }
+                        
+                        tracing::info!("Sending {} blocks to peer {}", blocks.len(), pid.0);
+                        let _ = pm_for_rx.send_to_peers(&[pid.clone()], &NetworkMessage::Blocks { blocks }).await;
+                    }
+                    NetworkMessage::GetTransactions { hashes } => {
+                        let mut txs = Vec::new();
+                        for h in hashes {
+                            if let Some(tx) = mempool_for_handler.get_transaction(&h).await {
+                                txs.push(tx);
+                            }
+                        }
+                        let _ = pm_for_rx.send_to_peers(&[pid.clone()], &NetworkMessage::Transactions { transactions: txs }).await;
+                    }
+                    NetworkMessage::NewTransaction { transaction } => {
+                        // Add to mempool if not already present
+                        if !mempool_for_handler.contains(&transaction.hash).await {
+                            let _ = mempool_for_handler.add_transaction(transaction.clone(), TxClass::Standard).await;
+                            // Re-broadcast to other peers
+                            let _ = pm_for_rx.broadcast(&NetworkMessage::NewTransaction { transaction }).await;
+                        }
+                    }
+                    NetworkMessage::NewBlock { block } => {
+                        // Store block if we don't have it
+                        if !storage_for_handler.blocks.has_block(&block.header.block_hash).unwrap_or(false) {
+                            let _ = storage_for_handler.blocks.put_block(&block);
+                            // Re-broadcast to other peers
+                            let _ = pm_for_rx.broadcast(&NetworkMessage::NewBlock { block }).await;
+                        }
+                    }
+                    _ => {
+                        // Other messages not handled yet
+                    }
+                }
             }
         });
 
@@ -365,10 +438,14 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         let mut coinbase = [0u8; 32];
         coinbase.copy_from_slice(&coinbase_bytes[..32.min(coinbase_bytes.len())]);
         
-        let producer = Arc::new(BlockProducer::new(
+        // Always use peer manager if we have one (network is already setup above)
+        let producer_peer_manager = Some(peer_manager.clone());
+        
+        let producer = Arc::new(BlockProducer::with_peer_manager(
             storage.clone(),
             executor.clone(),
             mempool.clone(),
+            producer_peer_manager,
             lattice_consensus::PublicKey::new(coinbase),
             config.mining.target_block_time,
         ));

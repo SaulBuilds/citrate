@@ -8,6 +8,7 @@ use lattice_execution::Executor;
 use lattice_execution::types::Address;
 use lattice_sequencer::mempool::Mempool;
 use lattice_economics::{RewardCalculator, RewardConfig};
+use lattice_network::{PeerManager, NetworkMessage};
 use primitive_types::U256;
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
@@ -46,6 +47,7 @@ pub struct BlockProducer {
     tip_selector: Arc<TipSelector>,
     chain_selector: Arc<ChainSelector>,
     ai_state_manager: Arc<AIStateManager>,
+    peer_manager: Option<Arc<PeerManager>>,
     coinbase: PublicKey,
     target_block_time: u64,
     reward_calculator: RewardCalculator,
@@ -99,6 +101,62 @@ impl BlockProducer {
             tip_selector,
             chain_selector,
             ai_state_manager,
+            peer_manager: None,
+            coinbase,
+            target_block_time,
+            reward_calculator,
+        }
+    }
+    
+    pub fn with_peer_manager(
+        storage: Arc<StorageManager>,
+        executor: Arc<Executor>,
+        mempool: Arc<Mempool>,
+        peer_manager: Option<Arc<PeerManager>>,
+        coinbase: PublicKey,
+        target_block_time: u64,
+    ) -> Self {
+        // Create consensus components with a new DAG store
+        let dag_store = Arc::new(DagStore::new());
+        let _chain_store = storage.blocks.clone();
+        
+        let ghostdag = Arc::new(GhostDag::new(GhostDagParams::default(), dag_store.clone()));
+        let tip_selector = Arc::new(TipSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            lattice_consensus::tip_selection::SelectionStrategy::HighestBlueScore,
+        ));
+        let chain_selector = Arc::new(ChainSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            tip_selector.clone(),
+            100, // finality depth
+        ));
+        
+        // Create reward calculator with default config
+        let reward_config = RewardConfig {
+            block_reward: 10,  // 10 LATT per block
+            halving_interval: 2_100_000,
+            inference_bonus: 1,  // 0.01 LATT per inference  
+            model_deployment_bonus: 1,  // 1 LATT per model deployment
+            treasury_percentage: 10,
+            treasury_address: lattice_execution::types::Address([0x11; 20]),  // Treasury address
+        };
+        let reward_calculator = RewardCalculator::new(reward_config);
+        
+        // Create AI state manager
+        let ai_state_manager = Arc::new(AIStateManager::new(storage.db.clone()));
+        
+        Self {
+            storage,
+            executor,
+            mempool,
+            dag_store,
+            ghostdag,
+            tip_selector,
+            chain_selector,
+            ai_state_manager,
+            peer_manager,
             coinbase,
             target_block_time,
             reward_calculator,
@@ -252,6 +310,21 @@ impl BlockProducer {
         
         // Persist block and related data
         self.storage.blocks.put_block(&block)?;
+        
+        // Broadcast block to connected peers
+        if let Some(peer_manager) = &self.peer_manager {
+            let block_msg = NetworkMessage::NewBlock { block: block.clone() };
+            tokio::spawn({
+                let pm = peer_manager.clone();
+                async move {
+                    if let Err(e) = pm.broadcast(&block_msg).await {
+                        tracing::warn!("Failed to broadcast block to peers: {}", e);
+                    } else {
+                        tracing::info!("Broadcasted new block to peers");
+                    }
+                }
+            });
+        }
 
         // Store transactions and receipts for RPC visibility
         if !block.transactions.is_empty() {

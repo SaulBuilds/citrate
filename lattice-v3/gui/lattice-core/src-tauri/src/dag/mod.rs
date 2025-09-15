@@ -27,7 +27,10 @@ impl DAGManager {
         
         // Get the latest height from storage
         let latest_height = self.storage.blocks.get_latest_height().unwrap_or(0);
+        info!("DAG: Latest height in storage: {}", latest_height);
+        
         if latest_height == 0 {
+            info!("DAG: No blocks in storage, returning empty data");
             // Return empty data if no blocks exist
             return Ok(DAGData {
                 nodes: vec![],
@@ -48,7 +51,7 @@ impl DAGManager {
         let base_height = start_height.unwrap_or(latest_height.saturating_sub(limit as u64 - 1));
         let end_height = (base_height + limit as u64).min(latest_height + 1);
         
-        info!("Fetching blocks from height {} to {}", base_height, end_height);
+        info!("DAG: Fetching blocks from height {} to {} (limit: {})", base_height, end_height, limit);
         
         // Fetch blocks from storage (build nodes, links)
         let mut nodes_tmp: Vec<(Hash, DAGNode)> = Vec::new();

@@ -12,6 +12,7 @@ mod dag;
 mod models;
 mod block_producer;
 mod rpc_client;
+mod sync;
 // network_service integration is pending; module intentionally not included for now
 
 use node::{NodeManager, NodeStatus, NodeConfig};
@@ -63,9 +64,26 @@ async fn start_node(state: State<'_, AppState>) -> Result<String, String> {
                 state.node_manager.get_storage().await,
                 state.node_manager.get_ghostdag().await,
             ) {
-                let dag_manager = Arc::new(DAGManager::new(storage, ghostdag));
-                *state.dag_manager.write().await = Some(dag_manager);
+                let dag_manager = Arc::new(DAGManager::new(storage.clone(), ghostdag.clone()));
+                *state.dag_manager.write().await = Some(dag_manager.clone());
                 info!("DAG manager initialized");
+                
+                // Start a task to periodically refresh DAG manager to pick up synced blocks
+                let _dag_for_refresh = dag_manager.clone();
+                let storage_for_refresh = storage.clone();
+                let _ghostdag_for_refresh = ghostdag.clone();
+                tokio::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        
+                        // Reload blocks into DAG if new ones arrived
+                        if let Ok(latest_height) = storage_for_refresh.blocks.get_latest_height() {
+                            // Just trigger a refresh - the DAG manager will read from storage
+                            // which now contains synced blocks
+                            tracing::debug!("DAG refresh: latest height = {}", latest_height);
+                        }
+                    }
+                });
             }
             
             info!("Node started successfully");

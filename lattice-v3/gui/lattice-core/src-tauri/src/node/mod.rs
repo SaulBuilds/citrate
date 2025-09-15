@@ -9,8 +9,7 @@ use tracing::{info, warn, error};
 // Core blockchain components - use what's actually available
 use lattice_consensus::{
     GhostDag, GhostDagParams, DagStore,
-    TipSelector, VrfProposerSelector, ChainSelector,
-    types::{Hash, Block, BlockHeader, Transaction, PublicKey, Signature, VrfProof},
+    types::{Hash, Block, BlockHeader, PublicKey, Signature, VrfProof},
 };
 use lattice_storage::StorageManager;
 use lattice_execution::{Executor, state::StateDB};
@@ -20,6 +19,7 @@ use lattice_network::NetworkMessage;
 use lattice_network::peer::{PeerId, Direction as PeerDirection, PeerState as NetPeerState};
 // use lattice_api::{RpcServer, RpcConfig}; // TODO: Fix mempool type mismatch
 use crate::wallet::WalletManager;
+use crate::sync::iterative_sync::{IterativeSyncManager, SyncConfig};
 use sha3::{Digest, Sha3_256};
 use tokio::task::JoinHandle;
 
@@ -29,6 +29,7 @@ pub struct NodeManager {
     config: Arc<RwLock<NodeConfig>>,
     storage: Arc<RwLock<Option<Arc<StorageManager>>>>,
     ghostdag: Arc<RwLock<Option<Arc<GhostDag>>>>,
+    sync_manager: Arc<RwLock<Option<Arc<IterativeSyncManager>>>>,
     reward_address: Arc<RwLock<Option<String>>>,
     wallet_manager: Arc<RwLock<Option<Arc<WalletManager>>>>,
 }
@@ -41,6 +42,7 @@ impl NodeManager {
             config: Arc::new(RwLock::new(config)),
             storage: Arc::new(RwLock::new(None)),
             ghostdag: Arc::new(RwLock::new(None)),
+            sync_manager: Arc::new(RwLock::new(None)),
             reward_address: Arc::new(RwLock::new(None)),
             wallet_manager: Arc::new(RwLock::new(None)),
         })
@@ -57,11 +59,49 @@ impl NodeManager {
             return Err(anyhow::anyhow!("Node is already running"));
         }
 
-        let config = self.config.read().await.clone();
+        let mut config = self.config.read().await.clone();
+        
+        // If we're in testnet mode, ensure we have the right configuration
+        if config.network == "testnet" {
+            info!("Applying testnet configuration override");
+            config.configure_for_testnet();
+            // Update the shared config
+            *self.config.write().await = config.clone();
+            // Save the corrected config
+            let _ = config.save();
+        }
         
         // Initialize basic components with simplified setup
         let storage_path = PathBuf::from(&config.data_dir).join("chain");
         std::fs::create_dir_all(&storage_path)?;
+        
+        // Force clean up any existing lock files before starting
+        let lock_file = storage_path.join("LOCK");
+        if lock_file.exists() {
+            warn!("Found existing LOCK file, removing it");
+            match std::fs::remove_file(&lock_file) {
+                Ok(_) => info!("Removed old LOCK file"),
+                Err(e) => {
+                    error!("Failed to remove LOCK file: {}. Trying to kill any zombie processes...", e);
+                    // Try to find and kill any processes holding the lock
+                    let _ = std::process::Command::new("lsof")
+                        .arg(&lock_file)
+                        .output();
+                }
+            }
+        }
+        
+        // Also clean any other lock-related files
+        if let Ok(entries) = std::fs::read_dir(&storage_path) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.contains("LOCK") || name.contains(".lock") {
+                        let _ = std::fs::remove_file(entry.path());
+                        info!("Cleaned up lock file: {}", name);
+                    }
+                }
+            }
+        }
         
         let storage = Arc::new(StorageManager::new(
             storage_path.clone(),
@@ -116,6 +156,21 @@ impl NodeManager {
         
         let peer_manager = Arc::new(PeerManager::new(peer_config));
 
+        // Initialize iterative sync manager to avoid stack overflow
+        let sync_config = SyncConfig {
+            batch_size: 50,           // Small batches for GUI
+            max_queue_size: 200,       // Limit memory usage
+            sync_interval: 5,
+            max_retries: 3,
+            sparse_sync: true,         // Use sparse sync initially
+            sparse_step: 10,
+        };
+        let sync_manager = Arc::new(IterativeSyncManager::new(
+            storage.clone(),
+            peer_manager.clone(),
+            Some(sync_config),
+        ));
+
         if config.enable_network {
             // Head info
             let head_height = storage.blocks.get_latest_height().unwrap_or(0);
@@ -134,7 +189,9 @@ impl NodeManager {
             let pm_for_listener = peer_manager.clone();
             let storage_for_listener = storage.clone();
             let ghostdag_for_listener = ghostdag.clone();
+            let sync_manager_for_listener = sync_manager.clone();
             let mempool_for_listener = mempool.clone();
+            let config_for_listener = Arc::new(RwLock::new(config.clone()));
             tokio::spawn(async move {
                 use lattice_network::{NetworkMessage, protocol::PeerAddress};
                 use lattice_sequencer::mempool::TxClass;
@@ -143,26 +200,51 @@ impl NodeManager {
                         NetworkMessage::NewBlock { block } => {
                             // Dedup by storage
                             if !storage_for_listener.blocks.has_block(&block.header.block_hash).unwrap_or(false) {
-                                if let Err(e) = ghostdag_for_listener.add_block(&block).await { tracing::warn!("add_block failed: {}", e); }
-                                if let Err(e) = storage_for_listener.blocks.put_block(&block) { tracing::warn!("store block failed: {}", e); }
+                                info!("Received new block at height {} with hash {:?}", 
+                                    block.header.height, block.header.block_hash);
+                                
+                                // Use sync manager to handle the block (avoids recursion)
+                                if let Err(e) = sync_manager_for_listener.handle_blocks(vec![block.clone()]).await {
+                                    tracing::warn!("Failed to handle block via sync manager: {}", e);
+                                }
+                                
                                 // Re-broadcast to others
                                 let _ = pm_for_listener.broadcast(&NetworkMessage::NewBlock { block }).await;
+                            } else {
+                                tracing::debug!("Block already exists, skipping");
                             }
                         }
                         NetworkMessage::GetBlocks { from, count, .. } => {
-                            // Serve a forward range based on height
+                            // Serve blocks AFTER the 'from' block
                             let mut blocks = Vec::new();
                             if let Ok(Some(start_block)) = storage_for_listener.blocks.get_block(&from) {
-                                let start_h = start_block.header.height;
+                                // Start from the NEXT block after the requested one
+                                let start_h = start_block.header.height + 1;
                                 let end_h = start_h.saturating_add(count as u64);
                                 let mut h = start_h;
-                                while h <= end_h {
+                                while h < end_h {
                                     if let Ok(Some(hash_h)) = storage_for_listener.blocks.get_block_by_height(h) {
-                                        if let Ok(Some(b)) = storage_for_listener.blocks.get_block(&hash_h) { blocks.push(b); }
+                                        if let Ok(Some(b)) = storage_for_listener.blocks.get_block(&hash_h) { 
+                                            blocks.push(b);
+                                        }
                                     }
                                     if blocks.len() as u32 >= count { break; }
                                     h += 1;
                                 }
+                                info!("Serving {} blocks starting from height {}", blocks.len(), start_h);
+                            } else if from == Hash::new([0u8; 32]) {
+                                // Special case: requesting from genesis (zero hash)
+                                let mut h = 0u64;
+                                while h < count as u64 {
+                                    if let Ok(Some(hash_h)) = storage_for_listener.blocks.get_block_by_height(h) {
+                                        if let Ok(Some(b)) = storage_for_listener.blocks.get_block(&hash_h) { 
+                                            blocks.push(b);
+                                        }
+                                    }
+                                    if blocks.len() as u32 >= count { break; }
+                                    h += 1;
+                                }
+                                info!("Serving {} blocks from genesis", blocks.len());
                             }
                             let _ = pm_for_listener.send_to_peers(&[peer_id.clone()], &NetworkMessage::Blocks { blocks }).await;
                         }
@@ -183,9 +265,10 @@ impl NodeManager {
                             let _ = pm_for_listener.send_to_peers(&[peer_id.clone()], &NetworkMessage::Headers { headers }).await;
                         }
                         NetworkMessage::Blocks { blocks } => {
-                            for block in blocks {
-                                let _ = ghostdag_for_listener.add_block(&block).await;
-                                let _ = storage_for_listener.blocks.put_block(&block);
+                            info!("Received {} blocks from peer", blocks.len());
+                            // Use sync manager to handle blocks iteratively (avoids stack overflow)
+                            if let Err(e) = sync_manager_for_listener.handle_blocks(blocks).await {
+                                warn!("Failed to handle blocks via sync manager: {}", e);
                             }
                         }
                         NetworkMessage::NewTransaction { transaction } => {
@@ -209,9 +292,20 @@ impl NodeManager {
                             let _ = pm_for_listener.send_to_peers(&[peer_id.clone()], &NetworkMessage::Peers { peers }).await;
                         }
                         NetworkMessage::Peers { peers } => {
-                            // Attempt to connect to new peers
-                            for pa in peers {
-                                if let Ok(addr) = pa.addr.parse() { let _ = pm_for_listener.clone().connect_bootnode_real(Some(lattice_network::peer::PeerId::new(pa.id)), addr, network_id, genesis_hash, head_height, head_hash).await; }
+                            // Only auto-connect to discovered peers in devnet with discovery enabled
+                            let cfg = config_for_listener.read().await;
+                            if cfg.network == "devnet" && cfg.discovery {
+                                // Attempt to connect to new peers
+                                for pa in peers {
+                                    if let Ok(addr) = pa.addr.parse() { 
+                                        let _ = pm_for_listener.clone().connect_bootnode_real(
+                                            Some(lattice_network::peer::PeerId::new(pa.id)), 
+                                            addr, network_id, genesis_hash, head_height, head_hash
+                                        ).await; 
+                                    }
+                                }
+                            } else {
+                                info!("Ignoring {} discovered peers (discovery disabled)", peers.len());
                             }
                         }
                         _ => {}
@@ -220,17 +314,21 @@ impl NodeManager {
             });
             let pm_for_listener = peer_manager.clone();
             pm_for_listener.start_listener(listen_addr, network_id, genesis_hash, head_height, head_hash).await.ok();
-            // Periodic discovery: ask peers for peers
-            let pm_for_peers = peer_manager.clone();
-            tokio::spawn(async move {
-                loop {
-                    let _ = pm_for_peers.broadcast(&lattice_network::NetworkMessage::GetPeers).await;
-                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                }
-            });
+            // Periodic discovery: ask peers for peers (only in devnet with discovery enabled)
+            if config.network == "devnet" && config.discovery {
+                let pm_for_peers = peer_manager.clone();
+                tokio::spawn(async move {
+                    loop {
+                        let _ = pm_for_peers.broadcast(&lattice_network::NetworkMessage::GetPeers).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    }
+                });
+            } else {
+                info!("Peer discovery disabled for network: {}", config.network);
+            }
         }
 
-        // Connect to configured bootnodes (placeholder connections for UI/testing)
+        // Connect to configured bootnodes and start syncing
         if config.enable_network {
             let head_height = storage.blocks.get_latest_height().unwrap_or(0);
             let head_hash = if head_height > 0 {
@@ -238,16 +336,76 @@ impl NodeManager {
             } else { Hash::default() };
             let network_id = config.mempool.chain_id as u32;
             let genesis_hash = storage.blocks.get_block_by_height(0).ok().flatten().unwrap_or_default();
+            
+            info!("Connecting to {} bootnodes", config.bootnodes.len());
             for entry in &config.bootnodes {
+                info!("Processing bootnode entry: {}", entry);
                 if let Some((peer_id, addr)) = parse_bootnode(entry) {
+                    info!("Attempting to connect to bootnode at {}", addr);
                     let pm = peer_manager.clone();
                     tokio::spawn(async move {
-                        let _ = pm.connect_bootnode_real(Some(peer_id), addr, network_id, genesis_hash, head_height, head_hash).await;
+                        match pm.connect_bootnode_real(Some(peer_id), addr, network_id, genesis_hash, head_height, head_hash).await {
+                            Ok(_) => info!("Successfully connected to bootnode at {}", addr),
+                            Err(e) => error!("Failed to connect to bootnode at {}: {}", addr, e),
+                        }
                     });
                 } else {
                     warn!("Invalid bootnode entry: {} (expected peerId@ip:port or ip:port)", entry);
                 }
             }
+            
+            // Start block synchronization task
+            let pm_for_sync = peer_manager.clone();
+            let storage_for_sync = storage.clone();
+            tokio::spawn(async move {
+                info!("Starting block sync task");
+                
+                // Wait for peers to connect
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                
+                loop {
+                    // Get current height
+                    let current_height = storage_for_sync.blocks.get_latest_height().unwrap_or(0);
+                    info!("Sync: Current height is {}", current_height);
+                    
+                    // Check if we have peers
+                    let (peer_count, _, _) = pm_for_sync.get_peer_counts().await;
+                    if peer_count == 0 {
+                        warn!("Sync: No peers connected, skipping sync");
+                        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                        continue;
+                    }
+                    
+                    info!("Sync: Have {} peers, requesting blocks", peer_count);
+                    
+                    // Request blocks from peers starting AFTER our current height
+                    if current_height > 0 {
+                        // We have some blocks, request the next ones
+                        if let Ok(Some(current_hash)) = storage_for_sync.blocks.get_block_by_height(current_height) {
+                            info!("Sync: Have blocks up to height {}, requesting next batch", current_height);
+                            // GetBlocks with a hash requests blocks AFTER that block
+                            let _ = pm_for_sync.broadcast(&NetworkMessage::GetBlocks { 
+                                from: current_hash, 
+                                count: 100,
+                                step: 1, // Get every block (no sparse download)
+                            }).await;
+                        }
+                    } else {
+                        // We don't have any blocks, request from genesis
+                        info!("Sync: No blocks found, requesting from genesis");
+                        // Use a zero hash to request from the beginning
+                        let genesis_hash = Hash::new([0u8; 32]);
+                        let _ = pm_for_sync.broadcast(&NetworkMessage::GetBlocks { 
+                            from: genesis_hash, 
+                            count: 100,
+                            step: 1, // Get every block
+                        }).await;
+                    }
+                    
+                    // Wait before next sync attempt
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                }
+            });
         }
 
         // Create genesis block if needed
@@ -276,29 +434,52 @@ impl NodeManager {
         // Store references for DAG manager before moving
         *self.storage.write().await = Some(storage.clone());
         *self.ghostdag.write().await = Some(ghostdag.clone());
+        *self.sync_manager.write().await = Some(sync_manager.clone());
+        
+        // Start the sync manager
+        if config.enable_network {
+            info!("Starting iterative sync manager");
+            if let Err(e) = sync_manager.start_sync().await {
+                warn!("Failed to start sync manager: {}", e);
+            }
+        }
         
         // Get reward address for block production  
         let reward_address = self.reward_address.read().await.clone();
         
         // Create node instance
         let running = Arc::new(RwLock::new(true));
-        let (block_producer_handle, block_producer_running) = if let Some(addr) = reward_address {
-            // Start block production directly and keep running flag
-            let wm = self.wallet_manager.read().await.clone();
-            let producer = crate::block_producer::BlockProducer::new(
-                ghostdag.clone(),
-                mempool.clone(),
-                executor.clone(),
-                storage.clone(),
-                Arc::new(RwLock::new(Some(addr))),
-                wm,
-                if config.enable_network { Some(peer_manager.clone()) } else { None },
-            );
-            let running_flag = producer.running_flag();
-            let handle = producer.start().await.ok();
-            (handle, Some(running_flag))
+        
+        // Only start block producer if:
+        // 1. We have a reward address
+        // 2. We're NOT in testnet/mainnet mode (only for devnet)
+        let should_produce_blocks = reward_address.is_some() && config.network == "devnet";
+        
+        let (block_producer_handle, block_producer_running) = if should_produce_blocks {
+            if let Some(addr) = reward_address {
+                info!("Starting block producer for devnet with reward address {}", addr);
+                let wm = self.wallet_manager.read().await.clone();
+                let producer = crate::block_producer::BlockProducer::new(
+                    ghostdag.clone(),
+                    mempool.clone(),
+                    executor.clone(),
+                    storage.clone(),
+                    Arc::new(RwLock::new(Some(addr))),
+                    wm,
+                    if config.enable_network { Some(peer_manager.clone()) } else { None },
+                );
+                let running_flag = producer.running_flag();
+                let handle = producer.start().await.ok();
+                (handle, Some(running_flag))
+            } else {
+                (None, None)
+            }
         } else {
-            warn!("No reward address set, block production disabled");
+            if config.network != "devnet" {
+                info!("Block production disabled - syncing from {} network", config.network);
+            } else {
+                warn!("No reward address set, block production disabled");
+            }
             (None, None)
         };
         
@@ -312,7 +493,7 @@ impl NodeManager {
             mempool,
             ghostdag,
             peer_manager,
-            running,
+            _running: running,
             start_time: std::time::Instant::now(),
             block_producer_handle,
             block_producer_running,
@@ -327,10 +508,15 @@ impl NodeManager {
     }
 
     pub async fn stop(&self) -> Result<()> {
+        // First clear external references to storage
+        *self.storage.write().await = None;
+        *self.ghostdag.write().await = None;
+        
         let mut node_guard = self.node.write().await;
         if let Some(mut node) = node_guard.take() {
             info!("Stopping Lattice node");
-            *node.running.write().await = false;
+            *node._running.write().await = false;
+            
             // Stop block producer loop cleanly
             if let Some(rf) = node.block_producer_running.as_ref() {
                 *rf.write().await = false;
@@ -339,6 +525,8 @@ impl NodeManager {
             // Stop block producer
             if let Some(handle) = node.block_producer_handle.take() {
                 handle.abort();
+                // Wait a bit for thread to stop
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
             
             // Stop RPC server (when implemented)
@@ -346,23 +534,43 @@ impl NodeManager {
                 handle.abort();
             }
             
-            // Drop storage to release database locks
-            drop(node.storage);
+            // Explicitly drop all components to release resources
+            drop(node.peer_manager);
+            drop(node.mempool);
+            drop(node.executor);
+            drop(node.ghostdag);
+            drop(node.storage); // This should release the database
             
-            // Clear references
-            *self.storage.write().await = None;
-            *self.ghostdag.write().await = None;
+            // Wait for resources to be released
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             
-            // Clean up lock files if they exist
+            // Force clean up lock files
             let config = self.config.read().await;
-            let lock_file = std::path::Path::new(&config.data_dir).join("chain").join("LOCK");
+            let chain_dir = std::path::Path::new(&config.data_dir).join("chain");
+            
+            // Remove LOCK file
+            let lock_file = chain_dir.join("LOCK");
             if lock_file.exists() {
-                let _ = std::fs::remove_file(&lock_file);
-                info!("Cleaned up lock file: {:?}", lock_file);
+                match std::fs::remove_file(&lock_file) {
+                    Ok(_) => info!("Cleaned up lock file: {:?}", lock_file),
+                    Err(e) => warn!("Failed to remove lock file: {}", e),
+                }
             }
             
-            info!("Lattice node stopped");
+            // Also try to remove any other lock-related files
+            if let Ok(entries) = std::fs::read_dir(&chain_dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.contains("LOCK") || name.contains(".lock") {
+                            let _ = std::fs::remove_file(entry.path());
+                        }
+                    }
+                }
+            }
+            
+            info!("Lattice node stopped and cleaned up");
         }
+        
         Ok(())
     }
     
@@ -684,7 +892,7 @@ impl NodeManager {
         
         if let Some(node) = node_guard.as_ref() {
             let block_height = node.storage.blocks.get_latest_height().unwrap_or(0);
-            let (total, inbound, outbound) = node.peer_manager.get_peer_counts().await;
+            let (total, _inbound, _outbound) = node.peer_manager.get_peer_counts().await;
             let peer_count = total;
             let tips = node.ghostdag.get_tips().await;
             let (last_hash, last_ts) = if block_height > 0 {
@@ -976,7 +1184,7 @@ async fn run_block_producer(
                 receipt_root: Hash::new([0u8; 32]),
                 artifact_root: Hash::new([0u8; 32]),
                 ghostdag_params: GhostDagParams::default(),
-                transactions: vec![],
+                transactions: txs, // Include transactions from mempool
                 signature: Signature::new([0u8; 64]),
             };
             
@@ -1006,7 +1214,7 @@ struct LatticeNode {
     mempool: Arc<RwLock<Mempool>>,
     ghostdag: Arc<GhostDag>,
     peer_manager: Arc<PeerManager>,
-    running: Arc<RwLock<bool>>,
+    _running: Arc<RwLock<bool>>,
     start_time: std::time::Instant,
     block_producer_handle: Option<JoinHandle<()>>,
     block_producer_running: Option<Arc<RwLock<bool>>>,
@@ -1164,13 +1372,13 @@ impl NodeConfig {
         self.network = "testnet".to_string();
         self.mempool.chain_id = 42069;
         self.enable_network = true;
-        self.discovery = true;
+        self.discovery = false;  // Don't auto-discover, only connect to specified nodes
         self.max_peers = 100;
         
-        // Add localhost testnet node as bootstrap if no other nodes configured
-        if self.bootnodes.is_empty() {
-            self.bootnodes.push("127.0.0.1:30303".to_string());
-        }
+        // ONLY connect to localhost testnet node - clear any other bootnodes
+        self.bootnodes.clear();
+        self.bootnodes.push("127.0.0.1:30303".to_string());
+        info!("Testnet mode: Will only connect to localhost:30303");
         
         // Ensure proper ports for GUI node (different from testnet node)
         self.p2p_port = 30304;  // Different from testnet's 30303

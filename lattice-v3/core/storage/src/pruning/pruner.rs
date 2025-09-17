@@ -213,4 +213,52 @@ mod tests {
         let pruner = Pruner::new(db, block_store, state_store, config);
         assert_eq!(pruner.get_config().keep_blocks, 1000);
     }
+
+    #[tokio::test]
+    async fn test_prune_blocks_respects_keep_blocks() {
+        let temp_dir = TempDir::new().unwrap();
+        let db = Arc::new(RocksDB::open(temp_dir.path()).unwrap());
+        let block_store = Arc::new(BlockStore::new(db.clone()));
+        let state_store = Arc::new(StateStore::new(db.clone()));
+
+        // Seed blocks at heights 0..=4
+        use lattice_consensus::types::{Block, BlockHeader, PublicKey, VrfProof, Signature, GhostDagParams};
+        for h in 0..=4u64 {
+            let block = Block {
+                header: BlockHeader {
+                    version: 1,
+                    block_hash: Hash::new([h as u8; 32]),
+                    selected_parent_hash: if h == 0 { Hash::default() } else { Hash::new([(h-1) as u8; 32]) },
+                    merge_parent_hashes: vec![],
+                    timestamp: h,
+                    height: h,
+                    blue_score: h,
+                    blue_work: h as u128,
+                    pruning_point: Hash::default(),
+                    proposer_pubkey: PublicKey::new([0; 32]),
+                    vrf_reveal: VrfProof { proof: vec![], output: Hash::default() },
+                },
+                state_root: Hash::default(),
+                tx_root: Hash::default(),
+                receipt_root: Hash::default(),
+                artifact_root: Hash::default(),
+                ghostdag_params: GhostDagParams::default(),
+                transactions: vec![],
+                signature: Signature::new([0; 64]),
+            };
+            block_store.put_block(&block).unwrap();
+        }
+
+        let config = PruningConfig { keep_blocks: 2, keep_states: 0, interval: Duration::from_secs(60), batch_size: 100, auto_prune: false };
+        let pruner = Pruner::new(db, block_store.clone(), state_store, config);
+        let stats = pruner.prune().await.unwrap();
+
+        // With latest height=4 and keep_blocks=2 → prune heights 0 and 1 (2 blocks)
+        assert_eq!(stats.blocks_pruned, 2);
+
+        // Ensure height>=2 remain
+        assert!(block_store.get_block(&Hash::new([2; 32])).unwrap().is_some());
+        assert!(block_store.get_block(&Hash::new([4; 32])).unwrap().is_some());
+        assert!(block_store.get_block(&Hash::new([0; 32])).unwrap().is_none());
+    }
 }

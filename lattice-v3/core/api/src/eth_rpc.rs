@@ -13,7 +13,7 @@ use futures::executor::block_on;
 use serde_json::json;
 use hex;
 use bincode;
-use sha3::{Digest, Keccak256};
+use sha3::Keccak256;
 
 /// Add Ethereum-compatible RPC methods to the IoHandler
 pub fn register_eth_methods(
@@ -222,6 +222,7 @@ pub fn register_eth_methods(
 
     // eth_getTransactionByHash - Returns transaction by hash
     let storage_tx = storage.clone();
+    let mempool_tx_lookup = mempool.clone();
     io_handler.add_sync_method("eth_getTransactionByHash", move |params: Params| {
         let api = ChainApi::new(storage_tx.clone());
         
@@ -249,16 +250,19 @@ pub fn register_eth_methods(
             _ => return Err(jsonrpc_core::Error::invalid_params("Invalid hash length")),
         };
         
-        match block_on(api.get_transaction(Hash::new(hash_bytes))) {
+        let h = Hash::new(hash_bytes);
+        match block_on(api.get_transaction(h)) {
             Ok(tx) => {
+                let from_hex = format!("0x{}", tx.from);
+                let to_hex_opt = tx.to.as_ref().map(|s| format!("0x{}", s));
                 Ok(json!({
                     "hash": format!("0x{}", hex::encode(tx.hash.as_bytes())),
                     "nonce": format!("0x{:x}", tx.nonce),
                     "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
                     "blockNumber": "0x0",
                     "transactionIndex": "0x0",
-                    "from": format!("0x{}", tx.from),
-                    "to": tx.to.as_ref().map(|t| format!("0x{}", t)),
+                    "from": from_hex,
+                    "to": to_hex_opt,
                     "value": format!("0x{:x}", tx.value),
                     "gasPrice": format!("0x{:x}", tx.gas_price),
                     "gas": format!("0x{:x}", tx.gas_limit),
@@ -269,7 +273,32 @@ pub fn register_eth_methods(
                     "type": "0x0"
                 }))
             },
-            Err(_) => Ok(Value::Null),
+            Err(_) => {
+                // Fallback: check mempool for pending transaction
+                if let Some(tx) = block_on(mempool_tx_lookup.get_transaction(&h)) {
+                    let from_addr = lattice_execution::types::Address::from_public_key(&tx.from);
+                    let to_addr_opt = tx.to.as_ref().map(|t| lattice_execution::types::Address::from_public_key(t));
+                    Ok(json!({
+                        "hash": format!("0x{}", hex::encode(tx.hash.as_bytes())),
+                        "nonce": format!("0x{:x}", tx.nonce),
+                        "blockHash": Value::Null,
+                        "blockNumber": Value::Null,
+                        "transactionIndex": Value::Null,
+                        "from": format!("0x{}", hex::encode(from_addr.0)),
+                        "to": to_addr_opt.map(|a| format!("0x{}", hex::encode(a.0))),
+                        "value": format!("0x{:x}", tx.value),
+                        "gasPrice": format!("0x{:x}", tx.gas_price),
+                        "gas": format!("0x{:x}", tx.gas_limit),
+                        "input": format!("0x{}", hex::encode(&tx.data)),
+                        "v": "0x1b",
+                        "r": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "s": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "type": "0x0"
+                    }))
+                } else {
+                    Ok(Value::Null)
+                }
+            },
         }
     });
 
@@ -356,11 +385,7 @@ pub fn register_eth_methods(
         Ok(Value::Bool(false))
     });
 
-    // net_peerCount - Returns number of peers
-    io_handler.add_sync_method("net_peerCount", move |_params: Params| {
-        // Return 0 for now (single node testnet)
-        Ok(Value::String("0x0".to_string()))
-    });
+    // net_peerCount handled in server.rs with NetworkApi to reflect real peers
 
     // eth_gasPrice - Returns current gas price
     io_handler.add_sync_method("eth_gasPrice", move |_params: Params| {
@@ -500,6 +525,90 @@ pub fn register_eth_methods(
         }
 
         Ok(Value::String(format!("0x{:x}", base_nonce)))
+    });
+
+    // eth_sendTransaction - Submit transaction (object form)
+    let mempool_send_tx = mempool.clone();
+    let executor_send_tx = executor.clone();
+    io_handler.add_sync_method("eth_sendTransaction", move |params: Params| {
+        let api = TransactionApi::new(mempool_send_tx.clone(), executor_send_tx.clone());
+
+        // Expect params: [txObject]
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing transaction object"));
+        }
+        let obj = match &params[0] {
+            Value::Object(map) => map,
+            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid transaction object")),
+        };
+
+        // from (required)
+        let from_s = obj.get("from").and_then(|v| v.as_str())
+            .ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'from'"))?;
+        let from_hex = from_s.trim().trim_start_matches("0x");
+        let from_bytes = hex::decode(from_hex)
+            .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from' hex"))?;
+        if from_bytes.len() != 20 { return Err(jsonrpc_core::Error::invalid_params("'from' must be 20 bytes")); }
+        let mut from20 = [0u8; 20]; from20.copy_from_slice(&from_bytes);
+
+        // to (optional)
+        let to20_opt = if let Some(to_s) = obj.get("to").and_then(|v| v.as_str()) {
+            let to_hex = to_s.trim().trim_start_matches("0x");
+            let to_bytes = hex::decode(to_hex)
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'to' hex"))?;
+            if to_bytes.len() != 20 { return Err(jsonrpc_core::Error::invalid_params("'to' must be 20 bytes")); }
+            let mut to20 = [0u8; 20]; to20.copy_from_slice(&to_bytes);
+            Some(to20)
+        } else { None };
+
+        // value (hex string) optional
+        let value_u256 = if let Some(vs) = obj.get("value").and_then(|v| v.as_str()) {
+            let s = vs.trim();
+            let s = s.strip_prefix("0x").unwrap_or(s);
+            U256::from_str_radix(s, 16).unwrap_or_else(|_| U256::from(0u64))
+        } else { U256::from(0u64) };
+
+        // gas and gasPrice (hex strings) optional
+        let gas = if let Some(gs) = obj.get("gas").and_then(|v| v.as_str()) {
+            let s = gs.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            u64::from_str_radix(s, 16).unwrap_or(21000)
+        } else { 21000 };
+        let gas_price = if let Some(gps) = obj.get("gasPrice").and_then(|v| v.as_str()) {
+            let s = gps.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            u64::from_str_radix(s, 16).unwrap_or(1_000_000_000)
+        } else { 1_000_000_000 };
+
+        // nonce (hex string) optional
+        let nonce_opt = if let Some(ns) = obj.get("nonce").and_then(|v| v.as_str()) {
+            let s = ns.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            Some(u64::from_str_radix(s, 16).unwrap_or(0))
+        } else { None };
+
+        // data (hex string) optional
+        let data = if let Some(ds) = obj.get("data").and_then(|v| v.as_str()) {
+            let s = ds.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            hex::decode(s).unwrap_or_default()
+        } else { Vec::new() };
+
+        // Build TransactionRequest
+        let req = crate::types::request::TransactionRequest {
+            from: Address(from20),
+            to: to20_opt.map(Address),
+            value: Some(value_u256),
+            gas: Some(gas),
+            gas_price: Some(gas_price),
+            nonce: nonce_opt,
+            data: Some(data),
+        };
+
+        match block_on(api.send_transaction(req)) {
+            Ok(hash) => Ok(Value::String(format!("0x{}", hex::encode(hash.as_bytes())))),
+            Err(e) => Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        }
     });
 
     // eth_sendRawTransaction - Submit signed transaction

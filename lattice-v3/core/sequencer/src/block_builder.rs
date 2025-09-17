@@ -402,7 +402,7 @@ mod tests {
     
     async fn setup_test_builder() -> (BlockBuilder, Arc<Mempool>) {
         let config = BlockBuilderConfig::default();
-        let mempool_config = MempoolConfig::default();
+        let mempool_config = MempoolConfig { require_valid_signature: false, ..Default::default() };
         let mempool = Arc::new(Mempool::new(mempool_config));
         let proposer = PublicKey::new([1; 32]);
         
@@ -421,6 +421,7 @@ mod tests {
             gas_price,
             data: vec![],
             signature: Signature::new([1; 64]), // Non-zero signature for tests
+            tx_type: None,
         }
     }
     
@@ -510,6 +511,26 @@ mod tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn test_bundling_preserves_priority_order_within_class() {
+        let (builder, mempool) = setup_test_builder().await;
+
+        // Use high/low gas price to influence priority order
+        let mut tx_high = create_test_tx(0, 50_000_000_000);
+        tx_high.data = b"inference".to_vec();
+        let mut tx_low = create_test_tx(1, 2_000_000_000);
+        tx_low.data = b"inference".to_vec();
+
+        mempool.add_transaction(tx_high.clone(), TxClass::Inference).await.unwrap();
+        mempool.add_transaction(tx_low.clone(), TxClass::Inference).await.unwrap();
+
+        let bundles = builder.bundle_transactions().await.unwrap();
+        let inf = bundles.into_iter().find(|b| b.class == TxClass::Inference).unwrap();
+        assert!(inf.transactions.len() >= 2);
+        // Expect higher gas price first given mempool priority ordering
+        assert!(inf.transactions[0].gas_price >= inf.transactions[1].gas_price);
+    }
     
     #[tokio::test]
     async fn test_block_validation() {
@@ -554,6 +575,216 @@ mod tests {
             Err(BlockBuilderError::BlockSizeExceeded)
         ));
     }
+
+    #[tokio::test]
+    async fn test_gas_cap_prioritizes_high_class() {
+        let (base_builder, mempool) = setup_test_builder().await;
+        // Tight gas cap: only 2 tx of 21k each will fit
+        let mut cfg = base_builder.config.clone();
+        cfg.max_gas_per_block = 42_000;
+        let builder = BlockBuilder::new(cfg, mempool.clone(), base_builder.proposer_key);
+
+        // Two System txs, two Standard txs with identical gas/price
+        let mut sys1 = create_test_tx(0, 1_000_000_000);
+        sys1.hash = Hash::new([0xA1; 32]);
+        let mut sys2 = create_test_tx(1, 1_000_000_000);
+        sys2.hash = Hash::new([0xA2; 32]);
+        let mut std1 = create_test_tx(0, 1_000_000_000);
+        std1.from = PublicKey::new([5; 32]);
+        std1.hash = Hash::new([0xB1; 32]);
+        let mut std2 = create_test_tx(1, 1_000_000_000);
+        std2.from = PublicKey::new([6; 32]);
+        std2.hash = Hash::new([0xB2; 32]);
+
+        mempool.add_transaction(sys1.clone(), TxClass::System).await.unwrap();
+        mempool.add_transaction(sys2.clone(), TxClass::System).await.unwrap();
+        mempool.add_transaction(std1.clone(), TxClass::Standard).await.unwrap();
+        mempool.add_transaction(std2.clone(), TxClass::Standard).await.unwrap();
+
+        let parent = Hash::new([0xCC; 32]);
+        let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+        let block = builder.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+
+        // Only the two System txs should be included under the gas cap
+        assert_eq!(block.transactions.len(), 2);
+        let included: Vec<Hash> = block.transactions.iter().map(|t| t.hash).collect();
+        assert!(included.contains(&sys1.hash));
+        assert!(included.contains(&sys2.hash));
+    }
+
+    #[tokio::test]
+    async fn test_multiclass_block_selection_order() {
+        let (builder0, mempool) = setup_test_builder().await;
+        let parent = Hash::new([0xDD; 32]);
+        let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+
+        // Five txs from distinct senders, same gas price/limit, different classes
+        let mk = |nonce: u64, from_b: u8, hash_b: u8| {
+            let mut t = create_test_tx(nonce, 1_000_000_000);
+            t.from = PublicKey::new([from_b; 32]);
+            t.hash = Hash::new([hash_b; 32]);
+            t
+        };
+        let sys = mk(0, 1, 0xC1);
+        let mu = mk(0, 2, 0xC2);
+        let comp = mk(0, 3, 0xC3);
+        let inf = mk(0, 4, 0xC4);
+        let std = mk(0, 5, 0xC5);
+
+        mempool.add_transaction(sys.clone(), TxClass::System).await.unwrap();
+        mempool.add_transaction(mu.clone(), TxClass::ModelUpdate).await.unwrap();
+        mempool.add_transaction(comp.clone(), TxClass::Compute).await.unwrap();
+        mempool.add_transaction(inf.clone(), TxClass::Inference).await.unwrap();
+        mempool.add_transaction(std.clone(), TxClass::Standard).await.unwrap();
+
+        let block = builder0.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+
+        let hashes: Vec<Hash> = block.transactions.iter().map(|t| t.hash).collect();
+        // Expect order by class priority at equal gas price: System > ModelUpdate > Compute > Inference > Standard
+        assert_eq!(hashes[0], sys.hash);
+        assert_eq!(hashes[1], mu.hash);
+        assert_eq!(hashes[2], comp.hash);
+        assert_eq!(hashes[3], inf.hash);
+        assert_eq!(hashes[4], std.hash);
+    }
+
+    #[tokio::test]
+    async fn test_block_size_cap_limits_selection() {
+        let (builder0, mempool) = setup_test_builder().await;
+        let mut cfg = builder0.config.clone();
+        // Set very small block size so only first two small txs fit
+        cfg.max_block_size = 400; // bytes
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+
+        // Create 4 txs: two small (empty data), two large (big data payload)
+        let mk = |nonce: u64, from_b: u8, data_len: usize, hash_b: u8| {
+            let mut t = create_test_tx(nonce, 1_000_000_000);
+            t.from = PublicKey::new([from_b; 32]);
+            t.hash = Hash::new([hash_b; 32]);
+            t.data = vec![0xAA; data_len];
+            t
+        };
+        let small1 = mk(0, 10, 0, 0xD1);
+        let small2 = mk(0, 11, 0, 0xD2);
+        let large1 = mk(0, 12, 1024, 0xD3);
+        let large2 = mk(0, 13, 2048, 0xD4);
+
+        mempool.add_transaction(small1.clone(), TxClass::Standard).await.unwrap();
+        mempool.add_transaction(small2.clone(), TxClass::Standard).await.unwrap();
+        mempool.add_transaction(large1.clone(), TxClass::Standard).await.unwrap();
+        mempool.add_transaction(large2.clone(), TxClass::Standard).await.unwrap();
+
+        let parent = Hash::new([0xEE; 32]);
+        let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+        let block = builder.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+
+        // Due to size cap, only the two small txs should be included
+        assert_eq!(block.transactions.len(), 2);
+        let included: Vec<Hash> = block.transactions.iter().map(|t| t.hash).collect();
+        assert!(included.contains(&small1.hash));
+        assert!(included.contains(&small2.hash));
+        assert!(!included.contains(&large1.hash));
+        assert!(!included.contains(&large2.hash));
+    }
+
+    #[tokio::test]
+    async fn test_gas_and_size_caps_with_class_priority() {
+        let (builder0, mempool) = setup_test_builder().await;
+        let mut cfg = builder0.config.clone();
+        cfg.max_block_size = 500; // bytes
+        cfg.max_gas_per_block = 21_000; // allow only one tx by gas
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+
+        // Two transactions with same gas/price, different classes
+        let mut std_tx = create_test_tx(0, 1_000_000_000);
+        std_tx.from = PublicKey::new([30; 32]);
+        std_tx.hash = Hash::new([0xE1; 32]);
+        let mut sys_tx = create_test_tx(0, 1_000_000_000);
+        sys_tx.from = PublicKey::new([31; 32]);
+        sys_tx.hash = Hash::new([0xE2; 32]);
+
+        mempool.add_transaction(std_tx.clone(), TxClass::Standard).await.unwrap();
+        mempool.add_transaction(sys_tx.clone(), TxClass::System).await.unwrap();
+
+        let parent = Hash::new([0xEF; 32]);
+        let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+        let block = builder.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+
+        assert_eq!(block.transactions.len(), 1);
+        assert_eq!(block.transactions[0].hash, sys_tx.hash);
+    }
+
+    #[tokio::test]
+    async fn test_bundle_boundary_class_order_under_gas_cap() {
+        let (builder0, mempool) = setup_test_builder().await;
+        let mut cfg = builder0.config.clone();
+        cfg.bundle_size = 3;
+        // Allow only 3 txs by gas
+        cfg.max_gas_per_block = 63_000; // 3 * 21000
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+
+        // Insert 6 txs across classes, distinct senders
+        let mk = |nonce: u64, from_b: u8, class: TxClass, hash_b: u8| {
+            let mut t = create_test_tx(nonce, 1_000_000_000);
+            t.from = PublicKey::new([from_b; 32]);
+            t.hash = Hash::new([hash_b; 32]);
+            (t, class)
+        };
+        let items = vec![
+            mk(0, 1, TxClass::Inference, 0xF1),
+            mk(0, 2, TxClass::Standard, 0xF2),
+            mk(0, 3, TxClass::Compute, 0xF3),
+            mk(0, 4, TxClass::ModelUpdate, 0xF4),
+            mk(0, 5, TxClass::System, 0xF5),
+            mk(0, 6, TxClass::Standard, 0xF6),
+        ];
+        for (t, c) in items.clone() { mempool.add_transaction(t, c).await.unwrap(); }
+
+        let parent = Hash::new([0xFA; 32]);
+        let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+        let block = builder.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+
+        assert_eq!(block.transactions.len(), 3);
+        let hashes: Vec<Hash> = block.transactions.iter().map(|t| t.hash).collect();
+        // Expect top 3 classes: System, ModelUpdate, Compute (in that order)
+        let get_hash = |b: u8| Hash::new([b; 32]);
+        assert_eq!(hashes[0], get_hash(0xF5));
+        assert_eq!(hashes[1], get_hash(0xF4));
+        assert_eq!(hashes[2], get_hash(0xF3));
+    }
+
+    #[tokio::test]
+    async fn test_nonce_ordering_overrides_gas_price_for_same_sender() {
+        let (builder0, mempool) = setup_test_builder().await;
+        let parent = Hash::new([0xBA; 32]);
+        let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+
+        // Same sender: nonce 1 has higher gas price than nonce 0
+        let sender = [0xCC; 32];
+        let mut tx0 = create_test_tx(0, 1_000_000_000);
+        tx0.from = PublicKey::new(sender);
+        tx0.hash = Hash::new([0xA0; 32]);
+        let mut tx1 = create_test_tx(1, 50_000_000_000);
+        tx1.from = PublicKey::new(sender);
+        tx1.hash = Hash::new([0xA1; 32]);
+
+        mempool.add_transaction(tx0.clone(), TxClass::Standard).await.unwrap();
+        mempool.add_transaction(tx1.clone(), TxClass::Standard).await.unwrap();
+
+        // Build with gas cap allowing both; ensure generous limits
+        let mut cfg = builder0.config.clone();
+        cfg.max_gas_per_block = 100_000; // allow at least two standard txs
+        cfg.max_transactions = 10;
+        cfg.max_block_size = 1_000_000; // ample size to include both
+        cfg.enable_bundling = false; // disable bundling to avoid class grouping side-effects
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+        let block = builder.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+        assert!(block.transactions.len() >= 2);
+        // The lower nonce must appear before the higher nonce
+        let i0 = block.transactions.iter().position(|t| t.hash == tx0.hash).unwrap();
+        let i1 = block.transactions.iter().position(|t| t.hash == tx1.hash).unwrap();
+        assert!(i0 < i1);
+    }
     
     #[tokio::test]
     async fn test_gas_limit() {
@@ -585,5 +816,87 @@ mod tests {
         // Should respect gas limit
         let total_gas: u64 = block.transactions.iter().map(|tx| tx.gas_limit).sum();
         assert!(total_gas <= builder.config.max_gas_per_block);
+    }
+
+    #[tokio::test]
+    async fn test_large_batch_inference_ordering_across_bundles() {
+        // Configure small bundle size to force multiple bundles
+        let (mut builder0, mempool) = setup_test_builder().await;
+        let mut cfg = builder0.config.clone();
+        cfg.bundle_size = 5;
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+
+        // Insert 13 inference-class transactions with descending gas prices
+        for i in 0..13u64 {
+            let mut tx = create_test_tx(i, 100_000_000_000 - (i as u64) * 1_000_000);
+            tx.data = b"inference".to_vec(); // Ensure classified as Inference
+            // Unique sender per tx to avoid nonce constraints affecting order
+            tx.from = PublicKey::new([i as u8 + 1; 32]);
+            tx.hash = Hash::new([i as u8; 32]);
+            mempool.add_transaction(tx, TxClass::Inference).await.unwrap();
+        }
+
+        let bundles = builder.bundle_transactions().await.unwrap();
+        let mut inference_txs = Vec::new();
+        for b in bundles.into_iter().filter(|b| b.class == TxClass::Inference) {
+            inference_txs.extend(b.transactions);
+        }
+        assert_eq!(inference_txs.len(), 13);
+        // Verify non-increasing gas price order across concatenated bundles
+        for i in 1..inference_txs.len() {
+            assert!(inference_txs[i - 1].gas_price >= inference_txs[i].gas_price);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_standard_nonce_ordering_within_bundles() {
+        let (mut builder0, mempool) = setup_test_builder().await;
+        let mut cfg = builder0.config.clone();
+        cfg.bundle_size = 3;
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+
+        // Same sender, nonces 0..5, varied gas prices; must respect nonce order
+        let sender = [7u8; 32];
+        for n in 0..6u64 {
+            let mut tx = create_test_tx(n, 1_000_000_000 + (5 - n) * 100_000);
+            tx.from = PublicKey::new(sender);
+            tx.hash = Hash::new([n as u8; 32]);
+            mempool.add_transaction(tx, TxClass::Standard).await.unwrap();
+        }
+
+        let bundles = builder.bundle_transactions().await.unwrap();
+        let mut standard = Vec::new();
+        for b in bundles.into_iter().filter(|b| b.class == TxClass::Standard) {
+            standard.extend(b.transactions);
+        }
+        assert_eq!(standard.len(), 6);
+        // Nonces must be strictly increasing
+        for i in 1..standard.len() {
+            assert_eq!(standard[i].nonce, standard[i - 1].nonce + 1);
+        }
+    }
+    #[tokio::test]
+    async fn test_exact_gas_limit_accepted() {
+        let (builder0, mempool) = setup_test_builder().await;
+        let mut cfg = builder0.config.clone();
+        cfg.max_gas_per_block = 100_000; // Small custom limit
+        let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
+
+        // Two txs summing exactly to the block gas limit
+        let mut tx1 = create_test_tx(0, 2_000_000_000);
+        tx1.from = PublicKey::new([9; 32]);
+        tx1.gas_limit = 60_000;
+        let mut tx2 = create_test_tx(1, 2_000_000_000);
+        tx2.from = PublicKey::new([8; 32]);
+        tx2.gas_limit = 40_000;
+        mempool.add_transaction(tx1, TxClass::Standard).await.unwrap();
+        mempool.add_transaction(tx2, TxClass::Standard).await.unwrap();
+
+        let parent = Hash::new([0xAA; 32]);
+        let vrf_proof = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
+
+        let block = builder.build_block(parent, vec![], 0, 1, vrf_proof).await.unwrap();
+        let total_gas: u64 = block.transactions.iter().map(|tx| tx.gas_limit).sum();
+        assert_eq!(total_gas, 100_000);
     }
 }

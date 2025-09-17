@@ -4,6 +4,7 @@ use rlp::{Rlp, DecoderError, RlpStream};
 use ethereum_types::{H160, H256, U256 as EthU256};
 use hex;
 use secp256k1::{ecdsa::RecoverableSignature, ecdsa::RecoveryId, Message, Secp256k1};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Legacy Ethereum transaction structure for RLP decoding
 #[derive(Debug)]
@@ -391,6 +392,9 @@ fn decode_eip1559_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
     Ok(tx)
 }
 
+// Thread-safe nonce counter for mock transactions
+static NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 /// Create a mock transaction for testing when RLP decoding fails
 fn create_mock_transaction(tx_bytes: &[u8], hash_bytes: [u8; 32]) -> Result<Transaction, String> {
     eprintln!("Creating mock transaction with hash: 0x{}", hex::encode(&hash_bytes));
@@ -399,12 +403,8 @@ fn create_mock_transaction(tx_bytes: &[u8], hash_bytes: [u8; 32]) -> Result<Tran
     let from_pk = PublicKey::new([0x33; 32]); // Use test account address pattern
     let to_pk = PublicKey::new([0x44; 32]);
     
-    // Use a counter to ensure unique nonces
-    static mut NONCE_COUNTER: u64 = 0;
-    let nonce = unsafe {
-        NONCE_COUNTER += 1;
-        NONCE_COUNTER
-    };
+    // Use atomic counter to ensure unique nonces (thread-safe)
+    let nonce = NONCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     
     let gas_limit = if tx_bytes.len() > 10000 {
         5_000_000 // Large transaction, likely contract deployment

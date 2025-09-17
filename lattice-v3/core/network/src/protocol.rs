@@ -371,10 +371,43 @@ mod tests {
                 gas_price: 1000000000,
                 data: vec![],
                 signature: lattice_consensus::types::Signature::new([0; 64]),
+                tx_type: None,
             },
         };
         
         assert_eq!(new_tx.priority(), MessagePriority::Normal);
+
+        // GetBlocks should be critical
+        let get_blocks = NetworkMessage::GetBlocks { from: Hash::default(), count: 10, step: 1 };
+        assert_eq!(get_blocks.priority(), MessagePriority::Critical);
+
+        // NewBlock should be high
+        let nb = NetworkMessage::NewBlock { block: Block {
+            header: BlockHeader {
+                version: 1,
+                block_hash: Hash::default(),
+                selected_parent_hash: Hash::default(),
+                merge_parent_hashes: vec![],
+                timestamp: 0,
+                height: 0,
+                blue_score: 0,
+                blue_work: 0,
+                pruning_point: Hash::default(),
+                proposer_pubkey: lattice_consensus::types::PublicKey::new([0; 32]),
+                vrf_reveal: lattice_consensus::types::VrfProof { proof: vec![], output: Hash::default() },
+            },
+            state_root: Hash::default(),
+            tx_root: Hash::default(),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
+            ghostdag_params: Default::default(),
+            transactions: vec![],
+            signature: lattice_consensus::types::Signature::new([0; 64]),
+        }};
+        assert_eq!(nb.priority(), MessagePriority::High);
+
+        // GetPeers is low
+        assert_eq!(NetworkMessage::GetPeers.priority(), MessagePriority::Low);
     }
     
     #[test]

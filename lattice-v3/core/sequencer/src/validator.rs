@@ -65,6 +65,8 @@ pub struct ValidationRules {
     
     /// Rate limit per sender (txs per minute)
     pub rate_limit: u32,
+    /// Rate limit window length in seconds
+    pub rate_limit_window_secs: u64,
 }
 
 impl Default for ValidationRules {
@@ -78,6 +80,7 @@ impl Default for ValidationRules {
             check_balance: true,
             check_nonce: true,
             rate_limit: 100, // 100 txs per minute
+            rate_limit_window_secs: 60,
         }
     }
 }
@@ -292,7 +295,7 @@ impl<S: StateProvider> TxValidator<S> {
     /// Check rate limit for sender
     async fn check_rate_limit(&self, sender: &PublicKey) -> Result<(), ValidationError> {
         let current_time = chrono::Utc::now().timestamp() as u64;
-        let window_size = 60; // 1 minute window
+        let window_size = self.rules.rate_limit_window_secs;
         
         let mut rate_limiter = self.rate_limiter.write().await;
         
@@ -405,6 +408,7 @@ mod tests {
             gas_price,
             data: vec![],
             signature: Signature::new([1; 64]), // Non-zero for validation
+            tx_type: None,
         }
     }
     
@@ -523,7 +527,8 @@ mod tests {
             verify_signatures: false,
             check_balance: false,
             check_nonce: false,
-            rate_limit: 2, // Only 2 txs per minute
+            rate_limit: 2, // Only 2 txs per window
+            rate_limit_window_secs: 60,
             ..Default::default()
         };
         let state_provider = Arc::new(MockStateProvider::new());
@@ -539,5 +544,33 @@ mod tests {
             validator.validate(&tx3).await,
             Err(ValidationError::RateLimitExceeded)
         ));
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_resets_after_window() {
+        let rules = ValidationRules {
+            verify_signatures: false,
+            check_balance: false,
+            check_nonce: false,
+            rate_limit: 1,
+            rate_limit_window_secs: 1, // 1-second window
+            ..Default::default()
+        };
+        let state_provider = Arc::new(MockStateProvider::new());
+        let validator = TxValidator::new(rules, state_provider);
+
+        let tx1 = create_test_tx(0, 2_000_000_000, 1000);
+        let tx2 = create_test_tx(1, 2_000_000_000, 1000);
+
+        assert!(validator.validate(&tx1).await.is_ok());
+        assert!(matches!(
+            validator.validate(&tx2).await,
+            Err(ValidationError::RateLimitExceeded)
+        ));
+
+        // Wait for window reset
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        let tx3 = create_test_tx(2, 2_000_000_000, 1000);
+        assert!(validator.validate(&tx3).await.is_ok());
     }
 }

@@ -298,11 +298,78 @@ impl RpcServer {
                 Err(_) => Ok(Value::Bool(true)),
             }
         });
+
+        // Override eth_sendRawTransaction to also broadcast via P2P when available
+        let mempool_raw_broadcast = mempool.clone();
+        let peer_mgr_raw_broadcast = peer_manager.clone();
+        io_handler.add_sync_method("eth_sendRawTransaction", move |params: Params| {
+            rpc_request("eth_sendRawTransaction");
+            use crate::eth_tx_decoder;
+            use lattice_network::NetworkMessage;
+
+            let mempool = mempool_raw_broadcast.clone();
+            let peer_mgr = peer_mgr_raw_broadcast.clone();
+
+            let params: Vec<Value> = match params.parse() {
+                Ok(p) => p,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            if params.is_empty() { return Err(jsonrpc_core::Error::invalid_params("Missing transaction data")); }
+            let tx_hex = params[0].as_str().ok_or_else(|| jsonrpc_core::Error::invalid_params("Invalid tx hex"))?;
+            let tx_bytes = match hex::decode(tx_hex.trim().trim_start_matches("0x")) {
+                Ok(b) => b, Err(_) => return Err(jsonrpc_core::Error::invalid_params("Invalid hex")),
+            };
+            let tx = match eth_tx_decoder::decode_eth_transaction(&tx_bytes) {
+                Ok(t) => t,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(format!("Failed to parse transaction: {}", e))),
+            };
+            let hash = tx.hash;
+            match block_on(mempool.add_transaction(tx.clone(), lattice_sequencer::mempool::TxClass::Standard)) {
+                Ok(_) => {
+                    // Best-effort broadcast to peers
+                    let _ = block_on(peer_mgr.broadcast(&NetworkMessage::NewTransaction { transaction: tx }));
+                    Ok(Value::String(format!("0x{}", hex::encode(hash.as_bytes()))))
+                },
+                Err(e) => Err(jsonrpc_core::Error::invalid_params(format!("Failed to submit transaction: {:?}", e)))
+            }
+        });
+
+        // Override eth_sendTransaction: enqueue via TransactionApi, then broadcast the tx if retrievable
+        let mempool_send_broadcast = mempool.clone();
+        let executor_send_broadcast = executor.clone();
+        let peer_mgr_send_broadcast = peer_manager.clone();
+        io_handler.add_sync_method("eth_sendTransaction", move |params: Params| {
+            rpc_request("eth_sendTransaction");
+            use crate::types::request::TransactionRequest;
+            use lattice_network::NetworkMessage;
+
+            let api = TransactionApi::new(mempool_send_broadcast.clone(), executor_send_broadcast.clone());
+            let req: TransactionRequest = match params.parse() {
+                Ok(r) => r,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            match block_on(api.send_transaction(req)) {
+                Ok(hash) => {
+                    // Try to fetch and broadcast
+                    if let Some(tx) = block_on(mempool_send_broadcast.get_transaction(&hash)) {
+                        let _ = block_on(peer_mgr_send_broadcast.broadcast(&NetworkMessage::NewTransaction { transaction: tx }));
+                    }
+                    Ok(Value::String(format!("0x{}", hex::encode(hash.as_bytes()))))
+                },
+                Err(e) => Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            }
+        });
         
         // net_version (chain ID)
         io_handler.add_sync_method("net_version", |_params: Params| {
             rpc_request("net_version");
             Ok(Value::String("1337".to_string()))
+        });
+
+        // web3_clientVersion
+        io_handler.add_sync_method("web3_clientVersion", |_params: Params| {
+            rpc_request("web3_clientVersion");
+            Ok(Value::String("lattice/v0.1.0".to_string()))
         });
         
         // eth_chainId (compatibility)
@@ -333,6 +400,39 @@ impl RpcServer {
                 Ok(result) => Ok(result),
                 Err(e) => Err(jsonrpc_core::Error::internal_error()),
             }
+        });
+
+        // ========== Extra Network Methods ==========
+        // net_peers: return list of peer IDs (diagnostic)
+        let peers_list = peer_manager.clone();
+        io_handler.add_sync_method("net_peers", move |_params: Params| {
+            rpc_request("net_peers");
+            let api = NetworkApi::new(peers_list.clone());
+            match block_on(api.get_peers()) {
+                Ok(ids) => Ok(serde_json::to_value(ids).unwrap_or(Value::Array(vec![]))),
+                Err(_) => Ok(Value::Array(vec![])),
+            }
+        });
+
+        // net_peerInfo: detailed peer info (id, addr, direction)
+        let peers_info_mgr = peer_manager.clone();
+        io_handler.add_sync_method("net_peerInfo", move |_params: Params| {
+            rpc_request("net_peerInfo");
+            let peers = peers_info_mgr.get_all_peers();
+            let mut arr = Vec::new();
+            for p in peers {
+                let info = block_on(p.info.read());
+                let dir = match info.direction {
+                    lattice_network::peer::Direction::Inbound => "inbound",
+                    lattice_network::peer::Direction::Outbound => "outbound",
+                };
+                arr.push(serde_json::json!({
+                    "id": info.id.to_string(),
+                    "addr": info.addr.to_string(),
+                    "direction": dir,
+                }));
+            }
+            Ok(Value::Array(arr))
         });
         
         // lattice_getModel
@@ -578,7 +678,14 @@ mod tests {
         let state_db = Arc::new(lattice_execution::StateDB::new());
         let executor = Arc::new(Executor::new(state_db));
 
-        let rpc = RpcServer::new(RpcConfig::default(), storage, mempool.clone(), peer_manager, executor);
+        let rpc = RpcServer::new(
+            RpcConfig::default(),
+            storage,
+            mempool.clone(),
+            peer_manager,
+            executor,
+            1,
+        );
 
         // chain_getHeight
         let req = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"chain_getHeight","params":[]}).to_string();

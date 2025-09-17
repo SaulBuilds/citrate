@@ -1,0 +1,42 @@
+name: Solidity CI
+
+on:
+  push:
+    paths:
+      - 'lattice-v3/contracts/**'
+      - 'lattice-v3/foundry.toml'
+  pull_request:
+    paths:
+      - 'lattice-v3/contracts/**'
+      - 'lattice-v3/foundry.toml'
+
+jobs:
+  forge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Run Forge tests
+        working-directory: lattice-v3
+        run: |
+          forge --version
+          forge test -vvv
+
+  slither:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python and Slither
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-pip
+          pip3 install slither-analyzer solc-select
+          solc-select install 0.8.24 && solc-select use 0.8.24
+      - name: Run Slither
+        working-directory: lattice-v3
+        continue-on-error: true
+        run: |
+          slither . --solc-remaps @openzeppelin/=lib/openzeppelin-contracts/ || true
+

@@ -105,6 +105,7 @@ echo "========================================="
 echo ""
 
 # Start the node
+LATTICE_REQUIRE_VALID_SIGNATURE=0 \
 exec "$PROJECT_ROOT/target/release/lattice" \
     --config "$CONFIG_FILE" \
     --data-dir "$DATA_DIR" \

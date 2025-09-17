@@ -10,7 +10,7 @@ use lattice_storage::{StorageManager, pruning::PruningConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, error};
+use tracing::{info, error, warn};
 use tracing_subscriber::EnvFilter;
 
 mod config;
@@ -366,10 +366,12 @@ async fn start_node(config: NodeConfig) -> Result<()> {
 
         // Start TCP listener
         let listen_addr = config.network.listen_addr;
-        peer_manager
+        if let Err(e) = peer_manager
             .start_listener(listen_addr, network_id, genesis_hash, head_height, head_hash)
             .await
-            .ok();
+        {
+            warn!("Failed to start P2P listener on {}: {}", listen_addr, e);
+        }
 
         // Connect to bootstrap nodes
         for entry in &config.network.bootstrap_nodes {

@@ -140,7 +140,7 @@ impl TransactionGossip {
             }
         }
         
-        Ok(true)
+        Ok(is_new)
     }
     
     /// Broadcast a new local transaction

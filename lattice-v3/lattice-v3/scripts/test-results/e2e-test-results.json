@@ -1,0 +1,15 @@
+{
+    "timestamp": "2025-09-16T22:57:32Z",
+    "tests_run": 15,
+    "tests_passed": 9,
+    "tests_failed": 5,
+    "tests_skipped": 0,
+    "pass_rate": "60.00%",
+    "environment": {
+        "bootstrap_node": "http://127.0.0.1:8545",
+        "validator_1": "http://127.0.0.1:8547",
+        "validator_2": "http://127.0.0.1:8545",
+        "full_node": "http://127.0.0.1:8547",
+        "archive_node": "http://127.0.0.1:8545"
+    }
+}

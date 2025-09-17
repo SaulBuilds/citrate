@@ -425,8 +425,9 @@ contract InferenceRouter is AccessControl {
             if (provider.minPrice > maxPrice) continue;
             if (provider.currentLoad >= provider.maxConcurrent) continue;
             
-            // Score based on: price (40%), load (30%), success rate (30%)
-            uint256 priceScore = (10000 * provider.minPrice) / maxPrice;
+            // Score based on: affordability (40%), load (30%), success rate (30%)
+            // Lower minPrice should yield higher score. Normalize to [0..10000].
+            uint256 priceScore = 10000 - ((10000 * provider.minPrice) / maxPrice);
             uint256 loadScore = 10000 - (10000 * provider.currentLoad / provider.maxConcurrent);
             uint256 score = (priceScore * 40 + loadScore * 30 + provider.successRate * 30) / 100;
             

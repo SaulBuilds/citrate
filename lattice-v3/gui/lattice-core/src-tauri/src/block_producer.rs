@@ -343,8 +343,9 @@ impl BlockProducer {
             }
         }
 
-        // Calculate final state root after execution
-        let state_root = self.executor.calculate_state_root();
+        // CRITICAL FIX: Commit state changes to persist them
+        // Without this, all transaction effects are lost!
+        let state_root = self.executor.state_db().commit();
         Ok((state_root, receipts))
     }
 

@@ -16,7 +16,13 @@ impl RocksDB {
         let mut db_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
-        db_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+        // Use compression in prod; disable in tests or when feature `no-compression` is set
+        let compression = if cfg!(any(test, feature = "no-compression")) {
+            rocksdb::DBCompressionType::None
+        } else {
+            rocksdb::DBCompressionType::Lz4
+        };
+        db_opts.set_compression_type(compression);
         
         // Performance optimizations
         db_opts.set_write_buffer_size(128 * 1024 * 1024); // 128MB
@@ -30,7 +36,7 @@ impl RocksDB {
             .into_iter()
             .map(|name| {
                 let mut cf_opts = Options::default();
-                cf_opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+                cf_opts.set_compression_type(compression);
                 ColumnFamilyDescriptor::new(name, cf_opts)
             })
             .collect();

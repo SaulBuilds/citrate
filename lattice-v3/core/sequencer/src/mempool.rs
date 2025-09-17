@@ -274,8 +274,11 @@ impl Mempool {
         // Create mempool transaction with AI-aware priority
         let timestamp = chrono::Utc::now().timestamp() as u64;
         
-        // Use transaction's built-in priority calculation which considers AI type
-        let ai_priority = tx.priority();
+        // Use transaction's built-in priority calculation only for non-standard AI txs
+        let ai_priority = match tx.tx_type {
+            Some(lattice_consensus::types::TransactionType::Standard) | None => 0,
+            _ => tx.priority(),
+        };
         let priority = TxPriority::new_with_ai(tx.gas_price, class, timestamp, ai_priority);
         let tx_size = self.calculate_tx_size(&tx);
         
@@ -526,38 +529,49 @@ impl Mempool {
     
     /// Get the best transactions for block inclusion
     pub async fn get_best_transactions(&self, max_count: usize, max_size: usize) -> Vec<Transaction> {
-        let mut transactions = Vec::new();
+        let mut selected: Vec<Transaction> = Vec::new();
         let mut total_size = 0;
-        let mut included = HashSet::new();
-        
-        // Get sorted transaction hashes by priority
-        let priority_queue = self.priority_queue.read().await;
-        let mut sorted_hashes: Vec<_> = priority_queue.iter().collect();
-        sorted_hashes.sort_by(|a, b| b.1.cmp(a.1));
-        
+        let mut next_nonce: HashMap<PublicKey, u64> = HashMap::new();
+
+        // Snapshot state to avoid nested awaits in loops
         let txs = self.transactions.read().await;
-        
-        for (hash, _priority) in sorted_hashes {
-            if transactions.len() >= max_count {
-                break;
-            }
-            
-            if let Some(mempool_tx) = txs.get(hash) {
-                if total_size + mempool_tx.size > max_size {
-                    continue; // Skip if would exceed size limit
+        let by_sender = self.by_sender.read().await;
+        let priority_queue = self.priority_queue.read().await;
+        let mut sorted: Vec<(Hash, TxPriority)> = priority_queue.iter().map(|(h,p)| (*h, p.clone())).collect();
+        drop(priority_queue);
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+
+        loop {
+            let mut progressed = false;
+            for (hash, _prio) in &sorted {
+                if selected.len() >= max_count { break; }
+                if let Some(mtx) = txs.get(hash) {
+                    if selected.iter().any(|t| t.hash == *hash) { continue; }
+                    if total_size + mtx.size > max_size { continue; }
+
+                    let sender = mtx.tx.from;
+                    let expected = next_nonce.get(&sender).copied().or_else(|| {
+                        by_sender.get(&sender)
+                            .and_then(|list| list.iter()
+                                .filter_map(|h| txs.get(h).map(|t| t.tx.nonce))
+                                .min())
+                    });
+
+                    let ok = match expected { Some(n) => mtx.tx.nonce == n, None => true };
+                    if ok {
+                        total_size += mtx.size;
+                        next_nonce.insert(sender, mtx.tx.nonce + 1);
+                        selected.push(mtx.tx.clone());
+                        progressed = true;
+                        if selected.len() >= max_count { break; }
+                    }
                 }
-                
-                // Check nonce ordering for sender
-                if self.is_next_nonce(&mempool_tx.tx, &included).await {
-                    transactions.push(mempool_tx.tx.clone());
-                    included.insert(*hash);
-                    total_size += mempool_tx.size;
-                }
             }
+            if !progressed { break; }
         }
-        
-        info!("Selected {} transactions for block inclusion", transactions.len());
-        transactions
+
+        info!("Selected {} transactions for block inclusion", selected.len());
+        selected
     }
     
     /// Check if transaction has the next expected nonce for sender
@@ -583,12 +597,16 @@ impl Mempool {
             match highest_included_nonce {
                 Some(nonce) => tx.nonce == nonce + 1,
                 None => {
-                    // No txs from this sender included yet, check if this is the lowest nonce
+                    // No txs from this sender included yet, allow contiguous sequence starting at the minimal nonce
                     let txs_guard = self.transactions.read().await;
-                    let min_nonce = sender_txs.iter()
+                    let mut nonces: Vec<u64> = sender_txs.iter()
                         .filter_map(|h| txs_guard.get(h).map(|t| t.tx.nonce))
-                        .min();
-                    min_nonce.map_or(true, |min| tx.nonce == min)
+                        .collect();
+                    if nonces.is_empty() { return true; }
+                    nonces.sort_unstable();
+                    // If the minimal nonce is n0, allow n0, n0+1, n0+2,... as we include them in one selection pass
+                    let min = nonces[0];
+                    tx.nonce >= min
                 }
             }
         } else {
@@ -731,6 +749,7 @@ mod tests {
             gas_price,
             data: vec![],
             signature: Signature::new([1; 64]), // Non-zero signature for tests
+            tx_type: None,
         }
     }
     
@@ -844,5 +863,61 @@ mod tests {
         assert_eq!(best_txs[0].nonce, 0);
         assert_eq!(best_txs[1].nonce, 1);
         assert_eq!(best_txs[2].nonce, 2);
+    }
+
+    #[tokio::test]
+    async fn test_sender_limit_exceeded() {
+        let config = MempoolConfig { max_per_sender: 2, require_valid_signature: false, ..Default::default() };
+        let mempool = Mempool::new(config);
+
+        let sender = [9; 32];
+        let tx0 = create_test_tx(0, 2_000_000_000, sender);
+        let tx1 = create_test_tx(1, 2_000_000_000, sender);
+        let tx2 = create_test_tx(2, 2_000_000_000, sender);
+
+        mempool.add_transaction(tx0, TxClass::Standard).await.unwrap();
+        mempool.add_transaction(tx1, TxClass::Standard).await.unwrap();
+        let res = mempool.add_transaction(tx2, TxClass::Standard).await;
+        assert!(matches!(res, Err(MempoolError::SenderLimitExceeded)));
+    }
+
+    #[tokio::test]
+    async fn test_mixed_class_priority_with_gas_cap() {
+        let config = MempoolConfig { require_valid_signature: false, ..Default::default() };
+        let mempool = Mempool::new(config);
+
+        // Create four txs from distinct senders, same gas price
+        let tx_sys = {
+            let mut t = create_test_tx(0, 1_000_000_000, [1; 32]);
+            t.hash = Hash::new([0x10; 32]);
+            t
+        };
+        let tx_mu = {
+            let mut t = create_test_tx(0, 1_000_000_000, [2; 32]);
+            t.hash = Hash::new([0x11; 32]);
+            t
+        };
+        let tx_comp = {
+            let mut t = create_test_tx(0, 1_000_000_000, [3; 32]);
+            t.hash = Hash::new([0x12; 32]);
+            t
+        };
+        let tx_std = {
+            let mut t = create_test_tx(0, 1_000_000_000, [4; 32]);
+            t.hash = Hash::new([0x13; 32]);
+            t
+        };
+
+        mempool.add_transaction(tx_sys.clone(), TxClass::System).await.unwrap();
+        mempool.add_transaction(tx_mu.clone(), TxClass::ModelUpdate).await.unwrap();
+        mempool.add_transaction(tx_comp.clone(), TxClass::Compute).await.unwrap();
+        mempool.add_transaction(tx_std.clone(), TxClass::Standard).await.unwrap();
+
+        let best = mempool.get_best_transactions(10, 1_000_000).await;
+        // Expect order: System > ModelUpdate > Compute > Standard
+        assert_eq!(best[0].hash, tx_sys.hash);
+        assert_eq!(best[1].hash, tx_mu.hash);
+        assert_eq!(best[2].hash, tx_comp.hash);
+        assert_eq!(best[3].hash, tx_std.hash);
     }
 }

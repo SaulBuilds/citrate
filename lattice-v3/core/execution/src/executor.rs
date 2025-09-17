@@ -218,7 +218,7 @@ impl Executor {
             block_hash: block.hash(),
             block_number: block.header.height,
             from,
-            to: tx.to.map(|pk| Address::from_public_key(&pk)),
+            to: tx.to.map(|pk| crate::address_utils::normalize_address(&pk)),
             gas_used: context.gas_used,
             status,
             logs: context.logs,
@@ -238,19 +238,9 @@ impl Executor {
         
         if tx.data.is_empty() {
             // Simple transfer
-            // Interpret `to` as either a real public key or a 20-byte Address embedded in a 32-byte field
+            // Use proper address normalization to handle both formats
             let to = tx.to
-                .map(|pk| {
-                    let bytes = pk.as_bytes();
-                    // If last 12 bytes are zero, treat first 20 bytes as an address directly
-                    if bytes[20..].iter().all(|&b| b == 0) {
-                        let mut addr = [0u8; 20];
-                        addr.copy_from_slice(&bytes[0..20]);
-                        Address(addr)
-                    } else {
-                        Address::from_public_key(&pk)
-                    }
-                })
+                .map(|pk| crate::address_utils::normalize_address(&pk))
                 .ok_or(ExecutionError::InvalidInput)?;
             
             Ok(TransactionType::Transfer {

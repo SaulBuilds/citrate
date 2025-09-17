@@ -5,6 +5,7 @@ pub mod parallel;
 pub mod vm;
 pub mod tensor;
 pub mod zkp;
+pub mod address_utils;
 
 pub use types::{
     Address, AccountState, ModelId, ModelState, ModelMetadata, 

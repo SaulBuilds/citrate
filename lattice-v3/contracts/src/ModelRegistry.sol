@@ -3,13 +3,14 @@ pragma solidity ^0.8.24;
 
 import "./interfaces/IModelRegistry.sol";
 import "./lib/AccessControl.sol";
+import "./lib/ReentrancyGuard.sol";
 
 /**
  * @title ModelRegistry
  * @notice Registry for AI models on Lattice blockchain
  * @dev Integrates with Lattice precompiles for model operations
  */
-contract ModelRegistry is IModelRegistry, AccessControl {
+contract ModelRegistry is IModelRegistry, AccessControl, ReentrancyGuard {
     // Lattice precompile addresses
     address constant MODEL_PRECOMPILE = 0x0000000000000000000000000000000000001000;
     address constant ARTIFACT_PRECOMPILE = 0x0000000000000000000000000000000000001002;
@@ -214,7 +215,7 @@ contract ModelRegistry is IModelRegistry, AccessControl {
     function requestInference(
         bytes32 modelHash,
         bytes calldata inputData
-    ) external payable returns (bytes memory) {
+    ) external payable nonReentrant returns (bytes memory) {
         Model storage model = models[modelHash];
         require(model.isActive, "Model not active");
         require(msg.value >= model.inferencePrice, "Insufficient payment");
@@ -358,7 +359,7 @@ contract ModelRegistry is IModelRegistry, AccessControl {
     
     // Admin functions
     
-    function withdrawFees() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function withdrawFees() external nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 balance = address(this).balance;
         require(balance > 0, "No fees to withdraw");
         

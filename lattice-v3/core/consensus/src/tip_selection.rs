@@ -121,11 +121,25 @@ impl TipSelector {
             return Err(TipSelectionError::NoTips);
         }
         
-        // Get tip info with blue scores
+        // Get tip info with blue scores using block-based scoring to avoid hash lookup races
         let mut tip_infos = Vec::new();
         for tip in &tips {
-            let info = self.get_tip_info(&tip.hash).await?;
-            tip_infos.push(info);
+            let block = self
+                .dag_store
+                .get_block(&tip.hash)
+                .await
+                .map_err(|_| TipSelectionError::BlockNotFound(tip.hash))?;
+            let blue_score = self
+                .ghostdag
+                .calculate_blue_score(&block)
+                .await
+                .map_err(|e| TipSelectionError::DagError(e.to_string()))?;
+            tip_infos.push(TipInfo {
+                hash: tip.hash,
+                blue_score,
+                height: block.header.height,
+                timestamp: block.header.timestamp,
+            });
         }
         
         // Sort by blue score (descending)
@@ -303,6 +317,12 @@ impl ParentSelector {
             .skip(1)
             .take(self.max_parents - 1)
             .collect();
+        
+        // Enforce minimum number of parents (selected + merge)
+        let total_parents = 1 + merge_parents.len();
+        if total_parents < self.min_parents {
+            return Err(TipSelectionError::NoTips);
+        }
         
         info!(
             "Selected parent: {}, merge parents: {}",

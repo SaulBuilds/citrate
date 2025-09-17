@@ -85,15 +85,18 @@ async fn main() -> Result<()> {
         }
     });
 
-    // API service (WebSocket addr currently unused)
+    // API service (WebSocket and REST addresses)
     let ws_addr: SocketAddr = "0.0.0.0:8546".parse().unwrap();
+    let rest_addr: SocketAddr = "0.0.0.0:3000".parse().unwrap();
     let api = ApiService::new(
         rpc_cfg,
         ws_addr,
+        rest_addr,
         storage,
         mempool,
         peer_manager,
         executor,
+        1,
     );
 
     // Start

@@ -132,6 +132,7 @@ mod tests {
             mempool,
             peer_manager,
             executor,
+            1,
         );
     }
 }

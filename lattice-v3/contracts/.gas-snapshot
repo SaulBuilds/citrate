@@ -1,0 +1,8 @@
+CounterTest:testFuzz_SetNumber(uint256) (runs: 256, μ: 28124, ~: 28435)
+CounterTest:test_Increment() (gas: 28448)
+InferenceRouterTest:test_Economics_FeesAndWithdrawal() (gas: 909604)
+InferenceRouterTest:test_RegisterProvider_And_Request() (gas: 954500)
+InferenceRouterTest:test_Selection_Scoring_PicksLowerPrice() (gas: 920735)
+ModelRegistryTest:test_Permissions() (gas: 375067)
+ModelRegistryTest:test_RegisterModel_And_GetModel() (gas: 456808)
+ModelRegistryTest:test_RequestInference_PaysAndReturnsBytes() (gas: 492981)

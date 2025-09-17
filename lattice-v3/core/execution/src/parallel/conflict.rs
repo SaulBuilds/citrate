@@ -117,7 +117,7 @@ impl ConflictScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_consensus::types::{PublicKey, Signature};
+    use lattice_consensus::types::{PublicKey, Signature, Hash};
     
     fn make_test_tx(from: [u8; 32], to: Option<[u8; 32]>, nonce: u64) -> Transaction {
         Transaction {
@@ -159,5 +159,19 @@ mod tests {
         assert_eq!(groups.len(), 2); // tx1 and tx3 conflict, so 2 groups
         assert_eq!(groups[0].len(), 2); // tx1 and tx2 can be parallel
         assert_eq!(groups[1].len(), 1); // tx3 must be separate
+    }
+
+    #[test]
+    fn test_disjoint_senders_single_group() {
+        let scheduler = ConflictScheduler::new(Box::new(DefaultAccessSetExtractor));
+
+        // Three transactions with distinct sender/recipient pairs → no conflicts
+        let tx1 = make_test_tx([1; 32], Some([2; 32]), 0);
+        let tx2 = make_test_tx([3; 32], Some([4; 32]), 0);
+        let tx3 = make_test_tx([5; 32], Some([6; 32]), 0);
+
+        let groups = scheduler.schedule(vec![tx1, tx2, tx3]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].len(), 3);
     }
 }

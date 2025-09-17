@@ -166,7 +166,7 @@ impl RewardCalculator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_consensus::types::{BlockHeader, Hash};
+    use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, VrfProof, GhostDagParams, Signature};
     
     #[test]
     fn test_block_reward_calculation() {
@@ -176,19 +176,25 @@ mod tests {
         // Create a test block at height 0
         let block = Block {
             header: BlockHeader {
+                version: 1,
                 block_hash: Hash::new([0; 32]),
-                height: 0,
-                selected_parent_hash: Hash::new([0; 32]),
+                selected_parent_hash: Hash::default(),
                 merge_parent_hashes: vec![],
                 timestamp: 0,
+                height: 0,
                 blue_score: 0,
                 blue_work: 0,
-                pruning_point: 0,
-                version: 1,
+                pruning_point: Hash::default(),
+                proposer_pubkey: PublicKey::new([0; 32]),
+                vrf_reveal: VrfProof { proof: vec![], output: Hash::default() },
             },
-            transactions: vec![],
             state_root: Hash::new([0; 32]),
             tx_root: Hash::new([0; 32]),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
+            ghostdag_params: GhostDagParams::default(),
+            transactions: vec![],
+            signature: Signature::new([0; 64]),
         };
         
         let reward = calculator.calculate_reward(&block);
@@ -210,19 +216,25 @@ mod tests {
         // Test block after first halving
         let block = Block {
             header: BlockHeader {
+                version: 1,
                 block_hash: Hash::new([0; 32]),
-                height: 2_100_000,
-                selected_parent_hash: Hash::new([0; 32]),
+                selected_parent_hash: Hash::default(),
                 merge_parent_hashes: vec![],
                 timestamp: 0,
+                height: 2_100_000,
                 blue_score: 0,
                 blue_work: 0,
-                pruning_point: 0,
-                version: 1,
+                pruning_point: Hash::default(),
+                proposer_pubkey: PublicKey::new([0; 32]),
+                vrf_reveal: VrfProof { proof: vec![], output: Hash::default() },
             },
-            transactions: vec![],
             state_root: Hash::new([0; 32]),
             tx_root: Hash::new([0; 32]),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
+            ghostdag_params: GhostDagParams::default(),
+            transactions: vec![],
+            signature: Signature::new([0; 64]),
         };
         
         let reward = calculator.calculate_reward(&block);

@@ -38,15 +38,17 @@ pub fn verify_transaction(tx: &Transaction) -> Result<bool, CryptoError> {
 
 /// Sign a transaction (for testing and dev tools)
 pub fn sign_transaction(tx: &mut Transaction, signing_key: &SigningKey) -> Result<(), CryptoError> {
-    // Get canonical bytes to sign
+    // Ensure `from` matches the signing key before computing canonical bytes
+    tx.from = PublicKey::new(signing_key.verifying_key().to_bytes());
+
+    // Get canonical bytes to sign (now includes correct `from`)
     let message = canonical_tx_bytes(tx)?;
-    
+
     // Sign the message
     let signature: DalekSignature = signing_key.sign(&message);
-    
-    // Update transaction
+
+    // Update signature in transaction
     tx.signature = Signature::new(signature.to_bytes());
-    tx.from = PublicKey::new(signing_key.verifying_key().to_bytes());
     
     Ok(())
 }

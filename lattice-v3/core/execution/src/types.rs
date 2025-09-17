@@ -42,6 +42,31 @@ impl std::fmt::Display for Address {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_address_from_public_key_embedded_evm() {
+        // First 20 bytes non-zero, last 12 bytes zero → embedded address
+        let mut bytes = [0u8; 32];
+        for i in 0..20 { bytes[i] = (i as u8) + 1; }
+        // last 12 remain zero
+        let pk = PublicKey::new(bytes);
+        let addr = Address::from_public_key(&pk);
+        assert_eq!(addr.0, bytes[0..20]);
+    }
+
+    #[test]
+    fn test_address_from_public_key_hashed() {
+        // Non-zero across 32 bytes → derive from Keccak256
+        let bytes = [0x55u8; 32];
+        let pk = PublicKey::new(bytes);
+        let addr = Address::from_public_key(&pk);
+        assert_ne!(addr.0, bytes[0..20]);
+    }
+}
+
 /// Model identifier
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ModelId(pub Hash);
@@ -51,7 +76,7 @@ pub struct ModelId(pub Hash);
 pub struct JobId(pub Hash);
 
 /// Account state
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AccountState {
     pub nonce: u64,
     pub balance: U256,

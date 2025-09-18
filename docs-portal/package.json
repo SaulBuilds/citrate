@@ -1,0 +1,21 @@
+{
+  "name": "lattice-docs-portal",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve build",
+    "docs:pdf": "node scripts/export-pdf.js"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.4.0",
+    "@docusaurus/preset-classic": "^3.4.0",
+    "@docusaurus/theme-search-algolia": "^3.4.0",
+    "clsx": "^2.0.0",
+    "markdown-to-pdf": "^11.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
+

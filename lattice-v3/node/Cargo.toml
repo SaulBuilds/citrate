@@ -16,6 +16,7 @@ lattice-network = { path = "../core/network" }
 lattice-sequencer = { path = "../core/sequencer" }
 lattice-api = { path = "../core/api" }
 lattice-economics = { path = "../core/economics" }
+lattice-mcp = { path = "../core/mcp" }
 
 # External dependencies
 tokio = { version = "1.32", features = ["full"] }
@@ -31,3 +32,9 @@ hex = "0.4"
 chrono = "0.4"
 sha3 = "0.10"
 primitive-types = "0.12"
+async-trait = "0.1"
+# Enable TLS, multipart uploads (IPFS add), and JSON helpers used in node code
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "multipart", "json"] }
+
+[features]
+devnet = []

@@ -162,6 +162,52 @@ impl BlockProducer {
             reward_calculator,
         }
     }
+
+    /// Create with explicit reward configuration (for governance-driven params)
+    pub fn with_peer_manager_and_rewards(
+        storage: Arc<StorageManager>,
+        executor: Arc<Executor>,
+        mempool: Arc<Mempool>,
+        peer_manager: Option<Arc<PeerManager>>,
+        coinbase: PublicKey,
+        target_block_time: u64,
+        reward_config: RewardConfig,
+    ) -> Self {
+        // Create consensus components with a new DAG store
+        let dag_store = Arc::new(DagStore::new());
+        let _chain_store = storage.blocks.clone();
+
+        let ghostdag = Arc::new(GhostDag::new(GhostDagParams::default(), dag_store.clone()));
+        let tip_selector = Arc::new(TipSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            lattice_consensus::tip_selection::SelectionStrategy::HighestBlueScore,
+        ));
+        let chain_selector = Arc::new(ChainSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            tip_selector.clone(),
+            100,
+        ));
+
+        let reward_calculator = RewardCalculator::new(reward_config);
+        let ai_state_manager = Arc::new(AIStateManager::new(storage.db.clone()));
+
+        Self {
+            storage,
+            executor,
+            mempool,
+            dag_store,
+            ghostdag,
+            tip_selector,
+            chain_selector,
+            ai_state_manager,
+            peer_manager,
+            coinbase,
+            target_block_time,
+            reward_calculator,
+        }
+    }
     
     /// Start block production loop
     pub async fn start(self: Arc<Self>) {

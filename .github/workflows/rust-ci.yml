@@ -1,0 +1,44 @@
+name: Rust CI
+
+on:
+  push:
+    paths:
+      - 'lattice-v3/**'
+      - '.github/workflows/rust-ci.yml'
+  pull_request:
+    paths:
+      - 'lattice-v3/**'
+      - '.github/workflows/rust-ci.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lattice-v3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Show toolchain
+        run: rustc -Vv && cargo -V
+      - name: Build tests (no run)
+        run: cargo test --workspace --no-run
+      - name: Run tests
+        run: cargo test --workspace --quiet
+
+  verifier-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lattice-v3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Show toolchain
+        run: rustc -Vv && cargo -V
+      - name: Build lattice-api with verifier feature
+        run: cargo build -p lattice-api --features verifier-ethers-solc
+      - name: Run lattice-api tests with verifier feature
+        run: cargo test -p lattice-api --features verifier-ethers-solc -- --nocapture

@@ -89,6 +89,44 @@ contract ModelRegistryTest is Test {
         registry.registerModel{value:0.1 ether}("N","Fw","1","",123, 0,_meta());
     }
 
+    function test_activate_deactivate_and_permission_checks() public {
+        vm.prank(owner);
+        bytes32 h = registry.registerModel{value:0.1 ether}("N","Fw","1","cidA",123, 0.2 ether,_meta());
+
+        // Deactivate by owner blocks inference
+        vm.prank(owner);
+        registry.deactivateModel(h);
+        vm.prank(user);
+        vm.expectRevert(bytes("Model not active"));
+        registry.requestInference{value:0.2 ether}(h, hex"00");
+
+        // Reactivate by operator (owner has DEFAULT_ADMIN_ROLE and OPERATOR_ROLE)
+        vm.prank(owner);
+        registry.activateModel(h);
+
+        // Without permission (paid model) request should revert
+        vm.prank(user);
+        vm.expectRevert(bytes("No permission"));
+        registry.requestInference{value:0.2 ether}(h, hex"01");
+
+        // Grant permission then inference should succeed
+        vm.prank(owner);
+        registry.grantPermission(h, user);
+        vm.prank(user);
+        bytes memory out = registry.requestInference{value:0.2 ether}(h, hex"01");
+        assertGt(out.length, 0);
+    }
+
+    function test_requestInference_revertsOnInsufficientPayment() public {
+        vm.prank(owner);
+        bytes32 h = registry.registerModel{value:0.1 ether}("N","Fw","1","cidA",123, 1 ether,_meta());
+        vm.prank(owner);
+        registry.grantPermission(h, user);
+        vm.prank(user);
+        vm.expectRevert(bytes("Insufficient payment"));
+        registry.requestInference{value:0.5 ether}(h, hex"00");
+    }
+
     function test_updateModel_onlyOwner_and_active() public {
         vm.prank(owner);
         bytes32 h = registry.registerModel{value:0.1 ether}("N","Fw","1","cidA",123, 0.1 ether,_meta());

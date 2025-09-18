@@ -16,7 +16,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -28,10 +28,9 @@ services:
     command: redis-server --appendonly yes
 
   explorer:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: lattice-explorer
+    working_dir: /app
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,15 +44,19 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./src:/app/src
-      - ./public:/app/public
-    command: npm run dev
+      - ./:/app
+    command: sh -c "apk add --no-cache bash && npm ci && npx prisma generate && npm run dev"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
   indexer:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: lattice-indexer
+    working_dir: /app
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +64,9 @@ services:
       DATABASE_URL: postgresql://postgres:password@postgres:5432/lattice_explorer
       RPC_ENDPOINT: ${RPC_ENDPOINT:-http://host.docker.internal:8545}
       INDEXER_ENABLED: "true"
-    command: npm run indexer
+    volumes:
+      - ./:/app
+    command: sh -c "npm ci && npx prisma generate && npm run indexer"
     restart: unless-stopped
 
 volumes:

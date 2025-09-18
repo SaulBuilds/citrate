@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use base64::Engine;
 use clap::Subcommand;
 use colored::Colorize;
 use std::fs;
@@ -171,7 +172,7 @@ async fn deploy_model(
             "method": "lattice_deployModel",
             "params": {
                 "from": from_account,
-                "model_data": base64::encode(&model_data),
+                "model_data": base64::engine::general_purpose::STANDARD.encode(&model_data),
                 "metadata": metadata,
                 "gas_price": config.gas_price,
                 "gas_limit": config.gas_limit,

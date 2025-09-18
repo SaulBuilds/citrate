@@ -11,9 +11,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY core ./core
 COPY node ./node
 COPY cli ./cli
+COPY contracts ./contracts
 
 # Build release binary
-RUN cargo build --release
+RUN cargo build --release -p lattice-node
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -22,6 +23,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user for running the node
@@ -42,10 +44,10 @@ USER lattice
 EXPOSE 8545
 # WebSocket
 EXPOSE 8546
-# REST API
-EXPOSE 3000
 # P2P
 EXPOSE 30303
+# Metrics
+EXPOSE 9100
 
 # Volume for blockchain data
 VOLUME ["/data"]
@@ -53,21 +55,15 @@ VOLUME ["/data"]
 # Default environment variables
 ENV RUST_LOG=info
 ENV LATTICE_DATA_DIR=/data
-ENV LATTICE_NETWORK=mainnet
+ENV LATTICE_METRICS=1
+ENV LATTICE_METRICS_ADDR=0.0.0.0:9100
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD lattice status || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=5 \
+    CMD curl -fsS http://localhost:9100/health || exit 1
 
 # Entry point
 ENTRYPOINT ["lattice"]
 
 # Default command (can be overridden)
-CMD ["--data-dir", "/data", \
-     "--rpc-port", "8545", \
-     "--ws-port", "8546", \
-     "--rest-port", "3000", \
-     "--p2p-port", "30303", \
-     "--rpc-host", "0.0.0.0", \
-     "--ws-host", "0.0.0.0", \
-     "--rest-host", "0.0.0.0"]
+CMD ["devnet"]

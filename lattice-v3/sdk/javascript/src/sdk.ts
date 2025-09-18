@@ -3,7 +3,7 @@ import axios, { AxiosInstance } from 'axios';
 import { ModelRegistry } from './model';
 import { ContractManager } from './contract';
 import { AccountManager } from './account';
-import { LatticeConfig, NetworkInfo, BlockInfo } from './types';
+import { LatticeConfig, NetworkInfo, BlockInfo, ArtifactProviderStatus, ArtifactPinResult } from './types';
 
 /**
  * Main Lattice SDK class
@@ -92,6 +92,33 @@ export class LatticeSDK extends EventEmitter {
     });
     
     return response.valid;
+  }
+
+  // ======= Artifacts =======
+  async pinArtifact(cid: string, replicas: number = 1): Promise<ArtifactPinResult> {
+    const response = await this.rpcClient.post('', {
+      jsonrpc: '2.0', method: 'lattice_pinArtifact', params: [cid, replicas], id: Date.now()
+    });
+    if (response.data.error) throw new Error(response.data.error.message);
+    return response.data.result;
+  }
+
+  async getArtifactStatus(cid: string): Promise<ArtifactProviderStatus[]> {
+    const response = await this.rpcClient.post('', {
+      jsonrpc: '2.0', method: 'lattice_getArtifactStatus', params: [cid], id: Date.now()
+    });
+    if (response.data.error) throw new Error(response.data.error.message);
+    const result = response.data.result;
+    try { return JSON.parse(typeof result === 'string' ? result : JSON.stringify(result)); } catch { return []; }
+  }
+
+  async listModelArtifacts(modelIdHex: string): Promise<string[]> {
+    const response = await this.rpcClient.post('', {
+      jsonrpc: '2.0', method: 'lattice_listModelArtifacts', params: [modelIdHex], id: Date.now()
+    });
+    if (response.data.error) throw new Error(response.data.error.message);
+    const result = response.data.result;
+    return Array.isArray(result) ? result : [];
   }
   
   /**

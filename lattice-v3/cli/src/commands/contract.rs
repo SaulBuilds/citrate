@@ -86,7 +86,28 @@ pub enum ContractCommands {
         /// Optimization enabled
         #[arg(short, long)]
         optimized: bool,
+
+        /// Optional runtime bytecode (hex). If not provided, RPC can compile source if configured.
+        #[arg(long)]
+        runtime_bytecode: Option<String>,
+        
+        /// Optional path to runtime bytecode file (hex). Used if --runtime-bytecode not set.
+        #[arg(long)]
+        runtime_bytecode_file: Option<PathBuf>,
+
+        /// Read verification record for an address instead of submitting (alias: --get <address>)
+        #[arg(long)]
+        get: Option<String>,
     },
+
+    /// Get a verification record (alias for --get)
+    VerifyGet {
+        /// Contract address
+        address: String,
+    },
+
+    /// List all verification records known to the node
+    VerifyList,
 }
 
 pub async fn execute(cmd: ContractCommands, config: &Config) -> Result<()> {
@@ -103,8 +124,18 @@ pub async fn execute(cmd: ContractCommands, config: &Config) -> Result<()> {
         ContractCommands::Code { address, output } => {
             get_contract_code(config, &address, output).await?;
         }
-        ContractCommands::Verify { address, source, compiler, optimized } => {
-            verify_contract(config, &address, source, &compiler, optimized).await?;
+        ContractCommands::Verify { address, source, compiler, optimized, runtime_bytecode, runtime_bytecode_file, get } => {
+            if let Some(addr) = get {
+                get_verification(config, &addr).await?;
+            } else {
+                verify_contract(config, &address, source, &compiler, optimized, runtime_bytecode, runtime_bytecode_file).await?;
+            }
+        }
+        ContractCommands::VerifyGet { address } => {
+            get_verification(config, &address).await?;
+        }
+        ContractCommands::VerifyList => {
+            list_verifications(config).await?;
         }
     }
     Ok(())
@@ -408,12 +439,28 @@ async fn verify_contract(
     source_path: PathBuf,
     compiler: &str,
     optimized: bool,
+    runtime_bytecode: Option<String>,
+    runtime_bytecode_file: Option<PathBuf>,
 ) -> Result<()> {
     println!("{}", "Verifying contract...".cyan());
     
     // Read source code
     let source_code = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read source file {:?}", source_path))?;
+
+    // Determine runtime bytecode input if provided
+    let mut runtime_bc_hex: Option<String> = None;
+    if let Some(hex_in) = runtime_bytecode {
+        let s = hex_in.trim();
+        let s = if s.starts_with("0x") { s.to_string() } else { format!("0x{}", s) };
+        runtime_bc_hex = Some(s);
+    } else if let Some(path) = runtime_bytecode_file {
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read runtime bytecode file {:?}", path))?;
+        let s = content.trim();
+        let s = if s.starts_with("0x") { s.to_string() } else { format!("0x{}", s) };
+        runtime_bc_hex = Some(s);
+    }
     
     // Make RPC call to verify
     let client = reqwest::Client::new();
@@ -427,6 +474,7 @@ async fn verify_contract(
                 "source_code": source_code,
                 "compiler_version": compiler,
                 "optimization_enabled": optimized,
+                "runtime_bytecode": runtime_bc_hex,
             },
             "id": 1
         }))
@@ -445,6 +493,63 @@ async fn verify_contract(
         anyhow::bail!("Contract verification failed");
     }
     
+    Ok(())
+}
+
+async fn get_verification(config: &Config, address: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&config.rpc_endpoint)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "method": "lattice_getVerification",
+            "params": [address],
+            "id": 1
+        }))
+        .send()
+        .await
+        .context("Failed to connect to RPC endpoint")?;
+
+    let v: serde_json::Value = response.json().await?;
+    if let Some(rec) = v["result"].as_object() {
+        println!("{}", "Verification Record:".bold());
+        println!("Address: {}", rec.get("address").and_then(|s| s.as_str()).unwrap_or(""));
+        println!("Verified: {}", rec.get("verified").and_then(|b| b.as_bool()).unwrap_or(false));
+        if let Some(id) = rec.get("verification_id").and_then(|s| s.as_str()) { println!("ID: {}", id); }
+        if let Some(ts) = rec.get("timestamp").and_then(|s| s.as_str()) { println!("Timestamp: {}", ts); }
+        Ok(())
+    } else {
+        println!("No verification record for {}", address);
+        Ok(())
+    }
+}
+
+async fn list_verifications(config: &Config) -> Result<()> {
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&config.rpc_endpoint)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "method": "lattice_listVerifications",
+            "params": [],
+            "id": 1
+        }))
+        .send()
+        .await
+        .context("Failed to connect to RPC endpoint")?;
+
+    let v: serde_json::Value = response.json().await?;
+    if let Some(arr) = v["result"].as_array() {
+        println!("{} {}", arr.len(), "verification record(s)".bold());
+        for rec in arr {
+            if let Some(addr) = rec["address"].as_str() {
+                let status = rec["verified"].as_bool().unwrap_or(false);
+                println!("- {} (verified: {})", addr, status);
+            }
+        }
+    } else {
+        println!("No verification records found");
+    }
     Ok(())
 }
 

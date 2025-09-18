@@ -116,4 +116,84 @@ contract InferenceRouterTest is Test {
         vm.prank(p1);
         router.completeInference(reqId, hex"DEAD");
     }
+
+    function test_RegisterProvider_RevertOnLowStake() public {
+        bytes32[] memory models = new bytes32[](1);
+        models[0] = keccak256("model-x");
+        address provider = address(0xD00D);
+        vm.deal(provider, 0.5 ether);
+        vm.prank(provider);
+        vm.expectRevert();
+        router.registerProvider{value: 0.5 ether}("http://x", 0.1 ether, models);
+    }
+
+    function test_CancelRequest_OnlyRequester() public {
+        // Register a provider
+        address p = address(0xC001);
+        vm.deal(p, 3 ether);
+        bytes32[] memory models = new bytes32[](1);
+        models[0] = keccak256("model-y");
+        vm.prank(p);
+        router.registerProvider{value: 2 ether}("http://p", 0.2 ether, models);
+
+        // Create request
+        address user = address(0xFEED);
+        vm.deal(user, 2 ether);
+        vm.prank(user);
+        uint256 id = router.requestInference{value: 1 ether}(models[0], hex"AB", 1 ether);
+
+        // Non-requester cannot cancel
+        vm.prank(p);
+        vm.expectRevert();
+        router.cancelRequest(id);
+
+        // Requester can cancel
+        vm.prank(user);
+        router.cancelRequest(id);
+    }
+
+    function test_Complete_RevertsIfNotAssignedProvider() public {
+        address p1 = address(0x1111);
+        address p2 = address(0x2222);
+        vm.deal(p1, 3 ether);
+        vm.deal(p2, 3 ether);
+        bytes32[] memory models = new bytes32[](1);
+        models[0] = keccak256("model-z");
+        vm.prank(p1);
+        router.registerProvider{value: 2 ether}("http://p1", 0.1 ether, models);
+        vm.prank(p2);
+        router.registerProvider{value: 2 ether}("http://p2", 0.2 ether, models);
+
+        address user = address(0x3333);
+        vm.deal(user, 3 ether);
+        vm.prank(user);
+        uint256 id = router.requestInference{value: 1 ether}(models[0], hex"AA", 1 ether);
+
+        // Completion from wrong provider should revert
+        vm.prank(p2);
+        vm.expectRevert(bytes("Not assigned provider"));
+        router.completeInference(id, hex"01");
+    }
+
+    function test_WithdrawStake_RequiresInactiveAndNoLoad() public {
+        address p = address(0x4545);
+        vm.deal(p, 3 ether);
+        bytes32[] memory models = new bytes32[](1);
+        models[0] = keccak256("model-w");
+        vm.prank(p);
+        router.registerProvider{value: 2 ether}("http://p", 0.1 ether, models);
+
+        // Active -> cannot withdraw
+        vm.prank(p);
+        vm.expectRevert(bytes("Must deactivate first"));
+        router.withdrawStake(1 ether);
+
+        // Deactivate then withdraw
+        vm.prank(p);
+        router.updateProviderStatus(false);
+        uint256 before = p.balance;
+        vm.prank(p);
+        router.withdrawStake(1 ether);
+        assertEq(p.balance, before + 1 ether);
+    }
 }

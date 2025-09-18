@@ -90,7 +90,9 @@ async fn main() {
     info!("Faucet listening on http://0.0.0.0:3001");
     info!("Request test tokens: POST /faucet with {{\"address\": \"0x...\"}}");
     
-    axum::serve(listener, app).await.unwrap();
+    if let Err(e) = axum::serve(listener, app).await {
+        error!("Faucet server exited with error: {}", e);
+    }
 }
 
 async fn root() -> &'static str {

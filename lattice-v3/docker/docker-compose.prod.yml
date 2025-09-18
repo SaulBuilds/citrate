@@ -1,0 +1,71 @@
+version: '3.8'
+services:
+  node:
+    build:
+      context: ../..
+      dockerfile: lattice-v3/docker/node.Dockerfile
+    image: lattice/node:prod
+    container_name: lattice-node
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+      - "30303:30303"
+    environment:
+      - RUST_LOG=info
+    networks:
+      - lattice
+
+  node-app:
+    build:
+      context: ../..
+      dockerfile: lattice-v3/docker/node-app.Dockerfile
+    image: lattice/node-app:prod
+    container_name: lattice-node-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - node
+    networks:
+      - lattice
+
+  faucet:
+    build:
+      context: ../..
+      dockerfile: lattice-v3/docker/faucet.Dockerfile
+    image: lattice/faucet:prod
+    container_name: lattice-faucet
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    networks:
+      - lattice
+
+  docs:
+    build:
+      context: ../..
+      dockerfile: docs-portal/Dockerfile
+    image: lattice/docs-portal:prod
+    container_name: lattice-docs
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    networks:
+      - lattice
+
+  web:
+    build:
+      context: ../..
+      dockerfile: marketing-site/Dockerfile
+    image: lattice/marketing-site:prod
+    container_name: lattice-web
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    networks:
+      - lattice
+
+networks:
+  lattice:
+    driver: bridge
+

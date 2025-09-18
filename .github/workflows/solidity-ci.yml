@@ -25,6 +25,20 @@ jobs:
           forge --version
           forge test -vvv
 
+  forge-contracts-isolated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Run Forge tests in contracts folder
+        working-directory: lattice-v3/contracts
+        run: |
+          forge --version
+          forge test -vvv
+
   slither:
     runs-on: ubuntu-latest
     steps:
@@ -39,4 +53,3 @@ jobs:
         continue-on-error: true
         run: |
           slither . --solc-remaps @openzeppelin/=lib/openzeppelin-contracts/ || true
-

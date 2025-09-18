@@ -3,7 +3,7 @@
 ## Executive Summary
 Date: Current Session
 Auditor: Development Team
-Status: **PARTIAL IMPLEMENTATION → BASELINE COMPILE ACHIEVED**
+Status: **PARTIAL IMPLEMENTATION → BASELINE COMPILE ACHIEVED (API AI tests fixed; Rust CI added)**
 
 ### Critical Finding
 The test suite that was claimed to be "complete" in Sprints 2-4 was found to be **largely non-functional**. Most test files contained stub implementations that didn't compile or match the actual API.
@@ -12,13 +12,19 @@ The test suite that was claimed to be "complete" in Sprints 2-4 was found to be 
 
 ### 0. Delta Update (current session)
 
-- `cargo test --workspace --no-run` now compiles after targeted fixes.
+- `cargo test --workspace --no-run` compiles cleanly (node crate fixed by enabling `reqwest` multipart+json features; trait impls corrected).
+- API integration tests for AI opcodes now pass (18/18) after adding an AI-opcode fast path in `Executor::execute_call`.
 - Patched test code to match current APIs (added `tx_type` field, passed `chain_id` to API, updated constructors and example code).
 - Fixed consensus tests to current `BlueSet` and `TipSelector` signatures.
 - Added Foundry tests for core contracts with a mock precompile using `vm.etch`:
   - `contracts/test/ModelRegistry.t.sol`
   - `contracts/test/InferenceRouter.t.sol`
 - Added planning doc aligned to reality: `docs/TESTING_ALIGNMENT_AND_PLAN.md`.
+- Added Rust CI workflow: `.github/workflows/rust-ci.yml` (build + test across workspace).
+- Added governance precompile tests in execution (timelock + params) and expanded Foundry tests:
+  - ModelRegistry: deactivate/activate lifecycle, permission checks, insufficient payment revert.
+  - InferenceRouter: stake requirement, cancel authorization, wrong-provider completion revert, withdraw stake preconditions.
+- Implemented `lattice_verifyContract` RPC stub (returns deterministic verification_id, `verified: true`) to unblock CLI/SDK.
 
 Note: Many unit/integration tests exist across crates; several were previously failing to compile due to API drift. The drift has been corrected for compilation; coverage is still low and expansion is planned.
 

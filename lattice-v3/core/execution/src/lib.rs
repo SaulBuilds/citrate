@@ -6,6 +6,7 @@ pub mod vm;
 pub mod tensor;
 pub mod zkp;
 pub mod address_utils;
+pub mod metrics;
 
 pub use types::{
     Address, AccountState, ModelId, ModelState, ModelMetadata, 
@@ -20,5 +21,5 @@ pub use state::{
     AccountManager, StateDB, StateRoot, Trie,
 };
 
-pub use executor::{Executor, ExecutionContext};
+pub use executor::{Executor, ExecutionContext, InferenceService};
 pub use parallel::{ParallelExecutor};

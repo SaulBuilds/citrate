@@ -6,6 +6,16 @@ export interface LatticeConfig {
   gasLimit?: number;
 }
 
+export interface ArtifactProviderStatus {
+  provider: string;
+  status: 'pinned' | 'unpinned' | 'unknown';
+}
+
+export interface ArtifactPinResult {
+  status: 'ok' | 'error';
+  message?: string;
+}
+
 export interface NetworkInfo {
   networkId: number;
   chainId: number;

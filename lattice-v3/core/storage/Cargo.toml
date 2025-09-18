@@ -36,3 +36,6 @@ chrono = "0.4"
 tempfile = "3.8"
 tokio-test = "0.4"
 rand = { workspace = true }
+
+[features]
+no-compression = []

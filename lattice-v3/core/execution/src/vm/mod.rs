@@ -29,6 +29,40 @@ impl VM {
         }
     }
     
+    /// Execute bytecode with input: seeds memory at offset 0 and pushes
+    /// up to two 32-byte words from input onto the main stack (model_id, input_id).
+    pub fn execute_with_input(&mut self, code: &[u8], input: &[u8]) -> Result<Vec<u8>, ExecutionError> {
+        // Seed memory with input bytes
+        if !input.is_empty() {
+            self.memory.set(0, input)?;
+        }
+        // If at least 32 bytes, push model_id
+        if input.len() >= 32 {
+            let mut word = [0u8; 32];
+            word.copy_from_slice(&input[0..32]);
+            let model_id = U256::from_big_endian(&word);
+            self.stack.push(model_id)?;
+        }
+        // If at least 64 bytes, push input_id on top
+        if input.len() >= 64 {
+            let mut word = [0u8; 32];
+            word.copy_from_slice(&input[32..64]);
+            let input_id = U256::from_big_endian(&word);
+            self.stack.push(input_id)?;
+        }
+        
+        let _ = self.execute(code)?;
+        
+        // If any value remains on the stack, return top as 32-byte big-endian
+        if let Ok(val) = self.stack.pop() {
+            let mut out = [0u8; 32];
+            val.to_big_endian(&mut out);
+            Ok(out.to_vec())
+        } else {
+            Ok(Vec::new())
+        }
+    }
+    
     /// Execute bytecode
     pub fn execute(&mut self, code: &[u8]) -> Result<Vec<u8>, ExecutionError> {
         let mut pc = 0; // Program counter
@@ -43,12 +77,17 @@ impl VM {
                     let gas_cost = self.ai_extension.gas_cost(ai_opcode);
                     self.consume_gas(gas_cost)?;
                     
-                    // Transfer stack values to AI extension if needed
-                    if needs_stack_transfer(ai_opcode) {
-                        // Push stack values to AI extension
-                        while let Ok(value) = self.stack.pop() {
-                            self.ai_extension.push(value);
-                            break; // Transfer one value for now
+                    // Transfer required stack args to AI extension
+                    let args_needed = ai_required_args(ai_opcode);
+                    if args_needed > 0 {
+                        let mut tmp: Vec<U256> = Vec::with_capacity(args_needed);
+                        for _ in 0..args_needed {
+                            let v = self.stack.pop()?; // error if insufficient
+                            tmp.push(v);
+                        }
+                        // Preserve pop order expected by opcode: last pushed should be on top in ai stack
+                        for v in tmp.into_iter().rev() {
+                            self.ai_extension.push(v);
                         }
                     }
                     
@@ -241,6 +280,23 @@ fn needs_stack_transfer(opcode: ai_opcodes::AIOpcode) -> bool {
         AIOpcode::VERIFY_PROOF |
         AIOpcode::GENERATE_PROOF
     )
+}
+
+/// Number of arguments an AI opcode expects to pop from the main stack
+fn ai_required_args(opcode: ai_opcodes::AIOpcode) -> usize {
+    use ai_opcodes::AIOpcode;
+    match opcode {
+        AIOpcode::LOAD_MODEL => 1,
+        AIOpcode::UNLOAD_MODEL => 1,
+        AIOpcode::EXEC_MODEL => 2,
+        AIOpcode::TRAIN_MODEL => 2,
+        AIOpcode::TENSOR_NEW => 3,     // dims, height, width
+        AIOpcode::TENSOR_ADD => 2,
+        AIOpcode::TENSOR_MUL => 2,
+        AIOpcode::TENSOR_MATMUL => 2,
+        AIOpcode::VERIFY_PROOF => 1,
+        AIOpcode::GENERATE_PROOF => 1,
+    }
 }
 
 /// Check if opcode produces output

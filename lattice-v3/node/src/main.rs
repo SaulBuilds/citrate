@@ -16,6 +16,8 @@ use tracing_subscriber::EnvFilter;
 mod config;
 mod genesis;
 mod producer;
+mod inference;
+mod artifact;
 
 use config::NodeConfig;
 use genesis::{GenesisConfig, initialize_genesis_state};
@@ -208,11 +210,59 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     
     // Create state DB and executor with persistent storage
     let state_db = Arc::new(StateDB::new());
-    let executor = Arc::new(Executor::with_storage(
-        state_db,
-        Some(storage.state.clone())
-    ));
+    // MCP + inference service
+    let vm_for_mcp = Arc::new(lattice_execution::vm::VM::new(10_000_000));
+    let mcp = Arc::new(lattice_mcp::MCPService::new(storage.clone(), vm_for_mcp.clone()));
+    // Provider address from config.mining.coinbase (hex 0x...)
+    let provider_addr = {
+        let mut a = [0u8; 20];
+        let s = config.mining.coinbase.trim_start_matches("0x");
+        if let Ok(bytes) = hex::decode(s) {
+            if bytes.len() >= 20 { a.copy_from_slice(&bytes[..20]); }
+        }
+        lattice_execution::types::Address(a)
+    };
+    // Flat provider fee = 0.01 LATT (1e16 wei)
+    let provider_fee = primitive_types::U256::from(10u128.pow(16));
+    let inf_svc = Arc::new(crate::inference::NodeInferenceService::new(mcp.clone(), provider_addr, provider_fee));
+
+    // Artifact service with governance provider list override
+    let gov_addr = {
+        let mut a = [0u8;20]; a[18]=0x10; a[19]=0x03; lattice_execution::types::Address(a)
+    };
+    let providers_from_gov: Option<Vec<String>> = state_db.get_storage(&gov_addr, b"PARAM:ipfs_providers")
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect());
+    let art_svc = if let Some(providers) = providers_from_gov {
+        Arc::new(crate::artifact::NodeArtifactService::new_with_providers(providers))
+    } else {
+        let ipfs_api = std::env::var("LATTICE_IPFS_API").ok();
+        Arc::new(crate::artifact::NodeArtifactService::new(ipfs_api))
+    };
+
+    let exec_base = Executor::with_storage(state_db, Some(storage.state.clone()));
+    let executor = Arc::new(
+        exec_base
+            .with_inference_service(inf_svc)
+            .with_artifact_service(art_svc)
+    );
     
+    // Governance params: read min_gas_price override
+    let governance_addr = {
+        let mut a = [0u8;20]; a[18]=0x10; a[19]=0x03; lattice_execution::types::Address(a)
+    };
+    let mut min_gas_price_override: Option<u64> = None;
+    if let Some(bytes) = executor.state_db().get_storage(&governance_addr, b"PARAM:min_gas_price") {
+        if bytes.len() >= 8 {
+            let mut arr=[0u8;8]; arr.copy_from_slice(&bytes[..8]);
+            min_gas_price_override = Some(u64::from_le_bytes(arr));
+        } else if bytes.len() >= 4 {
+            // support 32-bit little endian as fallback
+            let mut arr=[0u8;4]; arr.copy_from_slice(&bytes[..4]);
+            min_gas_price_override = Some(u32::from_le_bytes(arr) as u64);
+        }
+    }
+
     // Mempool config from env overrides
     let require_valid_signature = std::env::var("LATTICE_REQUIRE_VALID_SIGNATURE")
         .ok()
@@ -240,7 +290,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     let mempool = Arc::new(Mempool::new(MempoolConfig {
         max_size: 10000,
         max_per_sender: 100,
-        min_gas_price: config.mining.min_gas_price,
+        min_gas_price: min_gas_price_override.unwrap_or(config.mining.min_gas_price),
         tx_expiry_secs: 3600,
         allow_replacement: true,
         replacement_factor: 110,
@@ -257,6 +307,21 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         ban_duration: std::time::Duration::from_secs(3600),
         score_threshold: -100,
     }));
+
+    // Optionally start Prometheus metrics server
+    let metrics_enabled = std::env::var("LATTICE_METRICS").map(|v| {
+        matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on")
+    }).unwrap_or(false);
+    if metrics_enabled {
+        let addr_str = std::env::var("LATTICE_METRICS_ADDR").unwrap_or_else(|_| "0.0.0.0:9100".to_string());
+        let addr: std::net::SocketAddr = addr_str.parse().unwrap();
+        tokio::spawn(async move {
+            if let Err(e) = lattice_api::metrics_server::MetricsServer::new(addr).start().await {
+                tracing::warn!("Metrics server failed: {}", e);
+            }
+        });
+        info!("Metrics server enabled at {}", addr);
+    }
 
     // Start P2P listener and connect to bootstrap nodes
     {
@@ -443,13 +508,29 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         // Always use peer manager if we have one (network is already setup above)
         let producer_peer_manager = Some(peer_manager.clone());
         
-        let producer = Arc::new(BlockProducer::with_peer_manager(
+        // Treasury percentage from governance
+        let mut treasury_percentage = 10u8;
+        if let Some(bytes) = executor.state_db().get_storage(&governance_addr, b"PARAM:treasury_percentage") {
+            if !bytes.is_empty() { treasury_percentage = bytes[0]; }
+        }
+
+        let reward_config = lattice_economics::rewards::RewardConfig {
+            block_reward: 10,
+            halving_interval: 2_100_000,
+            inference_bonus: 1,
+            model_deployment_bonus: 1,
+            treasury_percentage,
+            treasury_address: lattice_execution::types::Address([0x11; 20]),
+        };
+
+        let producer = Arc::new(BlockProducer::with_peer_manager_and_rewards(
             storage.clone(),
             executor.clone(),
             mempool.clone(),
             producer_peer_manager,
             lattice_consensus::PublicKey::new(coinbase),
             config.mining.target_block_time,
+            reward_config,
         ));
         
         tokio::spawn(async move {

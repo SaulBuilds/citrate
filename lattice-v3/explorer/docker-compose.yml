@@ -45,9 +45,9 @@ services:
       - "3000:3000"
     volumes:
       - ./:/app
-    command: sh -c "apk add --no-cache bash && npm ci && npx prisma generate && npm run dev"
+    command: sh -c "apk add --no-cache bash curl && npm ci && npx prisma generate && npm run dev"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 > /dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000 >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20

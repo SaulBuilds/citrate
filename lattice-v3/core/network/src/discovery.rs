@@ -181,7 +181,7 @@ impl Discovery {
                 p.value().attempts < 3 &&
                 (now - p.value().last_seen) < self.config.peer_expiry.as_secs()
             })
-            .map(|p| (p.value().clone()))
+            .map(|p| p.value().clone())
             .collect();
         
         // Sort by score and attempts

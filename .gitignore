@@ -32,6 +32,8 @@ node_modules/
 **/.cache/
 **/coverage/
 **/out/
+.env
+**/.env
 
 # Web/Apps specific
 docs-portal/build/
@@ -40,4 +42,3 @@ docs-portal/build/
 
 # Tauri bundles (covered by target/, but kept for clarity)
 **/bundle/
-

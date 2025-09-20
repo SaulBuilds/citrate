@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  lattice-node:
+  lattice-node-devnet:
     build: .
     image: lattice:v3
-    container_name: lattice-node
+    container_name: lattice-node-devnet
     restart: unless-stopped
     ports:
       - "8545:8545"   # JSON-RPC
@@ -14,13 +14,14 @@ services:
       - "9100:9100"   # Prometheus metrics
     volumes:
       - lattice-data:/data
-      - ./config.toml:/data/config.toml:ro
+      - ./devnet-config.toml:/data/config.toml:ro
     environment:
       - RUST_LOG=info,lattice_api=debug
       - LATTICE_METRICS=1
       - LATTICE_METRICS_ADDR=0.0.0.0:9100
     networks:
       - lattice-network
+    profiles: ["devnet"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
       interval: 30s
@@ -29,18 +30,69 @@ services:
       start_period: 40s
     command: ["devnet"]
 
-  lattice-explorer:
-    image: nginx:alpine
-    container_name: lattice-explorer
+  lattice-node-testnet:
+    image: lattice:v3
+    container_name: lattice-node-testnet
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "18545:8545"   # JSON-RPC (testnet)
+      - "18546:8546"   # WebSocket (testnet)
+      - "30304:30303"  # P2P (testnet)
+      - "19100:9100"   # Metrics (testnet)
     volumes:
-      - ./explorer:/usr/share/nginx/html:ro
+      - lattice-testnet-data:/data
+      - ./testnet-config.toml:/data/config.toml:ro
+    environment:
+      - RUST_LOG=info
+      - LATTICE_METRICS=1
+      - LATTICE_METRICS_ADDR=0.0.0.0:9100
+    networks:
+      - lattice-network
+    profiles: ["testnet"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["-c","/data/config.toml"]
+
+  explorer-web:
+    image: node:20
+    container_name: lattice-explorer-web
+    working_dir: /app
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${EXPLORER_DATABASE_URL:-postgresql://postgres:password@explorer-db:5432/lattice_explorer}
+      - RPC_ENDPOINT=${EXPLORER_RPC_ENDPOINT:-http://lattice-node-devnet:8545}
+      - PORT=3000
+    volumes:
+      - ./explorer:/app
+    command: /bin/sh -lc "npm ci && npm run build && npm run start -- -p 3000"
+    ports:
+      - "3000:3000"
     networks:
       - lattice-network
     depends_on:
-      - lattice-node
+      - explorer-db
+    profiles: ["explorer"]
+
+  explorer-indexer:
+    image: node:20
+    container_name: lattice-explorer-indexer
+    working_dir: /app
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${EXPLORER_DATABASE_URL:-postgresql://postgres:password@explorer-db:5432/lattice_explorer}
+      - RPC_ENDPOINT=${EXPLORER_RPC_ENDPOINT:-http://lattice-node-devnet:8545}
+    volumes:
+      - ./explorer:/app
+    command: /bin/sh -lc "npm ci && npm run indexer"
+    networks:
+      - lattice-network
+    depends_on:
+      - explorer-db
+    profiles: ["explorer"]
 
   prometheus:
     image: prom/prometheus:latest
@@ -57,7 +109,8 @@ services:
     networks:
       - lattice-network
     depends_on:
-      - lattice-node
+      - lattice-node-devnet
+    profiles: ["monitoring"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
       interval: 30s
@@ -82,6 +135,7 @@ services:
       - lattice-network
     depends_on:
       - prometheus
+    profiles: ["monitoring"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
@@ -89,16 +143,16 @@ services:
       retries: 5
       start_period: 60s
 
-  postgres:
+  explorer-db:
     image: postgres:15-alpine
-    container_name: lattice-postgres
+    container_name: lattice-explorer-db
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=lattice
-      - POSTGRES_USER=lattice
-      - POSTGRES_PASSWORD=lattice123
+      - POSTGRES_DB=lattice_explorer
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - explorer-postgres-data:/var/lib/postgresql/data
     networks:
       - lattice-network
     healthcheck:
@@ -107,15 +161,18 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    profiles: ["explorer"]
 
 volumes:
   lattice-data:
+    driver: local
+  lattice-testnet-data:
     driver: local
   prometheus-data:
     driver: local
   grafana-data:
     driver: local
-  postgres-data:
+  explorer-postgres-data:
     driver: local
 
 networks:

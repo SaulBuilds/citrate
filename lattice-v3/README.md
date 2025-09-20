@@ -1,4 +1,8 @@
-## Lattice v3
+## Lattice v3 (Rust Workspace)
+
+This directory contains the Rust workspace for the Lattice node, core crates, CLI, wallet, and associated tools.
+
+For a comprehensive overview, quickstart, architecture diagrams, and contribution guidelines, see the repository root `README.md`.
 
 ### Network Modes & Reset
 

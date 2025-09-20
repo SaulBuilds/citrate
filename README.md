@@ -130,7 +130,7 @@ flowchart LR
   NET <--> CONS
 
   API --> EXPL
-  DOCS -. reference .- U
+  DOCS -. reference .-> U
 ```
 
 Transaction & Inference Flow

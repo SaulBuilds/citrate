@@ -1367,6 +1367,11 @@ mod tests {
     #[cfg(feature = "verifier-ethers-solc")]
     #[test]
     fn test_compile_single_contract_opt_and_unopt() {
+        // Skip if solc is not available on PATH
+        if std::process::Command::new("solc").arg("--version").output().is_err() {
+            eprintln!("solc not installed; skipping verifier test");
+            return;
+        }
         let src = r#"// SPDX-License-Identifier: MIT
         pragma solidity ^0.8.24;
         contract Single {
@@ -1385,6 +1390,11 @@ mod tests {
     #[cfg(feature = "verifier-ethers-solc")]
     #[test]
     fn test_compile_multi_contract_select_by_name() {
+        // Skip if solc is not available on PATH
+        if std::process::Command::new("solc").arg("--version").output().is_err() {
+            eprintln!("solc not installed; skipping verifier test");
+            return;
+        }
         let src = r#"// SPDX-License-Identifier: MIT
         pragma solidity ^0.8.24;
         contract A { function a() public pure returns (uint256) { return 1; } }

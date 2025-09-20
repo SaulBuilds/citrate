@@ -5,13 +5,13 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing::{info, warn, error};
+use tracing::{info, error};
 
 use crate::methods::ai::{
     AiApi, ChatCompletionRequest, ChatCompletionResponse, EmbeddingsRequest, EmbeddingsResponse,
@@ -296,7 +296,7 @@ async fn messages(
                     "id": chat_response.id,
                     "type": "message",
                     "role": "assistant",
-                    "content": chat_response.choices.get(0)
+                    "content": chat_response.choices.first()
                         .map(|c| c.message.content.clone())
                         .unwrap_or_default(),
                     "model": chat_response.model,

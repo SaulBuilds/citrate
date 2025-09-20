@@ -13,6 +13,16 @@ pub struct ProviderRegistry {
     reputation_scores: Arc<RwLock<HashMap<Address, ReputationScore>>>,
 }
 
+impl Default for ProviderRegistry {
+    fn default() -> Self {
+        Self {
+            providers: Arc::new(RwLock::new(HashMap::new())),
+            model_providers: Arc::new(RwLock::new(HashMap::new())),
+            reputation_scores: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ReputationScore {
     pub total_jobs: u64,
@@ -152,7 +162,7 @@ impl ProviderRegistry {
         
         // Update provider info reputation
         if let Some(info) = self.providers.write().await.get_mut(&provider) {
-            info.reputation = (score.successful_jobs * 100 / score.total_jobs) as u64;
+            info.reputation = score.successful_jobs * 100 / score.total_jobs;
             info.total_executions = score.total_jobs;
         }
         

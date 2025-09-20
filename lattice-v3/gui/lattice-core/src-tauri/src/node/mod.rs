@@ -188,7 +188,7 @@ impl NodeManager {
             peer_manager.set_incoming(in_tx).await;
             let pm_for_listener = peer_manager.clone();
             let storage_for_listener = storage.clone();
-            let ghostdag_for_listener = ghostdag.clone();
+            let _ghostdag_for_listener = ghostdag.clone();
             let sync_manager_for_listener = sync_manager.clone();
             let mempool_for_listener = mempool.clone();
             let config_for_listener = Arc::new(RwLock::new(config.clone()));
@@ -584,11 +584,7 @@ impl NodeManager {
 
     /// Expose mempool for local submissions
     pub async fn get_mempool(&self) -> Option<Arc<RwLock<Mempool>>> {
-        if let Some(node) = self.node.read().await.as_ref() {
-            Some(node.mempool.clone())
-        } else {
-            None
-        }
+        self.node.read().await.as_ref().map(|node| node.mempool.clone())
     }
 
     /// Return current peer summaries
@@ -743,7 +739,7 @@ impl NodeManager {
                 let from_addr = Self::pk_to_address_hex(&tx.from).to_lowercase();
                 let to_addr = tx.to.as_ref().map(|p| Self::to_field_as_address_hex(p).to_lowercase());
                 if from_addr == addr_lc || to_addr.as_deref() == Some(&addr_lc) {
-                    let to_hex = tx.to.as_ref().map(|p| Self::to_field_as_address_hex(p));
+                    let to_hex = tx.to.as_ref().map(Self::to_field_as_address_hex);
                     activity.push(TxActivity {
                         hash: hex::encode(tx.hash.as_bytes()),
                         from: Self::pk_to_address_hex(&tx.from),
@@ -771,7 +767,7 @@ impl NodeManager {
                             let from_addr = Self::pk_to_address_hex(&tx.from).to_lowercase();
                             let to_addr = tx.to.as_ref().map(|p| Self::to_field_as_address_hex(p).to_lowercase());
                             if from_addr == addr_lc || to_addr.as_deref() == Some(&addr_lc) {
-                                let to_hex = tx.to.as_ref().map(|p| Self::to_field_as_address_hex(p));
+                                let to_hex = tx.to.as_ref().map(Self::to_field_as_address_hex);
                                 let status = match storage.transactions.get_receipt(&tx.hash) {
                                     Ok(Some(r)) => if r.status { "confirmed" } else { "failed" },
                                     _ => "confirmed",
@@ -842,7 +838,7 @@ impl NodeManager {
             let mut out = Vec::new();
             for tx in txs {
                 let from = Self::pk_to_address_hex(&tx.from);
-                let to = tx.to.as_ref().map(|p| Self::to_field_as_address_hex(p));
+                let to = tx.to.as_ref().map(Self::to_field_as_address_hex);
                 out.push(PendingTx {
                     hash: hex::encode(tx.hash.as_bytes()),
                     from,
@@ -1015,18 +1011,19 @@ fn parse_bootnode(s: &str) -> Option<(lattice_network::peer::PeerId, SocketAddr)
     let addr: SocketAddr = addr_part.parse().ok()?;
     let peer_id = peer_part
         .map(|p| lattice_network::peer::PeerId::new(p.to_string()))
-        .unwrap_or_else(|| lattice_network::peer::PeerId::random());
+        .unwrap_or_else(lattice_network::peer::PeerId::random);
     Some((peer_id, addr))
 }
 
 /// Start block production in a separate task
+#[allow(dead_code)]
 async fn start_block_production(
     storage: Arc<StorageManager>,
     executor: Arc<Executor>,
     mempool: Arc<RwLock<Mempool>>,
     ghostdag: Arc<GhostDag>,
     reward_address: String,
-    running: Arc<RwLock<bool>>,
+    _running: Arc<RwLock<bool>>,
     wallet_manager: Option<Arc<WalletManager>>,
 ) {
     use crate::block_producer::BlockProducer;
@@ -1083,15 +1080,16 @@ fn create_genesis_block() -> Block {
 }
 
 /// Calculate block hash
+#[allow(dead_code)]
 fn calculate_block_hash(header: &BlockHeader) -> Hash {
         let mut hasher = Sha3_256::new();
-        hasher.update(&header.version.to_le_bytes());
+        hasher.update(header.version.to_le_bytes());
         hasher.update(header.selected_parent_hash.as_bytes());
         for parent in &header.merge_parent_hashes {
             hasher.update(parent.as_bytes());
         }
-        hasher.update(&header.timestamp.to_le_bytes());
-        hasher.update(&header.height.to_le_bytes());
+        hasher.update(header.timestamp.to_le_bytes());
+        hasher.update(header.height.to_le_bytes());
         
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
@@ -1100,6 +1098,7 @@ fn calculate_block_hash(header: &BlockHeader) -> Hash {
     }
     
 /// Run the block producer  
+#[allow(dead_code)]
 async fn run_block_producer(
         storage: Arc<StorageManager>,
         _executor: Arc<Executor>,
@@ -1130,7 +1129,7 @@ async fn run_block_producer(
             
             // Select parent
             let selected_parent = if !tips.is_empty() {
-                tips[0].clone()
+                tips[0]
             } else {
                 // Use genesis or latest block hash as parent
                 let latest_height = storage.blocks.get_latest_height().unwrap_or(0);

@@ -1,8 +1,8 @@
-use lattice_consensus::types::{Block, BlockHeader, Transaction, Hash, PublicKey, Signature, VrfProof, GhostDagParams};
+use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams};
 use lattice_storage::StorageManager;
 use lattice_execution::executor::Executor;
 use lattice_execution::types::Address;
-use lattice_economics::genesis::{GenesisConfig as EconomicsGenesisConfig, GenesisAccount};
+use lattice_economics::genesis::GenesisConfig as EconomicsGenesisConfig;
 use primitive_types::U256;
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
@@ -12,15 +12,15 @@ fn calculate_block_hash(block: &Block) -> Hash {
     let mut hasher = Sha3_256::new();
     
     // Hash header fields
-    hasher.update(&block.header.version.to_le_bytes());
+    hasher.update(block.header.version.to_le_bytes());
     hasher.update(block.header.selected_parent_hash.as_bytes());
     for parent in &block.header.merge_parent_hashes {
         hasher.update(parent.as_bytes());
     }
-    hasher.update(&block.header.timestamp.to_le_bytes());
-    hasher.update(&block.header.height.to_le_bytes());
-    hasher.update(&block.header.blue_score.to_le_bytes());
-    hasher.update(&block.header.blue_work.to_le_bytes());
+    hasher.update(block.header.timestamp.to_le_bytes());
+    hasher.update(block.header.height.to_le_bytes());
+    hasher.update(block.header.blue_score.to_le_bytes());
+    hasher.update(block.header.blue_work.to_le_bytes());
     hasher.update(block.header.pruning_point.as_bytes());
     
     // Hash roots
@@ -37,6 +37,7 @@ fn calculate_block_hash(block: &Block) -> Hash {
 
 /// Genesis block configuration
 pub struct GenesisConfig {
+    #[allow(dead_code)]
     pub chain_id: u64,
     pub timestamp: u64,
     pub initial_accounts: Vec<(PublicKey, u128)>, // (address, balance)
@@ -115,7 +116,7 @@ pub async fn initialize_genesis_state(
         
         tracing::info!(
             "Initialized genesis account 0x{} with balance {} LATT ({} wei)",
-            hex::encode(&account.address.0),
+            hex::encode(account.address.0),
             account.balance / U256::from(10).pow(U256::from(18)),
             account.balance
         );

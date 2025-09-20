@@ -18,6 +18,7 @@ const config: Config = {
         docs: {
           sidebarPath: require.resolve('./sidebars.ts'),
           editUrl: undefined,
+          routeBasePath: '/',
         },
         blog: false,
         theme: { customCss: require.resolve('./src/css/custom.css') },
@@ -29,14 +30,14 @@ const config: Config = {
       title: 'Lattice',
       logo: { alt: 'Lattice', src: 'img/logo.svg' },
       items: [
-        { to: '/docs/intro', label: 'Docs', position: 'left' },
+        { to: '/intro', label: 'Docs', position: 'left' },
         { href: 'https://github.com/lattice', label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
       style: 'dark',
       links: [
-        { title: 'Docs', items: [{ label: 'Intro', to: '/docs/intro' }, { label: 'SDK', to: '/docs/developers/sdk/javascript' }] },
+        { title: 'Docs', items: [{ label: 'Intro', to: '/intro' }, { label: 'SDK', to: '/developers/sdk/javascript' }] },
         { title: 'Community', items: [{ label: 'Twitter', href: 'https://x.com' }] },
         { title: 'More', items: [{ label: 'GitHub', href: 'https://github.com/lattice' }] },
       ],
@@ -46,4 +47,3 @@ const config: Config = {
 };
 
 export default config;
-

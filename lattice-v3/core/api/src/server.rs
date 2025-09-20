@@ -1,10 +1,10 @@
 use crate::methods::{ChainApi, StateApi, TransactionApi, MempoolApi, NetworkApi, AiApi};
-use crate::types::{error::ApiError, request::{BlockId, TransactionRequest, CallRequest}};
+use crate::types::{error::ApiError, request::{BlockId, CallRequest}};
 use crate::metrics::rpc_request;
 use crate::eth_rpc;
 use anyhow::Result;
 use jsonrpc_core::{IoHandler, Params, Value};
-use jsonrpc_http_server::{ServerBuilder, Server, DomainsValidation, AccessControlAllowOrigin};
+use jsonrpc_http_server::{ServerBuilder, DomainsValidation, AccessControlAllowOrigin};
 use jsonrpc_http_server::CloseHandle;
 use lattice_storage::StorageManager;
 use lattice_sequencer::mempool::Mempool;
@@ -141,7 +141,7 @@ fn compile_runtime_bytecode_external(
     // Build solc args
     let path_lossy = path.to_string_lossy().to_string();
     let mut args = vec!["--combined-json", "abi,bin,bin-runtime", &path_lossy];
-    if optimized { args.splice(0..0, ["--optimize"].into_iter()); }
+    if optimized { args.splice(0..0, ["--optimize"]); }
 
     let out = Command::new("solc").args(&args).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
@@ -197,7 +197,7 @@ fn compile_standard_json(
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let contracts = v.get("contracts").and_then(|c| c.as_object()).ok_or("no contracts in output")?;
     let mut chosen: Option<(Vec<u8>, Vec<u8>)> = None;
-    for (file, obj) in contracts.iter() {
+    for (_file, obj) in contracts.iter() {
         let cmap = match obj.as_object() { Some(m) => m, None => continue };
         for (name, art) in cmap.iter() {
             let matches = match contract_name { Some(n) => name == n, None => true };
@@ -243,9 +243,13 @@ impl Default for RpcConfig {
 /// RPC Server
 pub struct RpcServer {
     config: RpcConfig,
+    #[allow(dead_code)]
     storage: Arc<StorageManager>,
+    #[allow(dead_code)]
     mempool: Arc<Mempool>,
+    #[allow(dead_code)]
     peer_manager: Arc<PeerManager>,
+    #[allow(dead_code)]
     executor: Arc<Executor>,
     io_handler: IoHandler,
 }
@@ -279,7 +283,7 @@ impl RpcServer {
             let api = ChainApi::new(storage_h.clone());
             match block_on(api.get_height()) {
                 Ok(height) => Ok(Value::Number(height.into())),
-                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+                Err(_e) => Err(jsonrpc_core::Error::internal_error()),
             }
         });
         
@@ -308,7 +312,7 @@ impl RpcServer {
             match block_on(api.get_block(block_id)) {
                 Ok(block) => Ok(serde_json::to_value(block).unwrap_or(Value::Null)),
                 Err(ApiError::BlockNotFound(_)) => Ok(Value::Null),
-                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+                Err(_e) => Err(jsonrpc_core::Error::internal_error()),
             }
         });
         
@@ -720,7 +724,7 @@ impl RpcServer {
             let mut hasher = Keccak256::new();
             hasher.update(address_str.as_bytes());
             hasher.update(compiler_version.as_bytes());
-            hasher.update(&[optimization_enabled as u8]);
+            hasher.update([optimization_enabled as u8]);
             hasher.update(&provided);
             let verification_id = format!("0x{}", hex::encode(hasher.finalize()));
 
@@ -980,7 +984,7 @@ impl RpcServer {
                 let mut a=[0u8;32]; a.copy_from_slice(&b); a
             } else {
                 let mut hasher = sha3::Keccak256::default();
-                hasher.update(&from_bytes); hasher.update(cid.as_bytes()); hasher.update(&size_bytes.to_le_bytes());
+                hasher.update(&from_bytes); hasher.update(cid.as_bytes()); hasher.update(size_bytes.to_le_bytes());
                 let out = hasher.finalize(); let mut a=[0u8;32]; a.copy_from_slice(&out); a
             };
             let model_hash = lattice_consensus::types::Hash::new(model_hash_arr);
@@ -1018,7 +1022,7 @@ impl RpcServer {
                 }
                 data.extend_from_slice(&price_be);
                 // dynamic string
-                let len = cid.as_bytes().len(); let mut lenb=[0u8;32]; lenb[31]=(len & 0xFF) as u8; data.extend_from_slice(&lenb);
+                let len = cid.len(); let mut lenb=[0u8;32]; lenb[31]=(len & 0xFF) as u8; data.extend_from_slice(&lenb);
                 data.extend_from_slice(cid.as_bytes()); let pad=(32-(len%32))%32; data.extend_from_slice(&vec![0u8; pad]);
             } else {
                 // Legacy 2-arg signature
@@ -1026,7 +1030,7 @@ impl RpcServer {
                 data.extend_from_slice(sel);
                 data.extend_from_slice(model_hash.as_bytes());
                 let mut off=[0u8;32]; off[31]=64; data.extend_from_slice(&off);
-                let len = cid.as_bytes().len(); let mut lenb=[0u8;32]; lenb[31]=(len & 0xFF) as u8; data.extend_from_slice(&lenb);
+                let len = cid.len(); let mut lenb=[0u8;32]; lenb[31]=(len & 0xFF) as u8; data.extend_from_slice(&lenb);
                 data.extend_from_slice(cid.as_bytes()); let pad=(32-(len%32))%32; data.extend_from_slice(&vec![0u8; pad]);
             }
 
@@ -1158,9 +1162,9 @@ impl RpcServer {
         let storage_ai_inf = storage.clone();
         let mempool_ai_inf = mempool.clone();
         let executor_ai_inf = executor.clone();
-        io_handler.add_sync_method("lattice_requestInference", move |params: Params| {
+        io_handler.add_sync_method("lattice_requestInference", move |_params: Params| {
             rpc_request("lattice_requestInference");
-            let api = AiApi::new(storage_ai_inf.clone(), mempool_ai_inf.clone(), executor_ai_inf.clone());
+            let _api = AiApi::new(storage_ai_inf.clone(), mempool_ai_inf.clone(), executor_ai_inf.clone());
             
             // Parse inference request (simplified)
             match block_on(async {
@@ -1171,7 +1175,7 @@ impl RpcServer {
                 }))
             }) {
                 Ok(result) => Ok(result),
-                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+                Err(_e) => Err(jsonrpc_core::Error::internal_error()),
             }
         });
         
@@ -1207,9 +1211,9 @@ impl RpcServer {
         let storage_ai_job = storage.clone();
         let mempool_ai_job = mempool.clone();
         let executor_ai_job = executor.clone();
-        io_handler.add_sync_method("lattice_createTrainingJob", move |params: Params| {
+        io_handler.add_sync_method("lattice_createTrainingJob", move |_params: Params| {
             rpc_request("lattice_createTrainingJob");
-            let api = AiApi::new(storage_ai_job.clone(), mempool_ai_job.clone(), executor_ai_job.clone());
+            let _api = AiApi::new(storage_ai_job.clone(), mempool_ai_job.clone(), executor_ai_job.clone());
             
             match block_on(async {
                 // Placeholder - would parse actual CreateTrainingJobRequest
@@ -1219,7 +1223,7 @@ impl RpcServer {
                 }))
             }) {
                 Ok(result) => Ok(result),
-                Err(e) => Err(jsonrpc_core::Error::internal_error()),
+                Err(_e) => Err(jsonrpc_core::Error::internal_error()),
             }
         });
         
@@ -1387,8 +1391,7 @@ mod tests {
     use lattice_sequencer::mempool::MempoolConfig;
     use lattice_network::peer::PeerManagerConfig;
     use lattice_storage::pruning::PruningConfig;
-    use lattice_consensus::types::{Transaction, Hash, PublicKey, Signature};
-    use lattice_consensus::crypto::{generate_keypair, sign_transaction};
+    // no-op
 
     #[tokio::test]
     async fn test_rpc_chain_height_and_tx_submit() {

@@ -46,7 +46,7 @@ pub struct ChainState {
 pub struct ChainSelector {
     dag_store: Arc<DagStore>,
     ghostdag: Arc<GhostDag>,
-    tip_selector: Arc<TipSelector>,
+    _tip_selector: Arc<TipSelector>,
     current_chain: Arc<RwLock<ChainState>>,
     max_reorg_depth: u64,
     reorg_history: Arc<RwLock<Vec<ReorgEvent>>>,
@@ -71,7 +71,7 @@ impl ChainSelector {
         Self {
             dag_store,
             ghostdag,
-            tip_selector,
+            _tip_selector: tip_selector,
             current_chain: Arc::new(RwLock::new(ChainState {
                 tip: Hash::default(),
                 height: 0,

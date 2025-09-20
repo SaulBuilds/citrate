@@ -199,7 +199,7 @@ impl ModelRegistry {
         let mut hasher = Sha3_256::new();
         hasher.update(model_id.as_bytes());
         hasher.update(input_hash.as_bytes());
-        hasher.update(&chrono::Utc::now().timestamp().to_le_bytes());
+        hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
         
         let hash = hasher.finalize();
         let mut id = [0u8; 32];

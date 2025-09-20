@@ -41,6 +41,14 @@ export const Settings: React.FC = () => {
     load();
   }, []);
 
+  // Minimal helper used after mutations
+  const loadConfig = async () => {
+    try {
+      const cfg = await nodeService.getConfig();
+      setConfig(cfg);
+    } catch {}
+  };
+
   const disabled = !!status?.running;
   const networkOptions = useMemo(() => ['devnet', 'testnet', 'mainnet'], []);
 

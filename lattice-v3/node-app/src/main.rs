@@ -11,7 +11,7 @@ use lattice_sequencer::mempool::{Mempool, MempoolConfig};
 use lattice_storage::{StorageManager};
 use lattice_storage::pruning::PruningConfig;
 use axum::{routing::get, Router, response::IntoResponse};
-use prometheus::{Encoder, TextEncoder, Registry, default_registry, gather};
+use prometheus::{Encoder, TextEncoder, gather};
 
 fn data_dir() -> PathBuf {
     std::env::var_os("LATTICE_DATA_DIR")
@@ -70,8 +70,7 @@ async fn main() -> Result<()> {
     let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig::default()));
 
     // RPC config
-    let mut rpc_cfg = RpcConfig::default();
-    rpc_cfg.listen_addr = rpc_addr();
+    let rpc_cfg = RpcConfig { listen_addr: rpc_addr(), ..Default::default() };
     info!("Starting Lattice RPC on {} (data_dir={:?})", rpc_cfg.listen_addr, data_dir);
 
     // Start metrics server

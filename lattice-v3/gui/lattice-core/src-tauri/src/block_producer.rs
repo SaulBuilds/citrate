@@ -3,10 +3,9 @@ use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 use anyhow::Result;
 use tracing::{info, warn, error};
-use primitive_types::U256;
 
 use lattice_consensus::{
-    GhostDag, TipSelector,
+    GhostDag,
     types::{Block, BlockHeader, Hash, Transaction, PublicKey, Signature, VrfProof, GhostDagParams},
 };
 use lattice_sequencer::Mempool;
@@ -77,6 +76,7 @@ impl BlockProducer {
     }
 
     /// Stop the block producer
+    #[allow(dead_code)]
     pub async fn stop(&self) {
         *self.running.write().await = false;
         info!("Block producer stopped");
@@ -145,8 +145,8 @@ impl BlockProducer {
             let mut hasher = Keccak256::new();
             hasher.update(selected_parent.as_bytes());
             for p in &merge_parents { hasher.update(p.as_bytes()); }
-            hasher.update(&height.to_le_bytes());
-            hasher.update(&blue_score.to_le_bytes());
+            hasher.update(height.to_le_bytes());
+            hasher.update(blue_score.to_le_bytes());
             let bytes = hasher.finalize();
             Hash::from_bytes(&bytes)
         };
@@ -367,8 +367,8 @@ impl BlockProducer {
         let mut hasher = Keccak256::new();
         for r in receipts {
             hasher.update(r.tx_hash.as_bytes());
-            hasher.update(&[if r.status { 1 } else { 0 }]);
-            hasher.update(&r.gas_used.to_le_bytes());
+            hasher.update([if r.status { 1 } else { 0 }]);
+            hasher.update(r.gas_used.to_le_bytes());
         }
         let bytes = hasher.finalize();
         Ok(Hash::from_bytes(&bytes))
@@ -382,9 +382,9 @@ impl BlockProducer {
         let amount_wei = primitive_types::U256::from(BLOCK_REWARD_TOKENS.saturating_mul(DECIMALS));
 
         // Parse reward address - handle both hex strings and base58
-        let validator_address = if reward_address.starts_with("0x") {
+        let validator_address = if let Some(stripped) = reward_address.strip_prefix("0x") {
             // Parse as hex ethereum address
-            let addr_bytes = hex::decode(&reward_address[2..])
+            let addr_bytes = hex::decode(stripped)
                 .map_err(|e| anyhow::anyhow!("Invalid hex address: {}", e))?;
             if addr_bytes.len() != 20 {
                 return Err(anyhow::anyhow!("Invalid address length: expected 20 bytes, got {}", addr_bytes.len()));
@@ -411,7 +411,7 @@ impl BlockProducer {
         info!("Minted {} LAT ({} wei) to validator {} (new balance: {} wei)", 
               BLOCK_REWARD_TOKENS, 
               amount_wei,
-              hex::encode(&validator_address.0), 
+              hex::encode(validator_address.0), 
               new_balance);
 
         // Also update wallet manager if present (for UI display)

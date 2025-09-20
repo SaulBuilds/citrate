@@ -104,6 +104,8 @@ export interface DAGNode {
   timestamp: number;
   isBlue: boolean;
   blueScore: number;
+  // Optional UI hint computed client-side
+  isTip?: boolean;
   selectedParent?: string;
   mergeParents: string[];
   transactions: number;

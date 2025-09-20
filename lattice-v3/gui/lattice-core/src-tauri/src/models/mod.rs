@@ -3,7 +3,7 @@ use tokio::sync::RwLock;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Manages AI models in the Lattice network
 pub struct ModelManager {

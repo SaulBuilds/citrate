@@ -6,9 +6,8 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use futures::{SinkExt, StreamExt};
 use serde::{Serialize, Deserialize};
 use tracing::{info, error, warn, debug};
-use lattice_consensus::types::Hash;
 use lattice_execution::types::{ModelId, JobId, Address};
-use crate::methods::ai::{InferenceResult, ChatCompletionResponse};
+use crate::methods::ai::InferenceResult;
 
 /// WebSocket subscription types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,7 +104,7 @@ impl WebSocketServer {
     pub async fn broadcast_inference_result(&self, result: &InferenceResult) {
         let connections = self.connections.read().await;
         
-        for (conn_id, connection) in connections.iter() {
+        for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let result = result.clone();
             
@@ -148,7 +147,7 @@ impl WebSocketServer {
             "timestamp": chrono::Utc::now().timestamp()
         });
         
-        for (conn_id, connection) in connections.iter() {
+        for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let update_data = update_data.clone();
             
@@ -192,7 +191,7 @@ impl WebSocketServer {
             "timestamp": chrono::Utc::now().timestamp()
         });
         
-        for (conn_id, connection) in connections.iter() {
+        for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let model_data = model_data.clone();
             
@@ -220,7 +219,7 @@ impl WebSocketServer {
     pub async fn stream_chat_completion(&self, request_id: String, chunk: serde_json::Value) {
         let connections = self.connections.read().await;
         
-        for (conn_id, connection) in connections.iter() {
+        for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let chunk = chunk.clone();
             let request_id = request_id.clone();
@@ -364,7 +363,7 @@ async fn handle_text_message(
             debug!("WebSocket subscription created: {}", subscription_id);
         }
         
-        WsMessage::Unsubscribe { id, subscription_id } => {
+        WsMessage::Unsubscribe { id: _, subscription_id } => {
             {
                 let mut conn = connection.lock().await;
                 conn.subscriptions.remove(&subscription_id);

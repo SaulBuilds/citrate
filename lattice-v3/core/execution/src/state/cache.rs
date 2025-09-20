@@ -1,5 +1,4 @@
 use crate::types::{Address, AccountState};
-use lattice_consensus::types::Hash;
 use lru::LruCache;
 use parking_lot::RwLock;
 use std::num::NonZeroUsize;
@@ -204,7 +203,7 @@ impl StateCache {
         // Promote to front of LRU
         let mut cache = self.accounts.write();
         if let Some(account) = cache.get(address) {
-            let account = account.clone();
+            let _account = account.clone();
             cache.promote(address);
             // In production, we might move to a separate hot cache
         }
@@ -219,6 +218,7 @@ impl StateCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lattice_consensus::types::Hash;
 
     #[test]
     fn test_account_cache() {

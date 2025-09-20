@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use ed25519_dalek::{SigningKey, VerifyingKey, Signer, Signature as Ed25519Signature};
 use keyring::Entry;
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, SaltString},
+    password_hash::{PasswordHasher, SaltString},
     Argon2,
 };
 use aes_gcm::{
@@ -16,7 +16,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use lattice_consensus::types::{Transaction, Hash, PublicKey, Signature};
-use tracing::{info, error};
+use tracing::info;
 use bip39::{Mnemonic, Language};
 
 const KEYRING_SERVICE: &str = "lattice-core";
@@ -26,6 +26,7 @@ const KEYRING_USER: &str = "wallet";
 pub struct WalletManager {
     accounts: Arc<RwLock<Vec<Account>>>,
     keystore: Arc<SecureKeyStore>,
+    #[allow(dead_code)]
     active_account: Arc<RwLock<Option<usize>>>,
 }
 
@@ -207,6 +208,7 @@ impl WalletManager {
             .cloned()
     }
 
+    #[allow(dead_code)]
     pub async fn send_transaction(&self, request: TransactionRequest, password: &str) -> Result<String> {
         let tx = self.create_signed_transaction(request, password).await?;
         let tx_hash = hex::encode(tx.hash.as_bytes());
@@ -242,13 +244,13 @@ impl WalletManager {
             value: value_u128,
             gas_limit: request.gas_limit,
             gas_price: gas_price_u64,
-            data: hex::decode(&request.data.trim_start_matches("0x")).unwrap_or_default(),
+            data: hex::decode(request.data.trim_start_matches("0x")).unwrap_or_default(),
             signature: Signature::new([0u8; 64]),
             tx_type: None,
         };
         
         // Sign transaction
-        self.sign_transaction(&mut tx, &request.from, &password).await?;
+        self.sign_transaction(&mut tx, &request.from, password).await?;
         
         // Update nonce
         self.update_nonce(&request.from, account.nonce + 1).await?;
@@ -373,6 +375,7 @@ impl WalletManager {
 }
 
 /// Secure key storage using OS keychain and encryption
+#[allow(dead_code)]
 struct SecureKeyStore {
     entry: Entry,
 }
@@ -414,7 +417,7 @@ impl SecureKeyStore {
         let record = StoredKey {
             v: 1,
             salt: salt.as_str(),
-            nonce: BASE64.encode(&nonce),
+            nonce: BASE64.encode(nonce),
             ct: BASE64.encode(&ciphertext),
         };
         let encoded = serde_json::to_string(&record)?;
@@ -435,6 +438,7 @@ impl SecureKeyStore {
 
         // Try JSON format first
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct StoredKeyOwned {
             v: u8,
             salt: String,
@@ -483,6 +487,7 @@ impl SecureKeyStore {
         ))
     }
 
+    #[allow(dead_code)]
     fn delete_key(&self, address: &str) -> Result<()> {
         // Delete the address-specific entry
         let entry = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address))?;

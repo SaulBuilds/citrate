@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{info, debug, warn};
+use tracing::{info, debug};
 use anyhow::Result;
 
 /// Transaction seen info

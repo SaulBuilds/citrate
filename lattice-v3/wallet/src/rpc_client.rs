@@ -18,6 +18,7 @@ struct RpcRequest {
 
 /// JSON-RPC response
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct RpcResponse {
     jsonrpc: String,
     #[serde(default)]
@@ -29,6 +30,7 @@ struct RpcResponse {
 
 /// JSON-RPC error
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct RpcError {
     code: i32,
     message: String,
@@ -86,7 +88,7 @@ impl RpcClient {
     /// Get balance
     pub async fn get_balance(&self, address: &Address) -> Result<U256, WalletError> {
         let params = json!([
-            format!("0x{}", hex::encode(&address.0)),
+            format!("0x{}", hex::encode(address.0)),
             "latest"
         ]);
         
@@ -106,7 +108,7 @@ impl RpcClient {
     /// Get nonce
     pub async fn get_nonce(&self, address: &Address) -> Result<u64, WalletError> {
         let params = json!([
-            format!("0x{}", hex::encode(&address.0)),
+            format!("0x{}", hex::encode(address.0)),
             "pending"
         ]);
         
@@ -210,12 +212,12 @@ impl RpcClient {
     /// Estimate gas
     pub async fn estimate_gas(&self, from: &Address, to: Option<&Address>, value: U256, data: Vec<u8>) -> Result<u64, WalletError> {
         let mut tx_object = json!({
-            "from": format!("0x{}", hex::encode(&from.0)),
+            "from": format!("0x{}", hex::encode(from.0)),
             "value": format!("0x{:x}", value),
         });
         
         if let Some(to_addr) = to {
-            tx_object["to"] = json!(format!("0x{}", hex::encode(&to_addr.0)));
+            tx_object["to"] = json!(format!("0x{}", hex::encode(to_addr.0)));
         }
         
         if !data.is_empty() {

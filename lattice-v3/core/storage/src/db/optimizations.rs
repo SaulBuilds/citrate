@@ -162,12 +162,11 @@ mod tests {
     fn test_db_options_creation() {
         let _opts = DbOptimizations::optimized_db_options();
         // Options should be created without panic. RocksDB Rust API lacks getters; compilation validates config build.
-        assert!(true);
     }
 
     #[test]
     fn test_block_table_options() {
-        let block_opts = DbOptimizations::block_table_options(1024 * 1024);
+        let _block_opts = DbOptimizations::block_table_options(1024 * 1024);
         // Block options should be created successfully
         // Note: Can't directly test private fields, but creation shouldn't panic
     }
@@ -177,6 +176,5 @@ mod tests {
         let base_opts = Options::default();
         let _optimized = DbOptimizations::optimize_metadata_cf(base_opts);
         // Should return optimized options without panic
-        assert!(true);
     }
 }

@@ -30,6 +30,7 @@ pub struct AINetworkHandler {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 struct InferenceRequest {
     request_id: Hash,
     model_id: Hash,
@@ -40,6 +41,7 @@ struct InferenceRequest {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 struct TrainingJob {
     job_id: Hash,
     model_id: Hash,
@@ -50,6 +52,7 @@ struct TrainingJob {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 struct ModelInfo {
     model_id: Hash,
     weight_cid: String,

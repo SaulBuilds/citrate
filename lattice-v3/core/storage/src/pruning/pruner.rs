@@ -2,7 +2,6 @@ use crate::chain::BlockStore;
 use crate::db::RocksDB;
 use crate::state::StateStore;
 use anyhow::Result;
-use lattice_consensus::types::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
@@ -136,7 +135,7 @@ impl Pruner {
     }
     
     /// Prune state snapshots before specified height
-    async fn prune_states_before(&self, height: u64) -> Result<usize> {
+    async fn prune_states_before(&self, _height: u64) -> Result<usize> {
         // In a real implementation, this would prune old state snapshots
         // For now, we'll just return 0 as we don't have state snapshot height tracking
         Ok(0)
@@ -222,7 +221,7 @@ mod tests {
         let state_store = Arc::new(StateStore::new(db.clone()));
 
         // Seed blocks at heights 0..=4
-        use lattice_consensus::types::{Block, BlockHeader, PublicKey, VrfProof, Signature, GhostDagParams};
+        use lattice_consensus::types::{Block, BlockHeader, PublicKey, VrfProof, Signature, GhostDagParams, Hash};
         for h in 0..=4u64 {
             let block = Block {
                 header: BlockHeader {

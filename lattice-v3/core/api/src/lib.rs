@@ -31,6 +31,7 @@ pub struct ApiService {
 
 impl ApiService {
     /// Create a new API service
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rpc_config: RpcConfig,
         ws_addr: std::net::SocketAddr,

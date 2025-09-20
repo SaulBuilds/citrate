@@ -41,6 +41,7 @@ pub struct TipSelector {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct TipInfo {
     hash: Hash,
     blue_score: u64,
@@ -251,6 +252,7 @@ impl TipSelector {
     }
     
     /// Get comprehensive tip information
+    #[allow(dead_code)]
     async fn get_tip_info(&self, hash: &Hash) -> Result<TipInfo, TipSelectionError> {
         // Check cache first
         if let Some(info) = self.tip_cache.read().await.get(hash) {
@@ -381,7 +383,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_tip_selection_highest_score() {
-        let (dag_store, ghostdag, tip_selector) = setup_test_env().await;
+        let (dag_store, _ghostdag, _tip_selector) = setup_test_env().await;
         
         // Add blocks with different blue scores
         let block1 = create_test_block([1; 32], 10);
@@ -401,8 +403,8 @@ mod tests {
     
     #[tokio::test]
     async fn test_parent_selection() {
-        let (dag_store, ghostdag, tip_selector) = setup_test_env().await;
-        let parent_selector = ParentSelector::new(tip_selector, 1, 3);
+        let (dag_store, _ghostdag, tip_selector) = setup_test_env().await;
+        let _parent_selector = ParentSelector::new(tip_selector, 1, 3);
         
         // Add some blocks
         let block1 = create_test_block([1; 32], 10);

@@ -1,7 +1,6 @@
 /// Address utilities for handling both Ethereum-style addresses and public keys
 use crate::types::Address;
 use lattice_consensus::types::PublicKey;
-use primitive_types::H160;
 
 /// Convert various input formats to a proper 20-byte Ethereum address
 pub fn normalize_address(input: &PublicKey) -> Address {
@@ -80,9 +79,9 @@ mod tests {
         // Test with padded address
         let mut padded = [0u8; 32];
         padded[0..20].copy_from_slice(&[
-            0x74, 0x2d, 0x35, 0xCc, 0x66, 0x34, 0xC0, 0x53,
-            0x29, 0x25, 0xa3, 0xb8, 0x44, 0xBc, 0x9e, 0x75,
-            0x95, 0xf0, 0xbE, 0xb1
+            0x74, 0x2d, 0x35, 0xcc, 0x66, 0x34, 0xc0, 0x53,
+            0x29, 0x25, 0xa3, 0xb8, 0x44, 0xbc, 0x9e, 0x75,
+            0x95, 0xf0, 0xbe, 0xb1
         ]);
         
         let pubkey = PublicKey::new(padded);
@@ -94,7 +93,7 @@ mod tests {
     #[test]
     fn test_real_pubkey_handling() {
         // Test with non-zero bytes in last 12 positions (real pubkey)
-        let mut pubkey_bytes = [0x55u8; 32]; // All non-zero
+        let pubkey_bytes = [0x55u8; 32]; // All non-zero
         let pubkey = PublicKey::new(pubkey_bytes);
         let addr = normalize_address(&pubkey);
         

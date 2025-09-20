@@ -10,6 +10,10 @@ pub struct ZKPBackend {
     verifier: Arc<Verifier>,
 }
 
+impl Default for ZKPBackend {
+    fn default() -> Self { Self::new() }
+}
+
 impl ZKPBackend {
     pub fn new() -> Self {
         let prover = Arc::new(Prover::new());
@@ -41,7 +45,7 @@ impl ZKPBackend {
                 // Parse circuit data for model execution
                 let circuit_data: super::types::ModelExecutionCircuit = 
                     bincode::deserialize(&request.circuit_data)
-                        .map_err(|e| ZKPError::InvalidCircuit)?;
+                        .map_err(|_| ZKPError::InvalidCircuit)?;
                 
                 self.prover.prove_model_execution(
                     circuit_data.model_hash,
@@ -54,7 +58,7 @@ impl ZKPBackend {
                 // Parse circuit data for gradient submission
                 let circuit_data: super::types::GradientProofCircuit = 
                     bincode::deserialize(&request.circuit_data)
-                        .map_err(|e| ZKPError::InvalidCircuit)?;
+                        .map_err(|_| ZKPError::InvalidCircuit)?;
                 
                 self.prover.prove_gradient_submission(
                     circuit_data.model_hash,
@@ -68,7 +72,7 @@ impl ZKPBackend {
                 // Parse circuit data for state transition
                 let circuit_data: super::circuits::StateTransitionCircuit = 
                     bincode::deserialize(&request.circuit_data)
-                        .map_err(|e| ZKPError::InvalidCircuit)?;
+                        .map_err(|_| ZKPError::InvalidCircuit)?;
                 
                 self.prover.prove_state_transition(
                     circuit_data.old_state_root,
@@ -80,7 +84,7 @@ impl ZKPBackend {
                 // Parse circuit data for data integrity
                 let circuit_data: super::circuits::DataIntegrityCircuit = 
                     bincode::deserialize(&request.circuit_data)
-                        .map_err(|e| ZKPError::InvalidCircuit)?;
+                        .map_err(|_| ZKPError::InvalidCircuit)?;
                 
                 self.prover.prove_data_integrity(
                     circuit_data.data_hash,

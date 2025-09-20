@@ -73,6 +73,10 @@ impl ParallelExecutor {
     }
 }
 
+impl Default for ParallelExecutor {
+    fn default() -> Self { Self::new() }
+}
+
 /// Group transactions by sender for sequential execution
 pub fn group_by_sender_sequential(transactions: &[Transaction]) -> Vec<Vec<Transaction>> {
     let mut sender_groups: BTreeMap<Vec<u8>, Vec<Transaction>> = BTreeMap::new();

@@ -5,7 +5,7 @@ use crate::types::{
 use lattice_consensus::types::Hash;
 use lattice_execution::{
     executor::Executor,
-    types::{Address, AccountState},
+    types::Address,
 };
 use lattice_storage::StorageManager;
 use primitive_types::U256;
@@ -74,7 +74,7 @@ impl StateApi {
             .get_storage(&address, &key)
             .map_err(|e| ApiError::InternalError(e.to_string()))?;
         
-        Ok(result.unwrap_or_else(|| Vec::new()))
+        Ok(result.unwrap_or_default())
     }
     
     /// Get state root

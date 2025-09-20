@@ -133,27 +133,33 @@ impl TransactionBuilder {
     }
 }
 
+impl Default for TransactionBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Calculate transaction hash including chain ID (EIP-155 style)
 fn calculate_tx_hash(tx: &Transaction, chain_id: u64) -> Hash {
     // Use Keccak-256 to align with Ethereum-style hashing across the stack
     let mut hasher = Keccak256::new();
     
     // Hash transaction fields
-    hasher.update(&tx.nonce.to_le_bytes());
-    hasher.update(&tx.gas_price.to_le_bytes());
-    hasher.update(&tx.gas_limit.to_le_bytes());
+    hasher.update(tx.nonce.to_le_bytes());
+    hasher.update(tx.gas_price.to_le_bytes());
+    hasher.update(tx.gas_limit.to_le_bytes());
     
     if let Some(to) = &tx.to {
         hasher.update(to.as_bytes());
     }
     
-    hasher.update(&tx.value.to_le_bytes());
+    hasher.update(tx.value.to_le_bytes());
     hasher.update(&tx.data);
     
     // Include chain ID for replay protection
-    hasher.update(&chain_id.to_le_bytes());
-    hasher.update(&[0u8; 8]); // r placeholder
-    hasher.update(&[0u8; 8]); // s placeholder
+    hasher.update(chain_id.to_le_bytes());
+    hasher.update([0u8; 8]); // r placeholder
+    hasher.update([0u8; 8]); // s placeholder
     
     let hash_bytes = hasher.finalize();
     let mut hash_array = [0u8; 32];

@@ -157,7 +157,7 @@ async fn create_account(wallet: &mut Wallet, alias: Option<String>) -> Result<()
     
     println!("{}", "✓ Account created successfully!".green());
     println!("  Index:   {}", account.index);
-    println!("  Address: 0x{}", hex::encode(&account.address.0));
+    println!("  Address: 0x{}", hex::encode(account.address.0));
     println!("  Public:  0x{}", hex::encode(account.public_key.as_bytes()));
     
     if let Some(alias) = &account.alias {
@@ -187,7 +187,7 @@ async fn import_account(wallet: &mut Wallet, key: Option<String>, alias: Option<
     
     println!("{}", "✓ Account imported successfully!".green());
     println!("  Index:   {}", account.index);
-    println!("  Address: 0x{}", hex::encode(&account.address.0));
+    println!("  Address: 0x{}", hex::encode(account.address.0));
     
     if let Some(alias) = &account.alias {
         println!("  Alias:   {}", alias);
@@ -243,7 +243,7 @@ async fn list_accounts(wallet: &mut Wallet) -> Result<()> {
             account.index, 
             account.alias.as_ref().unwrap_or(&"<no alias>".to_string()).bright_yellow()
         );
-        println!("      Address: 0x{}", hex::encode(&account.address.0));
+        println!("      Address: 0x{}", hex::encode(account.address.0));
         
         if unlocked {
             let balance_latt = format_latt(account.balance);
@@ -279,7 +279,7 @@ async fn show_balance(wallet: &mut Wallet, account: Option<String>) -> Result<()
             pb.finish_and_clear();
             
             println!("{}", "Account Balance:".bright_cyan());
-            println!("  Address: 0x{}", hex::encode(&account.address.0));
+            println!("  Address: 0x{}", hex::encode(account.address.0));
             
             if let Some(alias) = &account.alias {
                 println!("  Alias:   {}", alias);
@@ -287,9 +287,9 @@ async fn show_balance(wallet: &mut Wallet, account: Option<String>) -> Result<()
             
             println!("  Balance: {} LATT", format_latt(balance).bright_green());
             println!("  Nonce:   {}", nonce);
-        } else if acc.starts_with("0x") {
+        } else if let Some(stripped) = acc.strip_prefix("0x") {
             // Show any address balance
-            let addr_bytes = hex::decode(&acc[2..])?;
+            let addr_bytes = hex::decode(stripped)?;
             if addr_bytes.len() != 20 {
                 anyhow::bail!("Invalid address length");
             }
@@ -314,7 +314,7 @@ async fn show_balance(wallet: &mut Wallet, account: Option<String>) -> Result<()
             pb.finish_and_clear();
             
             println!("{}", "Address Balance:".bright_cyan());
-            println!("  Address: 0x{}", hex::encode(&address.0));
+            println!("  Address: 0x{}", hex::encode(address.0));
             
             if let Some(account) = account_info {
                 if let Some(alias) = &account.alias {
@@ -369,7 +369,7 @@ async fn send_transaction(
     // Show transaction details
     println!("{}", "Transaction Details:".bright_cyan());
     println!("  From:   Account #{}", from);
-    println!("  To:     0x{}", hex::encode(&to_address.0));
+    println!("  To:     0x{}", hex::encode(to_address.0));
     println!("  Amount: {} LATT", amount);
     
     if let Some(gp) = gas_price {

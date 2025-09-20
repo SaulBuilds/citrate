@@ -3,7 +3,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use lattice_consensus::{
     GhostDag,
-    types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams, Transaction},
+    types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams},
 };
 use lattice_storage::StorageManager;
 use std::collections::HashSet;
@@ -152,7 +152,7 @@ impl DAGManager {
                     height: block.header.height,
                     timestamp: block.header.timestamp,
                     blue_score,
-                    cumulative_weight: blue_score as u64 * 10,
+                    cumulative_weight: blue_score * 10,
                 });
             }
         }
@@ -258,7 +258,7 @@ impl DAGManager {
 
     /// Get the blue set for a given block
     pub async fn get_blue_set(&self, block_hash: &str) -> Result<Vec<String>> {
-        let hash = Hash::from_bytes(&hex::decode(&block_hash).unwrap_or_default());
+        let hash = Hash::from_bytes(&hex::decode(block_hash).unwrap_or_default());
         let block = self.storage.blocks.get_block(&hash)?
             .ok_or_else(|| anyhow::anyhow!("Block not found"))?;
         let blue = self.ghostdag.calculate_blue_set(&block).await?;
@@ -276,7 +276,7 @@ impl DAGManager {
                     height: block.header.height,
                     timestamp: block.header.timestamp,
                     blue_score: blue,
-                    cumulative_weight: blue as u64 * 10,
+                    cumulative_weight: blue * 10,
                 });
             }
         }
@@ -303,6 +303,7 @@ impl DAGManager {
     }
 
     /// Create a sample block for testing/visualization
+    #[allow(dead_code)]
     fn create_sample_block(height: u64, parent_hash: &str) -> Block {
         Block {
             header: BlockHeader {

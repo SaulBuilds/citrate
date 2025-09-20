@@ -4,7 +4,6 @@ use lattice_storage::StorageManager;
 use lattice_sequencer::mempool::Mempool;
 use lattice_execution::executor::Executor;
 use lattice_execution::types::Address;
-use primitive_types::U256;
 use lattice_consensus::types::Hash;
 use std::sync::Arc;
 use futures::executor::block_on;
@@ -14,7 +13,7 @@ use serde_json::json;
 pub fn register_eth_methods(
     io_handler: &mut IoHandler,
     storage: Arc<StorageManager>,
-    mempool: Arc<Mempool>,
+    _mempool: Arc<Mempool>,
     executor: Arc<Executor>,
 ) {
     // eth_blockNumber - Returns the latest block number

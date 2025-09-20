@@ -1,16 +1,43 @@
-# Monorepo ignores
+##############################
+# Monorepo Global Ignores
+##############################
+
+# OS/Editors
 .DS_Store
 **/.DS_Store
-# Rust targets
-**/target/
-# Logs and temp
-*.log
-/tmp/
-# Cargo build artifacts
-**/**.rlib
-**/**.rmeta
-# IDE
-.vscode/
 .idea/
+.vscode/
 
+# Temp/Logs
+*.log
+**/*.log
+*.pid
+logs/
+run-logs/
+test-results/
+/tmp/
+
+# Rust
+**/target/
+**/*.rlib
+**/*.rmeta
+
+# Node/JS
+node_modules/
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+**/.docusaurus/
+**/.cache/
+**/coverage/
+**/out/
+
+# Web/Apps specific
+docs-portal/build/
+**/gui-data/
+**/.lattice-*/
+
+# Tauri bundles (covered by target/, but kept for clarity)
+**/bundle/
 

@@ -100,7 +100,7 @@ impl GenesisConfig {
         let ecosystem = address_from_hex("0x2222222222222222222222222222222222222222").unwrap();
         
         // Team allocations (15% = 150M LATT, vested over 4 years)
-        let mut team_allocations = HashMap::new();
+        let team_allocations = HashMap::new();
         // Add team member addresses and allocations here
         
         Self {
@@ -136,7 +136,7 @@ impl GenesisConfig {
             total += account.balance;
         }
         
-        for (_, balance) in &self.team_allocations {
+        for balance in self.team_allocations.values() {
             total += *balance;
         }
         

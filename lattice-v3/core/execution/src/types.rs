@@ -1,7 +1,6 @@
-use lattice_consensus::types::{Hash, PublicKey, Signature};
-use primitive_types::{H256, U256};
+use lattice_consensus::types::{Hash, PublicKey};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Account address (20 bytes, similar to Ethereum)
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -22,7 +21,7 @@ impl Address {
             // This is a full 32-byte public key, derive address by hashing
             use sha3::{Digest, Keccak256};
             let mut hasher = Keccak256::default();
-            hasher.update(&pubkey.0);
+            hasher.update(pubkey.0);
             let hash = hasher.finalize();
             
             let mut addr = [0u8; 20];
@@ -50,7 +49,7 @@ mod tests {
     fn test_address_from_public_key_embedded_evm() {
         // First 20 bytes non-zero, last 12 bytes zero → embedded address
         let mut bytes = [0u8; 32];
-        for i in 0..20 { bytes[i] = (i as u8) + 1; }
+        for (i, b) in bytes.iter_mut().enumerate().take(20) { *b = (i as u8) + 1; }
         // last 12 remain zero
         let pk = PublicKey::new(bytes);
         let addr = Address::from_public_key(&pk);

@@ -19,6 +19,7 @@ pub struct InferenceResult {
 
 /// Model executor for running AI models
 pub struct ModelExecutor {
+    #[allow(dead_code)]
     vm: Arc<VM>,
     cache: Arc<ModelCache>,
     verifier: Arc<ExecutionVerifier>,
@@ -170,7 +171,7 @@ impl ModelExecutor {
     }
     
     /// Execute in VM
-    async fn execute_in_vm(&self, context: &ExecutionContext) -> Result<(Vec<u8>, u64)> {
+    async fn execute_in_vm(&self, _context: &ExecutionContext) -> Result<(Vec<u8>, u64)> {
         // Placeholder for VM execution
         // In real implementation, this would:
         // 1. Load model into VM memory
@@ -187,7 +188,7 @@ impl ModelExecutor {
     /// Execute training in VM
     async fn execute_training_in_vm(
         &self,
-        context: &ExecutionContext,
+        _context: &ExecutionContext,
     ) -> Result<(Vec<u8>, TrainingMetrics, u64)> {
         // Placeholder for training execution
         let updated_weights = vec![0u8; 1000]; // Placeholder
@@ -257,7 +258,7 @@ impl ModelExecutor {
         &self,
         model: &Model,
         training_data: &[u8],
-        current_weights: &[u8],
+        _current_weights: &[u8],
         updated_weights: &[u8],
         provider: Address,
     ) -> Result<ExecutionProof> {
@@ -277,6 +278,7 @@ pub struct Model {
 
 /// Execution context
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ExecutionContext {
     model_id: ModelId,
     input: Vec<u8>,
@@ -287,6 +289,7 @@ struct ExecutionContext {
 
 /// Execution mode
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum ExecutionMode {
     Inference,
     Training { current_weights: Vec<u8> },

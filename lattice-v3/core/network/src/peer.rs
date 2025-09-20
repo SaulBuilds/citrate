@@ -9,7 +9,6 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, info, warn};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 
 /// Unique peer identifier
@@ -142,12 +141,14 @@ impl Peer {
 }
 
 /// Peer manager for handling multiple connections
+type IncomingTx = mpsc::Sender<(PeerId, NetworkMessage)>;
+
 pub struct PeerManager {
     config: PeerManagerConfig,
     peers: Arc<DashMap<PeerId, Arc<Peer>>>,
     banned_peers: Arc<RwLock<Vec<SocketAddr>>>,
-    stats: Arc<RwLock<PeerStats>>,
-    incoming: Arc<RwLock<Option<mpsc::Sender<(PeerId, NetworkMessage)>>>>,
+    stats: Arc<RwLock<PeerStats>>, 
+    incoming: Arc<RwLock<Option<IncomingTx>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -356,7 +357,7 @@ impl PeerManager {
         let mut send_count = 0;
         
         for peer in peers {
-            if let Ok(_) = peer.send(message.clone()).await {
+            if (peer.send(message.clone()).await).is_ok() {
                 send_count += 1;
             }
         }
@@ -386,7 +387,7 @@ impl PeerManager {
     ) -> Result<(), NetworkError> {
         let listener = TcpListener::bind(listen_addr)
             .await
-            .map_err(|e| NetworkError::Io(e))?;
+            .map_err(NetworkError::Io)?;
         let this = self.clone();
         tokio::spawn(async move {
             loop {
@@ -421,7 +422,7 @@ impl PeerManager {
         head_height: u64,
         head_hash: Hash,
     ) -> Result<(), NetworkError> {
-        let stream = TcpStream::connect(addr).await.map_err(|e| NetworkError::Io(e))?;
+        let stream = TcpStream::connect(addr).await.map_err(NetworkError::Io)?;
         let peer_id = peer_id_hint.unwrap_or_else(PeerId::random);
         perform_handshake_outbound(self, stream, addr, peer_id, network_id, genesis_hash, head_height, head_hash).await
     }
@@ -432,7 +433,7 @@ async fn handle_incoming(
     addr: SocketAddr,
     pm: Arc<PeerManager>,
     network_id: u32,
-    genesis_hash: Hash,
+    _genesis_hash: Hash,
     head_height: u64,
     head_hash: Hash,
 ) -> Result<(), NetworkError> {
@@ -468,7 +469,7 @@ async fn handle_incoming(
     let (mut sink, mut stream) = framed.split();
     let writer = tokio::spawn(async move {
         while let Some(msg) = send_rx.recv().await {
-            if let Err(e) = send_msg_sink(&mut sink, &msg).await { break; }
+            if send_msg_sink(&mut sink, &msg).await.is_err() { break; }
         }
     });
     // Reader
@@ -498,6 +499,7 @@ async fn handle_incoming(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn perform_handshake_outbound(
     pm: Arc<PeerManager>,
     stream: TcpStream,
@@ -558,7 +560,7 @@ async fn perform_handshake_outbound(
 
 async fn send_msg(framed: &mut Framed<TcpStream, LengthDelimitedCodec>, msg: &NetworkMessage) -> Result<(), NetworkError> {
     let bytes = bincode::serialize(msg).map_err(|e| NetworkError::DecodeError(e.to_string()))?;
-    framed.send(bytes.into()).await.map_err(|e| NetworkError::Io(e))
+    framed.send(bytes.into()).await.map_err(NetworkError::Io)
 }
 
 async fn send_msg_sink<S>(sink: &mut S, msg: &NetworkMessage) -> Result<(), NetworkError>
@@ -573,10 +575,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_peer_manager_limits() {
-        let mut config = PeerManagerConfig::default();
-        config.max_peers = 2;
-        config.max_inbound = 1;
-        config.max_outbound = 1;
+        let config = PeerManagerConfig { max_peers: 2, max_inbound: 1, max_outbound: 1, ..Default::default() };
         
         let manager = PeerManager::new(config);
         
@@ -618,8 +617,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_peer_scoring_and_ban() {
-        let mut config = PeerManagerConfig::default();
-        config.score_threshold = -10;
+        let config = PeerManagerConfig { score_threshold: -10, ..Default::default() };
         
         let manager = PeerManager::new(config);
         

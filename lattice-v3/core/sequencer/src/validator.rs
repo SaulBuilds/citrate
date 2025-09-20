@@ -1,5 +1,4 @@
-use lattice_consensus::{Hash, PublicKey, Transaction, Signature};
-use sha3::{Digest, Sha3_256};
+use lattice_consensus::{Hash, PublicKey, Transaction};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -126,6 +125,10 @@ impl MockStateProvider {
     pub async fn set_account(&self, address: PublicKey, state: AccountState) {
         self.accounts.write().await.insert(address, state);
     }
+}
+
+impl Default for MockStateProvider {
+    fn default() -> Self { Self::new() }
 }
 
 #[async_trait::async_trait]
@@ -335,6 +338,7 @@ impl<S: StateProvider> TxValidator<S> {
 pub struct ValidationPipeline<S: StateProvider> {
     validator: Arc<TxValidator<S>>,
     parallel_validation: bool,
+    #[allow(dead_code)]
     batch_size: usize,
 }
 
@@ -396,6 +400,7 @@ impl<S: StateProvider> ValidationPipeline<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lattice_consensus::types::Signature;
     
     fn create_test_tx(nonce: u64, gas_price: u64, value: u128) -> Transaction {
         Transaction {

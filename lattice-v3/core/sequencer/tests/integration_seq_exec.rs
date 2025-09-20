@@ -1,10 +1,11 @@
-use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, Signature, Transaction, VrfProof, GhostDagParams};
+use lattice_consensus::types::{BlockHeader, Hash, PublicKey, Signature, Transaction, VrfProof};
 use lattice_execution::types::Address;
 use lattice_execution::executor::Executor;
 use lattice_sequencer::mempool::{Mempool, MempoolConfig, TxClass};
 use lattice_sequencer::block_builder::{BlockBuilder, BlockBuilderConfig};
 use std::sync::Arc;
 
+#[allow(dead_code)]
 fn make_block_header(parent: Hash, height: u64) -> BlockHeader {
     BlockHeader {
         version: 1,
@@ -49,7 +50,7 @@ async fn test_build_block_and_execute_transactions() {
 
     // Three txs, distinct senders; one classified as inference by builder
     let tx1 = make_tx(0, 2_000_000_000, [1; 32], [2; 32], vec![]);
-    let mut tx2 = make_tx(0, 2_000_000_000, [3; 32], [4; 32], b"inference".to_vec());
+    let tx2 = make_tx(0, 2_000_000_000, [3; 32], [4; 32], b"inference".to_vec());
     let tx3 = make_tx(0, 2_000_000_000, [5; 32], [6; 32], vec![]);
 
     mempool.add_transaction(tx1.clone(), TxClass::Standard).await.unwrap();

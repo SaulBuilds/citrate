@@ -141,6 +141,7 @@ impl NodeConfig {
     }
     
     /// Save to file
+    #[allow(dead_code)]
     pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {
         let content = toml::to_string_pretty(self)?;
         std::fs::create_dir_all(path.parent().unwrap())?;

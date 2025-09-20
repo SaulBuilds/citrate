@@ -1,4 +1,4 @@
-use lattice_consensus::types::{Hash, Transaction};
+use lattice_consensus::types::Hash;
 use lattice_execution::types::Address;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};

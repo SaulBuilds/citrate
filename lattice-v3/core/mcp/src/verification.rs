@@ -156,7 +156,7 @@ impl ExecutionVerifier {
         }
         
         // Simple check for now
-        Ok(statement.len() > 0 && proof_data.len() > 0)
+        Ok(!statement.is_empty() && !proof_data.is_empty())
     }
     
     /// Verify proof without model/input/output
@@ -214,4 +214,8 @@ pub struct VerificationKey {
     pub model_hash: Hash,
     pub key_data: Vec<u8>,
     pub created_at: u64,
+}
+
+impl Default for ExecutionVerifier {
+    fn default() -> Self { Self::new() }
 }

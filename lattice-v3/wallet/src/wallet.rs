@@ -4,7 +4,7 @@ use crate::rpc_client::RpcClient;
 use lattice_consensus::types::{PublicKey, Hash};
 use lattice_execution::types::Address;
 use primitive_types::U256;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 /// Account information

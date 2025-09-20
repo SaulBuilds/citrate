@@ -104,6 +104,9 @@ const mapNodeStatusFromNative = (raw: any): NodeStatus => ({
 });
 
 const mapDAGDataFromNative = (raw: any): DAGData => {
+  const rawTips = raw.tips || [];
+  const tipHashSet = new Set<string>((rawTips as any[]).map((t: any) => String(t?.hash ?? t).toLowerCase()));
+
   const nodes: DAGNode[] = (raw.nodes || []).map((n: any) => ({
     id: String(n.id),
     hash: String(n.hash),
@@ -111,6 +114,7 @@ const mapDAGDataFromNative = (raw: any): DAGData => {
     timestamp: Number(n.timestamp) * (Number(n.timestamp) < 2_000_000_000 ? 1000 : 1),
     isBlue: !!(n.is_blue ?? n.isBlue),
     blueScore: Number(n.blue_score ?? n.blueScore ?? 0),
+    isTip: tipHashSet.has(String(n.hash).toLowerCase()),
     selectedParent: String(n.selected_parent ?? n.selectedParent ?? ''),
     mergeParents: (n.merge_parents ?? n.mergeParents ?? []).map((x: any) => String(x)),
     transactions: Number(n.transactions ?? 0),
@@ -128,7 +132,7 @@ const mapDAGDataFromNative = (raw: any): DAGData => {
   const tips: TipInfo[] = (raw.tips || []).map((t: any) => ({
     hash: String(t.hash),
     height: Number(t.height),
-    timestamp: Number(t.timestamp),
+    timestamp: Number(t.timestamp) * (Number(t.timestamp) < 2_000_000_000 ? 1000 : 1),
     blueScore: Number(t.blue_score ?? t.blueScore ?? 0),
     cumulativeWeight: BigInt(t.cumulative_weight ?? t.cumulativeWeight ?? 0),
   }));
@@ -398,6 +402,7 @@ const webImplementations = {
           height: parseInt(block.number, 16),
           blueScore: blueScore,
           timestamp: parseInt(block.timestamp, 16) * 1000,
+          cumulativeWeight: 0n,
         });
       } catch (error) {
         console.warn(`Could not fetch tip info for ${tip}:`, error);
@@ -414,6 +419,7 @@ const webImplementations = {
             height: parseInt(latest.number, 16),
             blueScore: parseInt(latest.number, 16),
             timestamp: parseInt(latest.timestamp, 16) * 1000,
+            cumulativeWeight: 0n,
           });
         }
       } catch (error) {
@@ -456,6 +462,7 @@ const webImplementations = {
   
   start_training: async (args: { config: TrainingConfig }) => {
     // Training jobs would need custom implementation
+    void args; // mark parameter as used
     return { jobId: 'job_' + Math.random().toString(36).substr(2, 9) };
   },
   

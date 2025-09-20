@@ -1,15 +1,14 @@
 use crate::types::error::ApiError;
 use lattice_execution::types::{
     ModelId, ModelState, TrainingJob, JobId, Address, 
-    ModelMetadata, AccessPolicy, UsageStats
+    ModelMetadata, AccessPolicy
 };
 use lattice_storage::StorageManager;
 use lattice_sequencer::{Mempool, TxClass};
 use lattice_execution::executor::Executor;
-use lattice_consensus::types::{Hash, Transaction, PublicKey, Signature, TransactionType};
-use primitive_types::U256;
+use lattice_consensus::types::{Hash, Transaction, PublicKey, Signature};
 use std::sync::Arc;
-use std::collections::HashMap;
+use primitive_types::U256;
 use serde::{Serialize, Deserialize};
 use sha3::{Digest, Sha3_256};
 
@@ -196,7 +195,7 @@ impl AiApi {
         let model_hash_bytes = hasher.finalize();
         let mut model_hash_array = [0u8; 32];
         model_hash_array.copy_from_slice(&model_hash_bytes[..32]);
-        let model_hash = Hash::new(model_hash_array);
+        let _model_hash = Hash::new(model_hash_array);
         
         // We'll encode the model registration data in the transaction data field
         
@@ -211,9 +210,9 @@ impl AiApi {
         
         // Calculate transaction hash
         let mut hasher = Sha3_256::new();
-        hasher.update(&nonce.to_le_bytes());
-        hasher.update(&from.0);
-        hasher.update(&gas_price.to_le_bytes());
+        hasher.update(nonce.to_le_bytes());
+        hasher.update(from.0);
+        hasher.update(gas_price.to_le_bytes());
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
         hash_array.copy_from_slice(&hash_bytes);
@@ -245,8 +244,8 @@ impl AiApi {
     pub async fn update_model(
         &self,
         model_id: ModelId,
-        new_version_hash: Hash,
-        changelog: String,
+        _new_version_hash: Hash,
+        _changelog: String,
         from: Address,
         gas_limit: u64,
         gas_price: u64,
@@ -262,9 +261,9 @@ impl AiApi {
         
         // Calculate transaction hash
         let mut hasher = Sha3_256::new();
-        hasher.update(&nonce.to_le_bytes());
-        hasher.update(&from.0);
-        hasher.update(&model_id.0.as_bytes());
+        hasher.update(nonce.to_le_bytes());
+        hasher.update(from.0);
+        hasher.update(model_id.0.as_bytes());
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
         hash_array.copy_from_slice(&hash_bytes);
@@ -372,9 +371,9 @@ impl AiApi {
         
         // Calculate transaction hash
         let mut hasher = Sha3_256::new();
-        hasher.update(&nonce.to_le_bytes());
-        hasher.update(&from.0);
-        hasher.update(&request.model_id.as_bytes());
+        hasher.update(nonce.to_le_bytes());
+        hasher.update(from.0);
+        hasher.update(request.model_id.as_bytes());
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
         hash_array.copy_from_slice(&hash_bytes);
@@ -428,8 +427,8 @@ impl AiApi {
         &self,
         request: CreateTrainingJobRequest,
         from: Address,
-        gas_limit: u64,
-        gas_price: u64,
+        _gas_limit: u64,
+        _gas_price: u64,
     ) -> Result<Hash, ApiError> {
         // Parse model ID
         let model_id_bytes = hex::decode(&request.model_id)
@@ -474,8 +473,8 @@ impl AiApi {
         let mut hasher = Sha3_256::new();
         hasher.update(model_id.0.as_bytes());
         hasher.update(dataset_hash.as_bytes());
-        hasher.update(&from.0);
-        hasher.update(&chrono::Utc::now().timestamp().to_le_bytes());
+        hasher.update(from.0);
+        hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
         
         let job_id_bytes = hasher.finalize();
         let mut job_id_array = [0u8; 32];
@@ -516,10 +515,10 @@ impl AiApi {
     /// List training jobs
     pub async fn list_training_jobs(
         &self, 
-        model_id: Option<ModelId>,
-        owner: Option<Address>,
-        status: Option<String>,
-        limit: Option<usize>
+        _model_id: Option<ModelId>,
+        _owner: Option<Address>,
+        _status: Option<String>,
+        _limit: Option<usize>
     ) -> Result<Vec<JobId>, ApiError> {
         // For production, we need to implement proper indexing for training jobs
         // Currently returning empty list as a placeholder
@@ -594,9 +593,9 @@ impl AiApi {
         // Generate adapter ID
         let mut hasher = Sha3_256::new();
         hasher.update(base_model_id.0.as_bytes());
-        hasher.update(&from.0);
+        hasher.update(from.0);
         hasher.update(&request.adapter_data);
-        hasher.update(&chrono::Utc::now().timestamp().to_le_bytes());
+        hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
         
         let adapter_id_bytes = hasher.finalize();
         let mut adapter_id_array = [0u8; 32];
@@ -604,7 +603,7 @@ impl AiApi {
         let adapter_id = Hash::new(adapter_id_array);
         
         // Create LoRA adapter record
-        let lora_info = LoRAInfo {
+        let _lora_info = LoRAInfo {
             adapter_id: hex::encode(adapter_id.as_bytes()),
             base_model_id: request.base_model_id,
             owner: hex::encode(from.0),
@@ -704,7 +703,7 @@ impl AiApi {
     pub async fn embeddings(
         &self,
         request: EmbeddingsRequest,
-        from: Option<Address>,
+        _from: Option<Address>,
     ) -> Result<EmbeddingsResponse, ApiError> {
         // Similar to chat completions but for embeddings (placeholder implementation)
         // In real implementation, would search through state storage for model

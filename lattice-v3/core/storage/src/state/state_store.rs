@@ -3,7 +3,6 @@ use anyhow::Result;
 use lattice_consensus::types::Hash;
 use lattice_execution::types::{AccountState, Address, ModelId, ModelState, TrainingJob, JobId};
 use lattice_execution::executor::StateStoreTrait;
-use primitive_types::U256;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -298,7 +297,8 @@ fn snapshot_account_key(block_hash: &Hash, address: &Address) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_execution::types::{ModelMetadata, AccessPolicy, JobStatus};
+    use lattice_execution::types::Address;
+    use primitive_types::U256;
     use tempfile::TempDir;
     
     #[test]

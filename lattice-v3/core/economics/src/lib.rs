@@ -7,8 +7,6 @@ pub use rewards::{BlockReward, RewardCalculator, RewardConfig};
 pub use genesis::{GenesisConfig, GenesisAccount};
 
 use primitive_types::U256;
-use lattice_execution::types::Address;
-use std::collections::HashMap;
 
 /// Native token symbol
 pub const TOKEN_SYMBOL: &str = "LATT";

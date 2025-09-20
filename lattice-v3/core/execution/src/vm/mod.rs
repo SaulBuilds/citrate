@@ -71,7 +71,7 @@ impl VM {
             let opcode = code[pc];
             
             // Check if it's an AI opcode
-            if opcode >= 0xA0 && opcode <= 0xDF {
+            if (0xA0..=0xDF).contains(&opcode) {
                 if let Some(ai_opcode) = self.decode_ai_opcode(opcode) {
                     // Consume gas for AI opcode
                     let gas_cost = self.ai_extension.gas_cost(ai_opcode);
@@ -268,6 +268,7 @@ impl VM {
 }
 
 /// Check if opcode needs stack transfer
+#[allow(dead_code)]
 fn needs_stack_transfer(opcode: ai_opcodes::AIOpcode) -> bool {
     use ai_opcodes::AIOpcode;
     matches!(opcode, 
@@ -341,6 +342,10 @@ impl Stack {
     }
 }
 
+impl Default for Stack {
+    fn default() -> Self { Self::new() }
+}
+
 /// Memory implementation
 pub struct Memory {
     data: Vec<u8>,
@@ -381,6 +386,10 @@ impl Memory {
     }
 }
 
+impl Default for Memory {
+    fn default() -> Self { Self::new() }
+}
+
 /// Storage implementation
 pub struct Storage {
     data: HashMap<U256, U256>,
@@ -404,4 +413,8 @@ impl Storage {
             self.data.insert(key, value);
         }
     }
+}
+
+impl Default for Storage {
+    fn default() -> Self { Self::new() }
 }

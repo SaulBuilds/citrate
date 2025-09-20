@@ -3,7 +3,6 @@
 
 use lattice_consensus::*;
 use std::sync::Arc;
-use std::collections::HashSet;
 
 // Helper function to create a test block
 fn create_test_block(block_num: u8, height: u64, parent: Option<Hash>) -> Block {
@@ -324,12 +323,12 @@ mod ghostdag_tests {
     async fn test_tip_selection() {
         let params = GhostDagParams::default();
         let dag_store = Arc::new(DagStore::new());
-        let ghostdag = Arc::new(GhostDag::new(params, dag_store.clone()));
+        let _ghostdag = Arc::new(GhostDag::new(params, dag_store.clone()));
         
         // Create tip selector
         let tip_selector = TipSelector::new(
             dag_store.clone(),
-            ghostdag.clone(),
+            _ghostdag.clone(),
             SelectionStrategy::HighestBlueScore
         );
         
@@ -382,14 +381,14 @@ mod type_tests {
     
     #[test]
     fn test_public_key_creation() {
-        let pubkey = PublicKey::new([33u8; 32]);
+        let _pubkey = PublicKey::new([33u8; 32]);
         // Can't test internal value directly, but can verify it creates
         let _another = PublicKey::new([34u8; 32]);
     }
     
     #[test]
     fn test_signature_creation() {
-        let sig = Signature::new([42u8; 64]);
+        let _sig = Signature::new([42u8; 64]);
         // Can't test internal value directly, but can verify it creates
         let _another = Signature::new([43u8; 64]);
     }
@@ -433,15 +432,15 @@ mod chain_selection_tests {
     async fn test_chain_selector_creation() {
         let params = GhostDagParams::default();
         let dag_store = Arc::new(DagStore::new());
-        let ghostdag = Arc::new(GhostDag::new(params, dag_store.clone()));
+        let _ghostdag = Arc::new(GhostDag::new(params, dag_store.clone()));
         let tip_selector = Arc::new(TipSelector::new(
             dag_store.clone(),
-            ghostdag.clone(),
+            _ghostdag.clone(),
             SelectionStrategy::HighestBlueScore,
         ));
         let _chain_selector = ChainSelector::new(
             dag_store,
-            ghostdag,
+            _ghostdag,
             tip_selector,
             100,
         );
@@ -486,7 +485,7 @@ mod integration_tests {
         // Create components
         let params = GhostDagParams::default();
         let dag_store = Arc::new(DagStore::new());
-        let ghostdag = Arc::new(GhostDag::new(params, dag_store.clone()));
+        let _ghostdag = Arc::new(GhostDag::new(params, dag_store.clone()));
         
         // Add genesis
         let genesis = create_test_block(0, 0, None);

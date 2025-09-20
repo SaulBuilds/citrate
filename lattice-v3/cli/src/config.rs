@@ -33,7 +33,7 @@ impl Config {
     pub fn load(config_path: Option<&Path>, rpc_override: Option<&str>) -> Result<Self> {
         let config_path = config_path
             .map(PathBuf::from)
-            .or_else(|| Self::default_config_path())
+            .or_else(Self::default_config_path)
             .context("Unable to determine config path")?;
 
         let mut config = if config_path.exists() {
@@ -56,7 +56,7 @@ impl Config {
     pub fn save(&self, config_path: Option<&Path>) -> Result<()> {
         let config_path = config_path
             .map(PathBuf::from)
-            .or_else(|| Self::default_config_path())
+            .or_else(Self::default_config_path)
             .context("Unable to determine config path")?;
 
         // Create parent directory if it doesn't exist

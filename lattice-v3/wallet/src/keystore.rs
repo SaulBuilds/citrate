@@ -3,7 +3,7 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
 };
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{PasswordHasher, SaltString},
     Argon2,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};

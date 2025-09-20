@@ -1,12 +1,12 @@
 use crate::state::StateDB;
 use crate::types::{
     Address, ExecutionError, GasSchedule, Log, TransactionReceipt, TransactionType,
-    ModelId, ModelState, ModelMetadata, AccessPolicy, TrainingJob, JobId, JobStatus,
+    ModelId, ModelState, ModelMetadata, AccessPolicy, JobId, JobStatus,
 };
 use crate::vm::VM;
 use async_trait::async_trait;
 use crate::metrics::{VM_EXECUTIONS_TOTAL, VM_GAS_USED, PRECOMPILE_CALLS_TOTAL};
-use lattice_consensus::types::{Block, Transaction, Hash, VrfProof};
+use lattice_consensus::types::{Block, Transaction, Hash};
 use primitive_types::U256;
 use std::sync::Arc;
 use tracing::{debug, info, warn, error};
@@ -451,8 +451,8 @@ impl Executor {
         let nonce = self.state_db.accounts.get_nonce(&from);
         use sha3::{Digest, Keccak256};
         let mut hasher = Keccak256::default();
-        hasher.update(&from.0);
-        hasher.update(&nonce.to_be_bytes());
+        hasher.update(from.0);
+        hasher.update(nonce.to_be_bytes());
         let hash = hasher.finalize();
         
         let mut contract_addr = [0u8; 20];
@@ -463,7 +463,7 @@ impl Executor {
         self.state_db.accounts.create_account_if_not_exists(contract_address);
         
         // Store code
-        let code_hash = self.state_db.set_code(contract_address, code);
+        let _code_hash = self.state_db.set_code(contract_address, code);
         
         // Set contract address in output
         context.output = contract_address.0.to_vec();
@@ -934,7 +934,7 @@ impl Executor {
         // Read from governance: PARAM:artifact_replication
         let gov_addr = Self::governance_precompile_address();
         if let Some(bytes) = self.state_db.get_storage(&gov_addr, b"PARAM:artifact_replication") {
-            if bytes.len() >= 1 { return bytes[0].max(1) as usize; }
+            if !bytes.is_empty() { return bytes[0].max(1) as usize; }
             if bytes.len() >= 8 {
                 let mut arr=[0u8;8]; arr.copy_from_slice(&bytes[..8]);
                 let v = u64::from_le_bytes(arr);
@@ -1035,7 +1035,7 @@ impl Executor {
             .ok_or(ExecutionError::ModelNotFound(model_id))?;
         
         // Gas based on model size
-        let load_gas = (model.metadata.size_bytes / 1024) as u64;
+        let load_gas = model.metadata.size_bytes / 1024;
         context.use_gas(load_gas)?;
         
         info!("Model loaded: {:?}", model_id);
@@ -1318,7 +1318,7 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_consensus::types::{BlockHeader, PublicKey, Signature};
+    use lattice_consensus::types::{BlockHeader, PublicKey, Signature, VrfProof};
     use sha3::{Digest, Keccak256};
     
     fn create_test_block() -> Block {

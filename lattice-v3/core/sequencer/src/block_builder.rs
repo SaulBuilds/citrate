@@ -108,6 +108,7 @@ pub struct BlockBuilder {
     mempool: Arc<Mempool>,
     proposer_key: PublicKey,
     executor: Option<Arc<Executor>>,
+    #[allow(dead_code)]
     parallel_executor: Arc<ParallelExecutor>,
 }
 
@@ -316,14 +317,14 @@ impl BlockBuilder {
         let mut hasher = Sha3_256::new();
         
         // Hash header fields
-        hasher.update(&block.header.version.to_le_bytes());
+        hasher.update(block.header.version.to_le_bytes());
         hasher.update(block.header.selected_parent_hash.as_bytes());
         for parent in &block.header.merge_parent_hashes {
             hasher.update(parent.as_bytes());
         }
-        hasher.update(&block.header.timestamp.to_le_bytes());
-        hasher.update(&block.header.height.to_le_bytes());
-        hasher.update(&block.header.blue_score.to_le_bytes());
+        hasher.update(block.header.timestamp.to_le_bytes());
+        hasher.update(block.header.height.to_le_bytes());
+        hasher.update(block.header.blue_score.to_le_bytes());
         
         // Hash content roots
         hasher.update(block.state_root.as_bytes());
@@ -501,7 +502,7 @@ mod tests {
         let bundles = builder.bundle_transactions().await.unwrap();
         
         // Should have bundles for different classes
-        assert!(bundles.len() >= 1);
+        assert!(!bundles.is_empty());
         
         // Check bundle grouping
         for bundle in bundles {
@@ -821,14 +822,14 @@ mod tests {
     #[tokio::test]
     async fn test_large_batch_inference_ordering_across_bundles() {
         // Configure small bundle size to force multiple bundles
-        let (mut builder0, mempool) = setup_test_builder().await;
+        let (builder0, mempool) = setup_test_builder().await;
         let mut cfg = builder0.config.clone();
         cfg.bundle_size = 5;
         let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
 
         // Insert 13 inference-class transactions with descending gas prices
         for i in 0..13u64 {
-            let mut tx = create_test_tx(i, 100_000_000_000 - (i as u64) * 1_000_000);
+            let mut tx = create_test_tx(i, 100_000_000_000 - i * 1_000_000);
             tx.data = b"inference".to_vec(); // Ensure classified as Inference
             // Unique sender per tx to avoid nonce constraints affecting order
             tx.from = PublicKey::new([i as u8 + 1; 32]);
@@ -850,7 +851,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_standard_nonce_ordering_within_bundles() {
-        let (mut builder0, mempool) = setup_test_builder().await;
+        let (builder0, mempool) = setup_test_builder().await;
         let mut cfg = builder0.config.clone();
         cfg.bundle_size = 3;
         let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);

@@ -5,11 +5,9 @@ pub mod verification;
 pub mod cache;
 pub mod types;
 
-use crate::types::{ModelId, ModelMetadata, ProviderInfo};
-use lattice_execution::{Address, Hash};
-use std::collections::HashMap;
+use crate::types::{ModelId, ModelMetadata};
+use lattice_execution::Address;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tracing::info;
 
 /// MCP Service coordinator

@@ -4,8 +4,9 @@ use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 
 /// Merkle Patricia Trie node
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum TrieNode {
+    #[default]
     Empty,
     Leaf {
         key: Vec<u8>,
@@ -21,11 +22,7 @@ pub enum TrieNode {
     },
 }
 
-impl Default for TrieNode {
-    fn default() -> Self {
-        TrieNode::Empty
-    }
-}
+// Default now derived above with Empty
 
 /// Merkle Patricia Trie
 #[derive(Clone)]
@@ -213,6 +210,7 @@ impl Trie {
         Hash::new(hasher.finalize().into())
     }
     
+    #[allow(clippy::only_used_in_recursion)]
     fn encode_node(&self, node: &TrieNode) -> Vec<u8> {
         match node {
             TrieNode::Empty => vec![],
@@ -380,6 +378,10 @@ impl Trie {
             TrieNode::Branch { children, value }
         }
     }
+}
+
+impl Default for Trie {
+    fn default() -> Self { Self::new() }
 }
 
 /// Convert bytes to nibbles (4-bit values)

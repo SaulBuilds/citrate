@@ -507,19 +507,17 @@ impl Mempool {
         let mut ai_txs = Vec::new();
         
         for (_, mempool_tx) in transactions.iter() {
-            if let Some(tx_type) = mempool_tx.tx.tx_type {
-                match tx_type {
-                    lattice_consensus::types::TransactionType::ModelDeploy |
-                    lattice_consensus::types::TransactionType::ModelUpdate |
-                    lattice_consensus::types::TransactionType::TrainingJob |
-                    lattice_consensus::types::TransactionType::InferenceRequest |
-                    lattice_consensus::types::TransactionType::LoraAdapter => {
-                        ai_txs.push(mempool_tx.tx.clone());
-                        if ai_txs.len() >= max_count {
-                            break;
-                        }
-                    }
-                    _ => {}
+            if let Some(
+                lattice_consensus::types::TransactionType::ModelDeploy
+                | lattice_consensus::types::TransactionType::ModelUpdate
+                | lattice_consensus::types::TransactionType::TrainingJob
+                | lattice_consensus::types::TransactionType::InferenceRequest
+                | lattice_consensus::types::TransactionType::LoraAdapter,
+            ) = mempool_tx.tx.tx_type
+            {
+                ai_txs.push(mempool_tx.tx.clone());
+                if ai_txs.len() >= max_count {
+                    break;
                 }
             }
         }
@@ -537,7 +535,7 @@ impl Mempool {
         let txs = self.transactions.read().await;
         let by_sender = self.by_sender.read().await;
         let priority_queue = self.priority_queue.read().await;
-        let mut sorted: Vec<(Hash, TxPriority)> = priority_queue.iter().map(|(h,p)| (*h, p.clone())).collect();
+        let mut sorted: Vec<(Hash, TxPriority)> = priority_queue.iter().map(|(h,p)| (*h, *p)).collect();
         drop(priority_queue);
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -575,6 +573,7 @@ impl Mempool {
     }
     
     /// Check if transaction has the next expected nonce for sender
+    #[allow(dead_code)]
     async fn is_next_nonce(&self, tx: &Transaction, included: &HashSet<Hash>) -> bool {
         let by_sender = self.by_sender.read().await;
         

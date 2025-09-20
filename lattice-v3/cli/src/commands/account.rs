@@ -102,13 +102,13 @@ fn create_account(config: &Config, password: Option<String>, output: Option<Path
     
     // Save to keystore
     let keystore_path = output.unwrap_or_else(|| {
-        config.keystore_path.join(format!("{}.json", hex::encode(&address)))
+        config.keystore_path.join(format!("{}.json", hex::encode(address)))
     });
     
     keystore::save_key(&secret_key, &password, &keystore_path)?;
     
     println!("{}", "✓ Account created successfully".green());
-    println!("Address: {}", format!("0x{}", hex::encode(&address)).cyan());
+    println!("Address: {}", format!("0x{}", hex::encode(address)).cyan());
     println!("Keystore: {:?}", keystore_path);
     
     Ok(())
@@ -199,7 +199,7 @@ fn import_account(config: &Config, private_key: &str, password: Option<String>) 
     });
     
     // Save to keystore
-    let keystore_path = config.keystore_path.join(format!("{}.json", hex::encode(&address)));
+    let keystore_path = config.keystore_path.join(format!("{}.json", hex::encode(address)));
     
     if keystore_path.exists() {
         anyhow::bail!("Account already exists in keystore");
@@ -208,7 +208,7 @@ fn import_account(config: &Config, private_key: &str, password: Option<String>) 
     keystore::save_key(&secret_key, &password, &keystore_path)?;
     
     println!("{}", "✓ Account imported successfully".green());
-    println!("Address: {}", format!("0x{}", hex::encode(&address)).cyan());
+    println!("Address: {}", format!("0x{}", hex::encode(address)).cyan());
     
     Ok(())
 }

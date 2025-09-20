@@ -1,10 +1,9 @@
 use crate::state::{AccountManager, Trie};
 use crate::types::{
-    AccountState, Address, ExecutionError, ModelId, ModelState, TrainingJob, JobId,
+    Address, ExecutionError, ModelId, ModelState, TrainingJob, JobId,
 };
 use dashmap::DashMap;
 use lattice_consensus::types::Hash;
-use primitive_types::U256;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -55,7 +54,7 @@ impl StateDB {
     pub fn set_storage(&self, address: Address, key: Vec<u8>, value: Vec<u8>) {
         self.storage_tries
             .entry(address)
-            .or_insert_with(Trie::new)
+            .or_default()
             .insert(key, value);
     }
     
@@ -216,6 +215,10 @@ impl StateDB {
     }
 }
 
+impl Default for StateDB {
+    fn default() -> Self { Self::new() }
+}
+
 /// State snapshot for rollback
 pub struct StateSnapshot {
     accounts: crate::state::account::AccountSnapshot,
@@ -227,7 +230,7 @@ pub struct StateSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ModelMetadata;
+    use primitive_types::U256;
     
     #[test]
     fn test_storage_operations() {

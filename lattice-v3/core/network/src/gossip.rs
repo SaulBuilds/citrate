@@ -38,6 +38,7 @@ impl Default for GossipConfig {
 
 /// Seen item tracking
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct SeenItem {
     hash: Hash,
     first_seen: Instant,
@@ -334,7 +335,7 @@ impl GossipProtocol {
             // Remove oldest entries
             let mut items: Vec<_> = self.seen_blocks
                 .iter()
-                .map(|e| (e.key().clone(), e.value().first_seen))
+                .map(|e| (*e.key(), e.value().first_seen))
                 .collect();
             
             items.sort_by_key(|&(_, time)| time);
@@ -348,7 +349,7 @@ impl GossipProtocol {
         if self.seen_transactions.len() > self.config.max_seen_cache {
             let mut items: Vec<_> = self.seen_transactions
                 .iter()
-                .map(|e| (e.key().clone(), e.value().first_seen))
+                .map(|e| (*e.key(), e.value().first_seen))
                 .collect();
             
             items.sort_by_key(|&(_, time)| time);
@@ -402,8 +403,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_cache_cleanup() {
-        let mut config = GossipConfig::default();
-        config.max_seen_cache = 3;
+        let config = GossipConfig { max_seen_cache: 3, ..Default::default() };
         
         let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig::default()));
         let gossip = GossipProtocol::new(config, peer_manager);

@@ -1,5 +1,5 @@
 // RPC Client for connecting to the Lattice blockchain node
-import type { Account, TransactionRequest, NodeStatus, DAGData, DAGNode, DAGLink, TipInfo } from '../types';
+import type { TransactionRequest, NodeStatus, DAGData, DAGNode, DAGLink, TipInfo } from '../types';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -190,6 +190,7 @@ class RPCClient {
             timestamp: parseInt(block.timestamp, 16) * 1000,
             isBlue: true,
             blueScore: parseInt(block.number, 16),
+            isTip: h === end,
             selectedParent: parent,
             mergeParents: [],
             transactions: (block.transactions || []).length,

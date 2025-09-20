@@ -2,8 +2,6 @@ use lattice_storage::{StorageManager};
 use lattice_storage::pruning::PruningConfig;
 use lattice_sequencer::mempool::Mempool;
 use lattice_sequencer::mempool::MempoolConfig;
-use lattice_network::peer::PeerManager;
-use lattice_network::peer::PeerManagerConfig;
 use lattice_execution::executor::Executor;
 use tempfile::TempDir;
 use std::sync::Arc;
@@ -193,7 +191,7 @@ async fn test_eth_get_transaction_count_latest_vs_pending() {
 
     // Sender address (derived from first 20 bytes of pubkey)
     let mut from_pk_bytes = [0u8; 32];
-    for i in 0..20 { from_pk_bytes[i] = (i as u8) + 1; }
+    from_pk_bytes.iter_mut().take(20).enumerate().for_each(|(i, b)| *b = (i as u8) + 1);
     let from_pk = PublicKey::new(from_pk_bytes);
     let from_addr_hex = format!("0x{}", hex::encode(&from_pk_bytes[0..20]));
 
@@ -636,7 +634,7 @@ async fn test_eth_call_invalid_data_shapes_error() {
             {"from": format!("0x{}", hex::encode(from.0)),
              "to": format!("0x{}", hex::encode(addr_zk.0)),
              "gas":"0x186a0","gasPrice":"0x1",
-             "data": format!("0x{}", hex::encode(&[0x01, 0x02, 0x03]))},
+             "data": format!("0x{}", hex::encode([0x01, 0x02, 0x03]))},
             "latest"
         ]
     }).to_string();

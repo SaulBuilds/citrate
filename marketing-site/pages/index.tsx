@@ -13,6 +13,7 @@ export default function Home() {
           <h1>Lattice Network</h1>
           <nav style={{display:'flex',gap:'1rem'}}>
             <Link href="/sandbox">Sandbox</Link>
+            <Link href="/downloads">Downloads</Link>
             <a href="../docs-portal/build" target="_blank">Docs</a>
             <a href="https://github.com/lattice-network" target="_blank">GitHub</a>
           </nav>
@@ -39,4 +40,3 @@ export default function Home() {
     </>
   );
 }
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { walletService } from '../services/tauri';
+import { walletService, nodeService } from '../services/tauri';
 import { Account, TxActivity } from '../types';
 import { 
   Wallet as WalletIcon,

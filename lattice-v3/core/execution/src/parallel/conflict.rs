@@ -46,11 +46,11 @@ impl AccessSetExtractor for DefaultAccessSetExtractor {
         let mut access_set = AccessSet::default();
         
         // Sender always writes (nonce, balance)
-        access_set.writes.insert(format!("account:{}", hex::encode(&tx.from.0)).into_bytes());
+        access_set.writes.insert(format!("account:{}", hex::encode(tx.from.0)).into_bytes());
         
         // Recipient reads/writes depend on transaction type
         if let Some(to) = &tx.to {
-            let key = format!("account:{}", hex::encode(&to.0)).into_bytes();
+            let key = format!("account:{}", hex::encode(to.0)).into_bytes();
             access_set.reads.insert(key.clone());
             access_set.writes.insert(key);
             
@@ -59,7 +59,7 @@ impl AccessSetExtractor for DefaultAccessSetExtractor {
                 // Function selector is first 4 bytes
                 if tx.data.len() >= 4 {
                     let selector = &tx.data[0..4];
-                    let storage_key = format!("storage:{}:{}", hex::encode(&to.0), hex::encode(selector)).into_bytes();
+                    let storage_key = format!("storage:{}:{}", hex::encode(to.0), hex::encode(selector)).into_bytes();
                     access_set.reads.insert(storage_key.clone());
                     access_set.writes.insert(storage_key);
                 }

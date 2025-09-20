@@ -3,8 +3,8 @@ use tokio::time::sleep;
 use tauri::{Manager, State, Emitter};
 use tokio::sync::RwLock;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use tracing::{info, error};
+use serde::Deserialize;
+use tracing::info;
 
 mod node;
 mod wallet;

@@ -3,7 +3,7 @@ use crate::types::{
     request::{BlockId, BlockTag},
     response::{BlockResponse, TransactionResponse},
 };
-use lattice_consensus::types::{Block, BlockHeader, Hash, Transaction};
+use lattice_consensus::types::{BlockHeader, Hash};
 use lattice_execution::types::TransactionReceipt;
 use lattice_storage::StorageManager;
 use std::sync::Arc;

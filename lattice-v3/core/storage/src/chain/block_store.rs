@@ -189,7 +189,7 @@ fn blue_score_key(score: u64) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_consensus::types::{PublicKey, Signature, Transaction, VrfProof};
+    use lattice_consensus::types::{PublicKey, Signature, VrfProof};
     use tempfile::TempDir;
     
     fn create_test_block(height: u64, parent: Hash) -> Block {

@@ -38,6 +38,7 @@ pub enum SyncState {
 
 /// Block download request
 #[derive(Debug)]
+#[allow(dead_code)]
 struct BlockRequest {
     hash: Hash,
     peer_id: PeerId,
@@ -158,7 +159,7 @@ impl SyncManager {
         let mut queue = self.header_queue.write().await;
         
         // Add to queue in batches
-        let batches = (count + self.config.header_batch_size as u64 - 1) / self.config.header_batch_size as u64;
+        let batches = count.div_ceil(self.config.header_batch_size as u64);
         
         for _ in 0..batches.min(10) {
             queue.push_back(from);

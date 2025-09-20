@@ -1,6 +1,6 @@
-use ndarray::{Array, ArrayD, IxDyn};
+use ndarray::{ArrayD, IxDyn};
 use serde::{Deserialize, Serialize, Serializer, Deserializer};
-use serde::de::{self, Visitor};
+use serde::de::{self};
 
 /// Tensor representation for VM operations
 #[derive(Debug, Clone)]

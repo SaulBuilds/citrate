@@ -162,9 +162,7 @@ impl DagStore {
         let blocks = self.blocks.read().await;
         
         tips.iter()
-            .filter_map(|hash| {
-                blocks.get(hash).map(|block| Tip::new(block))
-            })
+            .filter_map(|hash| blocks.get(hash).map(Tip::new))
             .collect()
     }
     
@@ -251,6 +249,10 @@ impl DagStore {
             max_height: self.blocks_by_height.read().await.keys().max().copied().unwrap_or(0),
         }
     }
+}
+
+impl Default for DagStore {
+    fn default() -> Self { Self::new() }
 }
 
 #[derive(Debug, Clone)]

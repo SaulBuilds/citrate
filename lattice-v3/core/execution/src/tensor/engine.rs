@@ -32,7 +32,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, tensor);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -49,7 +49,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, tensor);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -66,7 +66,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, tensor);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -83,7 +83,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, tensor);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -126,7 +126,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -148,7 +148,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -170,7 +170,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -192,7 +192,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -212,7 +212,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -232,7 +232,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -252,7 +252,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -272,7 +272,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, result);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)
@@ -307,7 +307,7 @@ impl TensorEngine {
 
         let id = self.next_id;
         self.tensors.insert(id, tensor);
-        self.next_id = self.next_id + U256::one();
+        self.next_id += U256::one();
         self.current_memory += memory_size;
         
         Ok(id)

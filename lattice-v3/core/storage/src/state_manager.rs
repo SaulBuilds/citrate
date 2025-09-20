@@ -1,7 +1,7 @@
 use crate::state::{AIStateTree, StateStore};
 use crate::db::RocksDB;
 use lattice_consensus::types::Hash;
-use lattice_execution::{Address, AccountState, ModelId, ModelState, TrainingJob, JobId};
+use lattice_execution::{ModelId, ModelState, TrainingJob, JobId};
 use anyhow::Result;
 use std::sync::Arc;
 use sha3::{Digest, Sha3_256};
@@ -72,12 +72,12 @@ impl StateManager {
         
         // Hash each account's state
         for (address, account) in sorted_accounts {
-            hasher.update(&address.0);
+            hasher.update(address.0);
             // Convert U256 to bytes
             let mut balance_bytes = [0u8; 32];
             account.balance.to_little_endian(&mut balance_bytes);
-            hasher.update(&balance_bytes);
-            hasher.update(&account.nonce.to_le_bytes());
+            hasher.update(balance_bytes);
+            hasher.update(account.nonce.to_le_bytes());
             hasher.update(account.code_hash.as_bytes());
         }
         
@@ -98,12 +98,12 @@ impl StateManager {
         let mut sorted_storage: Vec<_> = storage_data.into_iter().collect();
         sorted_storage.sort_by(|a, b| {
             // Compare addresses first, then storage keys
-            a.0.0.0.cmp(&b.0.0.0).then_with(|| a.0.1.as_bytes().cmp(&b.0.1.as_bytes()))
+            a.0.0.0.cmp(&b.0.0.0).then_with(|| a.0.1.as_bytes().cmp(b.0.1.as_bytes()))
         });
         
         // Hash each storage entry
         for ((address, key), value) in sorted_storage {
-            hasher.update(&address.0);
+            hasher.update(address.0);
             hasher.update(key.as_bytes());
             hasher.update(value.as_bytes());
         }
@@ -227,6 +227,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
     use lattice_execution::{ModelMetadata, AccessPolicy, UsageStats};
+    use lattice_execution::types::Address;
     
     #[tokio::test]
     async fn test_unified_state_root() {

@@ -164,7 +164,7 @@ async fn deploy_contract(
     };
     
     // Parse constructor arguments
-    let constructor_args = if let Some(args_str) = args {
+    let _constructor_args = if let Some(args_str) = args {
         serde_json::from_str(&args_str).context("Invalid constructor arguments JSON")?
     } else {
         json!([])
@@ -599,7 +599,7 @@ fn encode_method_call(method_sig: &str, args: serde_json::Value) -> Result<Strin
         .rfind(')')
         .context("Invalid method signature: missing ')'")?;
     let types_str = &method_sig[open + 1..close];
-    let mut types: Vec<String> = if types_str.trim().is_empty() {
+    let types: Vec<String> = if types_str.trim().is_empty() {
         vec![]
     } else {
         types_str

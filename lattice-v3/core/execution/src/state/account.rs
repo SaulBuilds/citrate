@@ -186,6 +186,10 @@ impl AccountManager {
     }
 }
 
+impl Default for AccountManager {
+    fn default() -> Self { Self::new() }
+}
+
 /// Account snapshot for rollback
 pub struct AccountSnapshot {
     accounts: Vec<(Address, AccountState)>,

@@ -2,7 +2,6 @@ use super::types::{SerializableProof, VerificationResult, ProofType, ZKPError, V
 use ark_groth16::{Groth16, PreparedVerifyingKey, prepare_verifying_key};
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_snark::SNARK;
-use ark_ff::PrimeField;
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -218,7 +217,7 @@ impl Verifier {
         &self,
         proof_type: ProofType,
         aggregated_proof: &SerializableProof,
-        individual_public_inputs: Vec<Vec<String>>,
+        _individual_public_inputs: Vec<Vec<String>>,
     ) -> Result<bool, ZKPError> {
         // In a real implementation, this would verify an aggregated proof
         // that proves multiple statements at once
@@ -233,4 +232,8 @@ impl Verifier {
         
         Ok(true)
     }
+}
+
+impl Default for Verifier {
+    fn default() -> Self { Self::new() }
 }

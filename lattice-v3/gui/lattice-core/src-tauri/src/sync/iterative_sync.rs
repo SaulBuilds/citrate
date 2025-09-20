@@ -62,6 +62,7 @@ pub struct IterativeSyncManager {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SyncState {
     pub syncing: bool,
     pub current_height: u64,
@@ -145,7 +146,7 @@ impl IterativeSyncManager {
         peer_manager: Arc<PeerManager>,
         config: &SyncConfig,
         pending_blocks: Arc<RwLock<VecDeque<BlockWithRetry>>>,
-        seen_blocks: Arc<RwLock<HashSet<Hash>>>,
+        _seen_blocks: Arc<RwLock<HashSet<Hash>>>,
         sync_state: Arc<RwLock<SyncState>>,
         failed_blocks: Arc<RwLock<VecDeque<BlockWithRetry>>>,
     ) -> Result<()> {
@@ -293,7 +294,7 @@ impl IterativeSyncManager {
         }
 
         // Calculate blue score using iterative BFS
-        let blue_score = Self::calculate_blue_score_iterative(storage, &block).await?;
+        let _blue_score = Self::calculate_blue_score_iterative(storage, &block).await?;
 
         // Store the block
         storage.blocks.put_block(&block)?;
@@ -302,7 +303,7 @@ impl IterativeSyncManager {
     }
 
     /// Validate block without processing parents
-    fn validate_block(block: &Block) -> bool {
+    fn validate_block(_block: &Block) -> bool {
         // Basic validation
         // Genesis block has height 0, others must have positive height
         true // Simplified validation for now
@@ -413,11 +414,13 @@ impl IterativeSyncManager {
     }
 
     /// Get current sync state
+    #[allow(dead_code)]
     pub async fn get_sync_state(&self) -> SyncState {
         self.sync_state.read().await.clone()
     }
 
     /// Stop syncing
+    #[allow(dead_code)]
     pub async fn stop_sync(&self) {
         let mut state = self.sync_state.write().await;
         state.syncing = false;

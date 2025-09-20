@@ -1,5 +1,5 @@
-use lattice_consensus::types::{Block, BlockHeader, Hash, Transaction};
-use lattice_execution::types::{Address, AccountState, TransactionReceipt, ModelState, TrainingJob};
+use lattice_consensus::types::{Block, Hash, Transaction};
+use lattice_execution::types::Address;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 

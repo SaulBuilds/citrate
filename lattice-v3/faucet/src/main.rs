@@ -8,14 +8,12 @@ use axum::{
 use ed25519_dalek::SigningKey;
 use lattice_consensus::types::{Hash, PublicKey, Signature, Transaction};
 use lattice_execution::types::Address;
-use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use tracing::{info, error};
-use tracing_subscriber;
 
 #[derive(Clone)]
 struct FaucetState {
@@ -65,7 +63,7 @@ async fn main() {
     addr_bytes.copy_from_slice(&hash[12..32]);
     let faucet_address = Address(addr_bytes);
     
-    info!("Faucet address: 0x{}", hex::encode(&faucet_address.0));
+    info!("Faucet address: 0x{}", hex::encode(faucet_address.0));
     
     let state = FaucetState {
         signing_key: Arc::new(signing_key),
@@ -129,7 +127,7 @@ async fn request_tokens(
     recipient_addr.copy_from_slice(&recipient_bytes);
     let recipient = Address(recipient_addr);
     
-    info!("Faucet request for address: 0x{}", hex::encode(&recipient.0));
+    info!("Faucet request for address: 0x{}", hex::encode(recipient.0));
     
     // Create transaction
     let mut nonce_guard = state.nonce.lock().await;
@@ -246,19 +244,19 @@ fn calculate_tx_hash(tx: &Transaction, chain_id: u64) -> Hash {
     let mut hasher = Sha3_256::new();
     
     // Hash transaction fields (EIP-155 style)
-    hasher.update(&tx.nonce.to_le_bytes());
-    hasher.update(&tx.gas_price.to_le_bytes());
-    hasher.update(&tx.gas_limit.to_le_bytes());
+    hasher.update(tx.nonce.to_le_bytes());
+    hasher.update(tx.gas_price.to_le_bytes());
+    hasher.update(tx.gas_limit.to_le_bytes());
     
     if let Some(to) = &tx.to {
-        hasher.update(&to.0);
+        hasher.update(to.0);
     }
     
-    hasher.update(&tx.value.to_le_bytes());
+    hasher.update(tx.value.to_le_bytes());
     hasher.update(&tx.data);
-    hasher.update(&chain_id.to_le_bytes());
-    hasher.update(&[0u8; 8]); // r placeholder
-    hasher.update(&[0u8; 8]); // s placeholder
+    hasher.update(chain_id.to_le_bytes());
+    hasher.update([0u8; 8]); // r placeholder
+    hasher.update([0u8; 8]); // s placeholder
     
     let result = hasher.finalize();
     let mut hash_bytes = [0u8; 32];

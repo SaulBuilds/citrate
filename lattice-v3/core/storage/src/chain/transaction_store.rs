@@ -180,7 +180,7 @@ fn block_tx_prefix(block_hash: &Hash) -> Vec<u8> {
 mod tests {
     use super::*;
     use lattice_consensus::types::{PublicKey, Signature};
-    use lattice_execution::types::{Address, Log};
+    use lattice_execution::types::Address;
     use tempfile::TempDir;
     
     fn create_test_transaction(nonce: u64) -> Transaction {

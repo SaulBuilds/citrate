@@ -1,9 +1,12 @@
-use super::column_families::{all_column_families, CF_DEFAULT};
+use super::column_families::all_column_families;
 use anyhow::Result;
 use rocksdb::{ColumnFamilyDescriptor, Options, WriteBatch, DB};
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info};
+
+// Simpler alias for iterator item type to reduce signature complexity
+type KvItem = (Box<[u8]>, Box<[u8]>);
 
 /// RocksDB wrapper for blockchain storage
 pub struct RocksDB {
@@ -100,14 +103,14 @@ impl RocksDB {
     }
     
     /// Get iterator for a column family
-    pub fn iter_cf(&self, cf: &str) -> Result<impl Iterator<Item = (Box<[u8]>, Box<[u8]>)> + '_> {
+    pub fn iter_cf(&self, cf: &str) -> Result<impl Iterator<Item = KvItem> + '_> {
         let cf_handle = self.cf_handle(cf)?;
         Ok(self.db.iterator_cf(&cf_handle, rocksdb::IteratorMode::Start)
             .map(|r| r.unwrap()))
     }
     
     /// Get iterator with prefix for a column family
-    pub fn prefix_iter_cf(&self, cf: &str, prefix: &[u8]) -> Result<impl Iterator<Item = (Box<[u8]>, Box<[u8]>)> + '_> {
+    pub fn prefix_iter_cf(&self, cf: &str, prefix: &[u8]) -> Result<impl Iterator<Item = KvItem> + '_> {
         let cf_handle = self.cf_handle(cf)?;
         Ok(self.db.prefix_iterator_cf(&cf_handle, prefix)
             .map(|r| r.unwrap()))

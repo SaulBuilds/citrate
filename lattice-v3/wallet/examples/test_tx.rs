@@ -5,10 +5,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Lattice Wallet Example ===");
 
     // Configure and create wallet
-    let mut config = WalletConfig::default();
-    config.rpc_url = "http://localhost:8545".to_string();
-    config.chain_id = 1337;
-    config.keystore_path = std::path::PathBuf::from("test_keystore.json");
+    let config = WalletConfig {
+        rpc_url: "http://localhost:8545".to_string(),
+        chain_id: 1337,
+        keystore_path: std::path::PathBuf::from("test_keystore.json"),
+        ..Default::default()
+    };
 
     let mut wallet = Wallet::new(config)?;
     // Create a new account (for demo only)

@@ -10,6 +10,7 @@ use parking_lot::RwLock;
 /// AI-specific opcodes for the VM
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(non_camel_case_types)]
 pub enum AIOpcode {
     // Model operations (0xA0-0xAF)
     LOAD_MODEL = 0xA0,
@@ -167,7 +168,7 @@ impl AIVMExtension {
         model_id.to_big_endian(&mut model_bytes);
         dataset_id.to_big_endian(&mut dataset_bytes);
         
-        let proof = self.zkp_backend.prove_training_round(
+        let _proof = self.zkp_backend.prove_training_round(
             &model_bytes,
             &dataset_bytes,
             vec![0; 32], // Gradient placeholder
@@ -184,7 +185,7 @@ impl AIVMExtension {
     fn execute_tensor_new(&mut self) -> Result<(), ExecutionError> {
         debug!("Creating new tensor");
         // Pop shape dimensions from stack
-        let dims = self.stack.pop()
+        let _dims = self.stack.pop()
             .ok_or(ExecutionError::StackUnderflow)?;
         let height = self.stack.pop()
             .ok_or(ExecutionError::StackUnderflow)?
@@ -228,7 +229,7 @@ impl AIVMExtension {
         b_id.to_big_endian(&mut b_bytes);
         result_id.to_big_endian(&mut result_bytes);
         
-        let proof = self.zkp_backend.prove_tensor_computation(
+        let _proof = self.zkp_backend.prove_tensor_computation(
             "add",
             vec![a_bytes.to_vec(), b_bytes.to_vec()],
             result_bytes.to_vec(),
@@ -284,7 +285,7 @@ impl AIVMExtension {
         b_id.to_big_endian(&mut b_bytes);
         result_id.to_big_endian(&mut result_bytes);
         
-        let proof = self.zkp_backend.prove_tensor_computation(
+        let _proof = self.zkp_backend.prove_tensor_computation(
             "matmul",
             vec![a_bytes.to_vec(), b_bytes.to_vec()],
             result_bytes.to_vec(),
@@ -299,7 +300,7 @@ impl AIVMExtension {
     fn execute_verify_proof(&mut self) -> Result<(), ExecutionError> {
         debug!("Verifying proof");
         // Pop proof data from stack
-        let proof_id = self.stack.pop()
+        let _proof_id = self.stack.pop()
             .ok_or(ExecutionError::StackUnderflow)?;
         
         // In production, this would retrieve and verify actual proof
@@ -324,7 +325,7 @@ impl AIVMExtension {
             public_inputs: vec![],
         };
         
-        let proof_response = self.zkp_backend.generate_proof(proof_request)
+        let _proof_response = self.zkp_backend.generate_proof(proof_request)
             .map_err(|_| ExecutionError::InvalidModel)?;
         
         // Push proof ID to stack
@@ -341,4 +342,8 @@ impl AIVMExtension {
     pub fn pop(&mut self) -> Option<U256> {
         self.stack.pop()
     }
+}
+
+impl Default for AIVMExtension {
+    fn default() -> Self { Self::new() }
 }

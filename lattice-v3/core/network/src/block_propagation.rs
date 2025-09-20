@@ -1,5 +1,5 @@
 use crate::{NetworkMessage, PeerManager, PeerId};
-use lattice_consensus::types::{Block, BlockHeader, Hash, GhostDagParams, VrfProof};
+use lattice_consensus::types::{Block, BlockHeader, Hash};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -109,7 +109,7 @@ impl BlockPropagation {
         let all_peers = self.peer_manager.get_all_peers();
         let target_peers: Vec<PeerId> = all_peers
             .iter()
-            .filter_map(|peer| {
+            .filter_map(|_peer| {
                 let peer_id = PeerId::new(format!("peer_{}", rand::random::<u64>())); // TODO: Get actual peer ID
                 if peer_id != *except_peer {
                     Some(peer_id)
@@ -251,7 +251,7 @@ impl BlockPropagation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_consensus::types::{Transaction, PublicKey, Signature};
+    use lattice_consensus::types::{PublicKey, Signature, VrfProof, GhostDagParams};
     
     #[tokio::test]
     async fn test_block_propagation() {

@@ -1,0 +1,154 @@
+name: Release (Node/CLI + GUI)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-binaries:
+    name: Build Node/CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: lattice-v3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        run: |
+          cargo build --release -p lattice-node -p lattice-cli
+
+      - name: Package artifacts (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eux
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m)
+          mkdir -p dist
+          cp target/release/lattice dist/
+          cp target/release/lattice-cli dist/
+          tar -C dist -czf dist/lattice-${OS}-${ARCH}.tar.gz lattice lattice-cli
+          rm -f dist/lattice dist/lattice-cli
+          echo "Created dist/lattice-${OS}-${ARCH}.tar.gz"
+
+      - name: Package artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target\release\lattice.exe dist\
+          Copy-Item target\release\lattice-cli.exe dist\
+          $arch = $env:PROCESSOR_ARCHITECTURE
+          $zip = "dist\lattice-windows-$arch.zip"
+          Compress-Archive -Path dist\lattice.exe, dist\lattice-cli.exe -DestinationPath $zip
+          Remove-Item dist\lattice.exe, dist\lattice-cli.exe
+          Write-Host "Created $zip"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}
+          path: lattice-v3/dist/*
+          if-no-files-found: warn
+
+  build-tauri:
+    name: Build GUI (Tauri) (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    defaults:
+      run:
+        working-directory: lattice-v3/gui/lattice-core
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: lattice-v3/gui/lattice-core/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri:build
+
+      - name: Collect bundles
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp -r ../../target/release/bundle/* dist/
+
+      - name: Collect bundles (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item ..\..\target\release\bundle\* dist\ -Recurse
+
+      - name: Upload GUI bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.os }}
+          path: lattice-v3/gui/lattice-core/dist/**
+          if-no-files-found: warn
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-binaries, build-tauri]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -R artifacts
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

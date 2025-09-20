@@ -61,7 +61,7 @@ pub fn decode_eth_transaction(tx_bytes: &[u8]) -> Result<Transaction, String> {
     let mut hash_bytes = [0u8; 32];
     hash_bytes.copy_from_slice(&hash_result);
     
-    eprintln!("Calculated transaction hash: 0x{}", hex::encode(&hash_bytes));
+    eprintln!("Calculated transaction hash: 0x{}", hex::encode(hash_bytes));
     
     // Try to parse as bincode first (for Lattice native transactions)
     if let Ok(mut tx) = bincode::deserialize::<Transaction>(tx_bytes) {
@@ -117,7 +117,7 @@ pub fn decode_eth_transaction(tx_bytes: &[u8]) -> Result<Transaction, String> {
                 };
 
                 // Build the transaction data for signing (pre-signature)
-                let mut stream = if let Some(chain_id) = chain_id_opt {
+                let mut stream = if let Some(_chain_id) = chain_id_opt {
                     // EIP-155 signing data includes chain ID
                     rlp::RlpStream::new_list(9)
                 } else {
@@ -148,7 +148,7 @@ pub fn decode_eth_transaction(tx_bytes: &[u8]) -> Result<Transaction, String> {
                 
                 let signable_data = stream.out().to_vec();
                 let sighash = Keccak256::digest(&signable_data);
-                eprintln!("  Signature hash: 0x{}", hex::encode(&sighash));
+                eprintln!("  Signature hash: 0x{}", hex::encode(sighash));
 
                 // Recover the sender's public key and address
                 let secp = Secp256k1::new();
@@ -367,7 +367,7 @@ fn decode_eip1559_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
 
     // Compute tx hash from original bytes
     let mut hasher = Keccak256::new();
-    hasher.update(&[0x02]);
+    hasher.update([0x02]);
     hasher.update(rlp_bytes);
     let mut hash_bytes = [0u8; 32];
     hash_bytes.copy_from_slice(&hasher.finalize());
@@ -397,7 +397,7 @@ static NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Create a mock transaction for testing when RLP decoding fails
 fn create_mock_transaction(tx_bytes: &[u8], hash_bytes: [u8; 32]) -> Result<Transaction, String> {
-    eprintln!("Creating mock transaction with hash: 0x{}", hex::encode(&hash_bytes));
+    eprintln!("Creating mock transaction with hash: 0x{}", hex::encode(hash_bytes));
     
     // Create mock addresses
     let from_pk = PublicKey::new([0x33; 32]); // Use test account address pattern

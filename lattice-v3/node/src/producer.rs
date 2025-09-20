@@ -5,7 +5,6 @@ use lattice_consensus::chain_selection::ChainSelector;
 use lattice_consensus::dag_store::DagStore;
 use lattice_storage::{StorageManager, state_manager::StateManager as AIStateManager};
 use lattice_execution::Executor;
-use lattice_execution::types::Address;
 use lattice_sequencer::mempool::Mempool;
 use lattice_economics::{RewardCalculator, RewardConfig};
 use lattice_network::{PeerManager, NetworkMessage};
@@ -20,15 +19,15 @@ fn calculate_block_hash_header(header: &BlockHeader) -> Hash {
     let mut hasher = Sha3_256::new();
     
     // Hash header fields
-    hasher.update(&header.version.to_le_bytes());
+    hasher.update(header.version.to_le_bytes());
     hasher.update(header.selected_parent_hash.as_bytes());
     for parent in &header.merge_parent_hashes {
         hasher.update(parent.as_bytes());
     }
-    hasher.update(&header.timestamp.to_le_bytes());
-    hasher.update(&header.height.to_le_bytes());
-    hasher.update(&header.blue_score.to_le_bytes());
-    hasher.update(&header.blue_work.to_le_bytes());
+    hasher.update(header.timestamp.to_le_bytes());
+    hasher.update(header.height.to_le_bytes());
+    hasher.update(header.blue_score.to_le_bytes());
+    hasher.update(header.blue_work.to_le_bytes());
     hasher.update(header.pruning_point.as_bytes());
     
     let hash_bytes = hasher.finalize();
@@ -45,6 +44,7 @@ pub struct BlockProducer {
     dag_store: Arc<DagStore>,
     ghostdag: Arc<GhostDag>,
     tip_selector: Arc<TipSelector>,
+    #[allow(dead_code)]
     chain_selector: Arc<ChainSelector>,
     ai_state_manager: Arc<AIStateManager>,
     peer_manager: Option<Arc<PeerManager>>,
@@ -54,6 +54,7 @@ pub struct BlockProducer {
 }
 
 impl BlockProducer {
+    #[allow(dead_code)]
     pub fn new(
         storage: Arc<StorageManager>,
         executor: Arc<Executor>,
@@ -108,6 +109,7 @@ impl BlockProducer {
         }
     }
     
+    #[allow(dead_code)]
     pub fn with_peer_manager(
         storage: Arc<StorageManager>,
         executor: Arc<Executor>,
@@ -345,7 +347,7 @@ impl BlockProducer {
         if reward.validator_reward > U256::zero() {
             let current_balance = self.executor.get_balance(&validator_address);
             self.executor.set_balance(&validator_address, current_balance + reward.validator_reward);
-            info!("Minted {} wei to validator {}", reward.validator_reward, hex::encode(&validator_address.0));
+            info!("Minted {} wei to validator {}", reward.validator_reward, hex::encode(validator_address.0));
         }
         
         if reward.treasury_reward > U256::zero() {
@@ -511,8 +513,8 @@ impl BlockProducer {
         
         for receipt in receipts {
             hasher.update(receipt.tx_hash.as_bytes());
-            hasher.update(&[if receipt.status { 1 } else { 0 }]);
-            hasher.update(&receipt.gas_used.to_le_bytes());
+            hasher.update([if receipt.status { 1 } else { 0 }]);
+            hasher.update(receipt.gas_used.to_le_bytes());
         }
         
         let hash_bytes = hasher.finalize();
@@ -547,7 +549,7 @@ impl BlockProducer {
     }
     
     /// Calculate blue work based on blue set
-    fn calculate_blue_work(&self, blue_set: &lattice_consensus::types::BlueSet, blue_score: u64) -> anyhow::Result<u128> {
+    fn calculate_blue_work(&self, _blue_set: &lattice_consensus::types::BlueSet, blue_score: u64) -> anyhow::Result<u128> {
         // Simplified calculation: blue_work = blue_score * difficulty
         // In production, this would consider actual proof-of-work
         Ok(blue_score as u128 * 1_000_000)

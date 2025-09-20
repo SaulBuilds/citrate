@@ -2,9 +2,23 @@
 # Multi-stage build for optimal size
 
 # Build stage
-FROM rust:1.75 as builder
+FROM rust:latest as builder
 
 WORKDIR /usr/src/lattice
+
+# System build dependencies for native crates (bindgen, rocksdb, zstd, etc.)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    clang \
+    llvm-dev \
+    libclang-dev \
+    pkg-config \
+    cmake \
+    git \
+    curl \
+    zlib1g-dev \
+    libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace files
 COPY Cargo.toml Cargo.lock ./
@@ -12,6 +26,10 @@ COPY core ./core
 COPY node ./node
 COPY cli ./cli
 COPY contracts ./contracts
+COPY node-app ./node-app
+COPY wallet ./wallet
+COPY faucet ./faucet
+COPY gui/lattice-core/src-tauri ./gui/lattice-core/src-tauri
 
 # Build release binary
 RUN cargo build --release -p lattice-node

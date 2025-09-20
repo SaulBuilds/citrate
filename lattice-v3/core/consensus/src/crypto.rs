@@ -1,6 +1,5 @@
-use crate::types::{Transaction, PublicKey, Signature, Hash};
+use crate::types::{Transaction, PublicKey, Signature};
 use ed25519_dalek::{Verifier, SigningKey, VerifyingKey, Signature as DalekSignature, Signer};
-use rand::rngs::OsRng;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -24,7 +23,7 @@ pub fn verify_transaction(tx: &Transaction) -> Result<bool, CryptoError> {
     let message = canonical_tx_bytes(tx)?;
     
     // Convert our types to ed25519-dalek types
-    let public_key = VerifyingKey::from_bytes(&tx.from.as_bytes())
+    let public_key = VerifyingKey::from_bytes(tx.from.as_bytes())
         .map_err(|_| CryptoError::InvalidPublicKey)?;
     
     let signature = DalekSignature::from_bytes(tx.signature.as_bytes());
@@ -90,6 +89,7 @@ pub fn generate_keypair() -> SigningKey {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Hash;
     
     #[test]
     fn test_transaction_signing_and_verification() {

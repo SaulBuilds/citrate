@@ -3,4 +3,4 @@
 
 pub mod iterative_sync;
 
-pub use iterative_sync::{IterativeSyncManager, SyncConfig, SyncState};
+// Re-exports disabled to avoid unused-imports warnings in this crate. Callers can import from submodule.

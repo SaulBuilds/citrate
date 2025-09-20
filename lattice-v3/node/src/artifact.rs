@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use lattice_execution::ExecutionError;
 use tokio::time::{sleep, Duration};

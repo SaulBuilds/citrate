@@ -89,12 +89,12 @@ impl VrfProposerSelector {
         // Generate VRF proof (simplified - in production use proper VRF like ECVRF)
         let mut proof_hasher = Sha3_256::new();
         proof_hasher.update(secret_key);
-        proof_hasher.update(&input);
+        proof_hasher.update(input);
         let proof_bytes = proof_hasher.finalize();
         
         // Generate VRF output
         let mut output_hasher = Sha3_256::new();
-        output_hasher.update(&proof_bytes);
+        output_hasher.update(proof_bytes);
         let output_bytes = output_hasher.finalize();
         
         Ok(VrfProof {
@@ -176,8 +176,8 @@ impl VrfProposerSelector {
         let mut value = 0u64;
         
         // Use first 8 bytes for the value
-        for i in 0..8 {
-            value = (value << 8) | bytes[i] as u64;
+        for &b in bytes.iter().take(8) {
+            value = (value << 8) | b as u64;
         }
         
         value as f64 / u64::MAX as f64
@@ -254,20 +254,20 @@ impl VrfProposerSelector {
     }
 }
 
+impl Default for VrfProposerSelector {
+    fn default() -> Self { Self::new() }
+}
+
 /// Leader election using VRF
 pub struct LeaderElection {
     vrf_selector: Arc<VrfProposerSelector>,
-    epoch_length: u64,
+    _epoch_length: u64,
     slots_per_epoch: u64,
 }
 
 impl LeaderElection {
     pub fn new(vrf_selector: Arc<VrfProposerSelector>, epoch_length: u64) -> Self {
-        Self {
-            vrf_selector,
-            epoch_length,
-            slots_per_epoch: epoch_length,
-        }
+        Self { vrf_selector, _epoch_length: epoch_length, slots_per_epoch: epoch_length }
     }
     
     /// Get current epoch from slot

@@ -5,7 +5,6 @@ use crate::types::{
 use lattice_consensus::types::{Hash, Transaction, PublicKey, Signature};
 use lattice_execution::executor::Executor;
 use lattice_sequencer::mempool::{Mempool, TxClass};
-use primitive_types::U256;
 use std::sync::Arc;
 
 /// Transaction-related API methods

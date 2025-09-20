@@ -296,6 +296,10 @@ impl BlueSet {
     }
 }
 
+impl Default for BlueSet {
+    fn default() -> Self { Self::new() }
+}
+
 /// DAG relationship between blocks
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DagRelation {

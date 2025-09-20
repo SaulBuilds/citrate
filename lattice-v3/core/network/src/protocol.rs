@@ -44,6 +44,7 @@ impl fmt::Display for ProtocolVersion {
 
 /// Network message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum NetworkMessage {
     // Handshake messages
     Hello {

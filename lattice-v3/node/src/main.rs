@@ -274,7 +274,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
                 _ => None,
             }
         })
-        .unwrap_or_else(|| {
+        .unwrap_or({
             // Default to false in devnet mode for easier testing
             #[cfg(feature = "devnet")]
             {
@@ -343,7 +343,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
             .ok()
             .flatten()
             .unwrap_or_default();
-        let network_id: u32 = (config.chain.chain_id as u32);
+        let network_id: u32 = config.chain.chain_id as u32;
 
         // Incoming message channel (log-only for now)
         let (in_tx, mut in_rx) = tokio::sync::mpsc::channel::<(PeerId, lattice_network::NetworkMessage)>(512);
@@ -564,6 +564,6 @@ fn parse_bootnode(s: &str) -> Option<(PeerId, std::net::SocketAddr)> {
     let addr: std::net::SocketAddr = addr_part.parse().ok()?;
     let peer_id = peer_part
         .map(|p| PeerId::new(p.to_string()))
-        .unwrap_or_else(|| PeerId::random());
+        .unwrap_or_else(PeerId::random);
     Some((peer_id, addr))
 }

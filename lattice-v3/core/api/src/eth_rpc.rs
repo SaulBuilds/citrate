@@ -1,5 +1,4 @@
 use crate::methods::{ChainApi, StateApi, TransactionApi};
-use crate::types::error::ApiError;
 use crate::eth_tx_decoder;
 use jsonrpc_core::{IoHandler, Params, Value};
 use lattice_storage::StorageManager;
@@ -12,8 +11,6 @@ use std::sync::Arc;
 use futures::executor::block_on;
 use serde_json::json;
 use hex;
-use bincode;
-use sha3::Keccak256;
 
 /// Add Ethereum-compatible RPC methods to the IoHandler
 pub fn register_eth_methods(
@@ -277,7 +274,7 @@ pub fn register_eth_methods(
                 // Fallback: check mempool for pending transaction
                 if let Some(tx) = block_on(mempool_tx_lookup.get_transaction(&h)) {
                     let from_addr = lattice_execution::types::Address::from_public_key(&tx.from);
-                    let to_addr_opt = tx.to.as_ref().map(|t| lattice_execution::types::Address::from_public_key(t));
+                    let to_addr_opt = tx.to.as_ref().map(lattice_execution::types::Address::from_public_key);
                     Ok(json!({
                         "hash": format!("0x{}", hex::encode(tx.hash.as_bytes())),
                         "nonce": format!("0x{:x}", tx.nonce),
@@ -345,13 +342,13 @@ pub fn register_eth_methods(
                     "transactionIndex": "0x0",
                     "blockHash": format!("0x{}", hex::encode(receipt.block_hash.as_bytes())),
                     "blockNumber": format!("0x{:x}", receipt.block_number),
-                    "from": format!("0x{}", hex::encode(&receipt.from.0)),
-                    "to": receipt.to.as_ref().map(|t| format!("0x{}", hex::encode(&t.0))),
+                    "from": format!("0x{}", hex::encode(receipt.from.0)),
+                    "to": receipt.to.as_ref().map(|t| format!("0x{}", hex::encode(t.0))),
                     "cumulativeGasUsed": format!("0x{:x}", receipt.gas_used),
                     "gasUsed": format!("0x{:x}", receipt.gas_used),
                     "contractAddress": contract_address,
                     "logs": receipt.logs.iter().map(|log| json!({
-                        "address": format!("0x{}", hex::encode(&log.address.0)),
+                        "address": format!("0x{}", hex::encode(log.address.0)),
                         "topics": log.topics.iter()
                             .map(|t| format!("0x{}", hex::encode(t.as_bytes())))
                             .collect::<Vec<_>>(),
@@ -499,10 +496,7 @@ pub fn register_eth_methods(
         // Optional second param: block tag ("latest" | "pending" | "earliest")
         let tag = params.get(1).and_then(|v| v.as_str()).unwrap_or("latest");
 
-        let base_nonce = match block_on(state_api.get_nonce(Address(addr_bytes))) {
-            Ok(nonce) => nonce,
-            Err(_) => 0u64,
-        };
+          let base_nonce = block_on(state_api.get_nonce(Address(addr_bytes))).unwrap_or_default();
 
         if tag.eq_ignore_ascii_case("pending") {
             // Include pending mempool transactions from this sender
@@ -825,13 +819,13 @@ pub fn register_eth_methods(
     });
 
     // eth_estimateGas - Estimate gas for transaction
-    io_handler.add_sync_method("eth_estimateGas", move |params: Params| {
+    io_handler.add_sync_method("eth_estimateGas", move |_params: Params| {
         // Return default gas estimate
         Ok(Value::String("0x5208".to_string())) // 21000 gas
     });
 
     // eth_feeHistory - Get fee history for EIP-1559
-    io_handler.add_sync_method("eth_feeHistory", move |params: Params| {
+    io_handler.add_sync_method("eth_feeHistory", move |_params: Params| {
         // Return mock fee history for EIP-1559 support
         Ok(json!({
             "oldestBlock": "0x1",
@@ -842,7 +836,7 @@ pub fn register_eth_methods(
     });
     
     // eth_maxPriorityFeePerGas - Get max priority fee
-    io_handler.add_sync_method("eth_maxPriorityFeePerGas", move |params: Params| {
+    io_handler.add_sync_method("eth_maxPriorityFeePerGas", move |_params: Params| {
         // Return 1 gwei max priority fee
         Ok(Value::String("0x3b9aca00".to_string()))
     });

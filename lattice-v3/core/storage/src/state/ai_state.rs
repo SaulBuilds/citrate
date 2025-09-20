@@ -1,6 +1,5 @@
 use lattice_consensus::types::Hash;
-use lattice_execution::{Address, ModelId, ModelState, ModelMetadata, TrainingJob, JobId};
-use ethereum_types::H256;
+use lattice_execution::{Address, ModelId, ModelState, TrainingJob, JobId};
 use std::collections::HashMap;
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
@@ -77,6 +76,7 @@ impl AIStateTree {
         Ok(Hash::new(hash_array))
     }
     
+    
     /// Calculate model registry root
     pub fn calculate_model_root(&self) -> Result<Hash> {
         if self.models.is_empty() {
@@ -93,18 +93,18 @@ impl AIStateTree {
             hasher.update(model_id.0.as_bytes());
             
             // Hash model state fields
-            hasher.update(&model_state.owner.0);
+            hasher.update(model_state.owner.0);
             hasher.update(model_state.model_hash.as_bytes());
-            hasher.update(&model_state.version.to_le_bytes());
+            hasher.update(model_state.version.to_le_bytes());
             
             // Hash metadata
             hasher.update(model_state.metadata.name.as_bytes());
             hasher.update(model_state.metadata.version.as_bytes());
-            hasher.update(&model_state.metadata.size_bytes.to_le_bytes());
+            hasher.update(model_state.metadata.size_bytes.to_le_bytes());
             
             // Hash usage stats
-            hasher.update(&model_state.usage_stats.total_inferences.to_le_bytes());
-            hasher.update(&model_state.usage_stats.total_gas_used.to_le_bytes());
+            hasher.update(model_state.usage_stats.total_inferences.to_le_bytes());
+            hasher.update(model_state.usage_stats.total_gas_used.to_le_bytes());
         }
         
         let hash_bytes = hasher.finalize();
@@ -126,14 +126,14 @@ impl AIStateTree {
         for (job_id, job) in job_entries {
             hasher.update(job_id.0.as_bytes());
             hasher.update(job.model_id.0.as_bytes());
-            hasher.update(&job.owner.0);
+            hasher.update(job.owner.0);
             hasher.update(job.dataset_hash.as_bytes());
-            hasher.update(&job.gradients_submitted.to_le_bytes());
-            hasher.update(&job.gradients_required.to_le_bytes());
+            hasher.update(job.gradients_submitted.to_le_bytes());
+            hasher.update(job.gradients_required.to_le_bytes());
             
             // Hash participants
             for participant in &job.participants {
-                hasher.update(&participant.0);
+                hasher.update(participant.0);
             }
             
             // Hash status
@@ -144,7 +144,7 @@ impl AIStateTree {
                 lattice_execution::JobStatus::Failed => 3u8,
                 lattice_execution::JobStatus::Cancelled => 4u8,
             };
-            hasher.update(&[status_byte]);
+            hasher.update([status_byte]);
         }
         
         let hash_bytes = hasher.finalize();
@@ -168,8 +168,8 @@ impl AIStateTree {
             hasher.update(result.model_id.0.as_bytes());
             hasher.update(result.input_hash.as_bytes());
             hasher.update(&result.output);
-            hasher.update(&result.gas_used.to_le_bytes());
-            hasher.update(&result.timestamp.to_le_bytes());
+            hasher.update(result.gas_used.to_le_bytes());
+            hasher.update(result.timestamp.to_le_bytes());
             
             if let Some(proof) = &result.proof {
                 hasher.update(proof);
@@ -197,11 +197,11 @@ impl AIStateTree {
             
             for adapter in adapters {
                 hasher.update(adapter.adapter_id.as_bytes());
-                hasher.update(&adapter.owner.0);
+                hasher.update(adapter.owner.0);
                 hasher.update(adapter.weight_cid.as_bytes());
-                hasher.update(&adapter.rank.to_le_bytes());
-                hasher.update(&adapter.alpha.to_le_bytes());
-                hasher.update(&adapter.created_at.to_le_bytes());
+                hasher.update(adapter.rank.to_le_bytes());
+                hasher.update(adapter.alpha.to_le_bytes());
+                hasher.update(adapter.created_at.to_le_bytes());
             }
         }
         
@@ -235,7 +235,7 @@ impl AIStateTree {
     pub fn add_lora_adapter(&mut self, adapter: LoRAAdapter) {
         let base_model = adapter.base_model;
         self.lora_adapters.entry(base_model)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(adapter);
     }
     
@@ -259,10 +259,14 @@ impl AIStateTree {
     }
 }
 
+impl Default for AIStateTree {
+    fn default() -> Self { Self::new() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lattice_execution::{AccessPolicy, UsageStats};
+    use lattice_execution::{AccessPolicy, UsageStats, ModelMetadata};
     
     #[test]
     fn test_ai_state_root_calculation() {

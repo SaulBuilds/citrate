@@ -1,9 +1,8 @@
-use super::types::{Proof, ProvingKey, SerializableProof, ProofType, ZKPError};
+use super::types::{ProvingKey, SerializableProof, ProofType, ZKPError};
 use super::circuits::{StateTransitionCircuit, DataIntegrityCircuit};
 use ark_groth16::{Groth16, PreparedVerifyingKey, prepare_verifying_key};
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_snark::SNARK;
-use ark_ff::Zero;
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -261,4 +260,8 @@ impl Prover {
 
         Ok(proofs)
     }
+}
+
+impl Default for Prover {
+    fn default() -> Self { Self::new() }
 }

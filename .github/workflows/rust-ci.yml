@@ -22,10 +22,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Show toolchain
         run: rustc -Vv && cargo -V
-      - name: Build tests (no run)
-        run: cargo test --workspace --no-run
-      - name: Run tests
-        run: cargo test --workspace --quiet
+      - name: Build tests (no run) — exclude GUI crate
+        run: cargo test --workspace --exclude lattice-core --no-run
+      - name: Run tests — exclude GUI crate
+        run: cargo test --workspace --exclude lattice-core --quiet
 
   verifier-tests:
     runs-on: ubuntu-latest

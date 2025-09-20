@@ -98,24 +98,24 @@ Downloads (prebuilt)
 ```mermaid
 flowchart LR
   subgraph Clients
-    U[User / dApp]
+    U["User / dApp"]
     CLI[CLI]
     SDK[SDK JS]
     GUI[Desktop GUI]
   end
 
   subgraph Node
-    API[JSON-RPC / WS (core/api)]
+    API["JSON-RPC / WS (core/api)"]
     SEQ[Sequencer]
     EXEC[Execution]
-    CONS[Consensus (GhostDAG)]
-    STORE[Storage (RocksDB)]
-    NET[P2P Network]
+    CONS["Consensus (GhostDAG)"]
+    STORE["Storage (RocksDB)"]
+    NET["P2P Network"]
   end
 
   subgraph Apps
     EXPL[Explorer]
-    DOCS[Docs Portal]
+    DOCS["Docs Portal"]
   end
 
   U -->|HTTP/WS| API

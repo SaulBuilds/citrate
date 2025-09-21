@@ -213,7 +213,7 @@ git rebase upstream/main
   - SDK: `npm run build && npm test` in `lattice-v3/sdk/javascript`
   - Contracts: `forge test -vv` (recommended)
 - Add tests for new features and bug fixes where practical.
-- Security: do not open public issues for vulnerabilities — email security@lattice.example (replace with project contact).
+- Security: do not open public issues for vulnerabilities — email larryklosowski@proton.me 
 - DCO/Sign‑off: include `Signed-off-by: Full Name <email>` if required by org policy.
 - Review: at least 1 maintainer approval; CI must be green; keep PR description clear with rationale and testing notes.
 

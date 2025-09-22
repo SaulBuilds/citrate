@@ -1,0 +1,46 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "TPS (sum rate)",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 5},
+      "targets": [
+        {"expr": "sum(rate(lattice_transactions_total[1m]))"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "TPS by instance",
+      "gridPos": {"x": 0, "y": 5, "w": 24, "h": 8},
+      "targets": [
+        {"expr": "rate(lattice_transactions_total[1m])", "legendFormat": "{{instance}}"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "P95 Tx Latency (ms)",
+      "gridPos": {"x": 0, "y": 13, "w": 12, "h": 5},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(lattice_tx_latency_ms_bucket[5m])) by (le)) * 1"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "P95 Block Interval (s)",
+      "gridPos": {"x": 12, "y": 13, "w": 12, "h": 5},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(lattice_block_interval_seconds_bucket[5m])) by (le))"}
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["lattice"],
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "TPS & Latency",
+  "version": 1
+}
+

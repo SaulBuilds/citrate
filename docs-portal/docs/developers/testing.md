@@ -19,6 +19,10 @@ scripts/lattice.sh docker up
 
 # Docker testnet node
 scripts/lattice.sh docker testnet up
+
+# 5-node cluster and load generator
+scripts/lattice.sh docker cluster up
+RATE=20 NODE_RPC=http://localhost:8545 node scripts/loadgen.js
 ```
 
 SDK tests:

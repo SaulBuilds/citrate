@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { LatticeConfig } from './types';
 
 export class AccountManager {
-  private wallet?: ethers.Wallet;
+  private wallet?: ethers.Wallet | ethers.HDNodeWallet;
   
   constructor(
     private rpcClient: AxiosInstance,
@@ -45,8 +45,10 @@ export class AccountManager {
     mnemonic: string,
     path: string = "m/44'/60'/0'/0/0"
   ): string {
-    const wallet = ethers.Wallet.fromPhrase(mnemonic, path);
-    this.wallet = wallet;
+    // In ethers v6, derive via HDNodeWallet and then derivePath
+    const hd = ethers.HDNodeWallet.fromPhrase(mnemonic);
+    const wallet = path ? hd.derivePath(path) : hd;
+    this.wallet = wallet as ethers.HDNodeWallet;
     this.config.defaultAccount = wallet.address;
     
     return wallet.address;

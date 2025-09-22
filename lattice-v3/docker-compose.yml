@@ -163,6 +163,99 @@ services:
       start_period: 30s
     profiles: ["explorer"]
 
+  # Cluster profile: 5 nodes with distinct configs
+  lattice-node-1:
+    image: lattice:v3
+    container_name: lattice-node-1
+    restart: unless-stopped
+    volumes:
+      - cluster-node1:/data
+      - ./cluster/node1.toml:/data/config.toml:ro
+    ports:
+      - "28545:8545"
+      - "29100:9100"
+    networks: [lattice-network]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["-c","/data/config.toml"]
+    profiles: ["cluster"]
+
+  lattice-node-2:
+    image: lattice:v3
+    container_name: lattice-node-2
+    restart: unless-stopped
+    volumes:
+      - cluster-node2:/data
+      - ./cluster/node2.toml:/data/config.toml:ro
+    networks: [lattice-network]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["-c","/data/config.toml"]
+    depends_on: [lattice-node-1]
+    profiles: ["cluster"]
+
+  lattice-node-3:
+    image: lattice:v3
+    container_name: lattice-node-3
+    restart: unless-stopped
+    volumes:
+      - cluster-node3:/data
+      - ./cluster/node3.toml:/data/config.toml:ro
+    networks: [lattice-network]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["-c","/data/config.toml"]
+    depends_on: [lattice-node-1]
+    profiles: ["cluster"]
+
+  lattice-node-4:
+    image: lattice:v3
+    container_name: lattice-node-4
+    restart: unless-stopped
+    volumes:
+      - cluster-node4:/data
+      - ./cluster/node4.toml:/data/config.toml:ro
+    networks: [lattice-network]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["-c","/data/config.toml"]
+    depends_on: [lattice-node-1]
+    profiles: ["cluster"]
+
+  lattice-node-5:
+    image: lattice:v3
+    container_name: lattice-node-5
+    restart: unless-stopped
+    volumes:
+      - cluster-node5:/data
+      - ./cluster/node5.toml:/data/config.toml:ro
+    networks: [lattice-network]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["-c","/data/config.toml"]
+    depends_on: [lattice-node-1]
+    profiles: ["cluster"]
+
 volumes:
   lattice-data:
     driver: local
@@ -173,6 +266,16 @@ volumes:
   grafana-data:
     driver: local
   explorer-postgres-data:
+    driver: local
+  cluster-node1:
+    driver: local
+  cluster-node2:
+    driver: local
+  cluster-node3:
+    driver: local
+  cluster-node4:
+    driver: local
+  cluster-node5:
     driver: local
 
 networks:

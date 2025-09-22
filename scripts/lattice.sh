@@ -221,6 +221,18 @@ case "${1:-}" in
     case "${2:-}" in
       up) cmd_docker_up ;;
       down) cmd_docker_down ;;
+      cluster)
+        case "${3:-}" in
+          up)
+            need docker
+            (cd "$ROOT_DIR/lattice-v3" && compose up -d --profile cluster lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5)
+            echo "Cluster (5 nodes) started." ;;
+          down)
+            need docker
+            (cd "$ROOT_DIR/lattice-v3" && compose stop lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5 || true && compose rm -sf lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5 || true)
+            echo "Cluster stopped." ;;
+          *) echo "Usage: $0 docker cluster {up|down}"; exit 1 ;;
+        esac ;;
       testnet)
         case "${3:-}" in
           up) cmd_docker_testnet_up ;;

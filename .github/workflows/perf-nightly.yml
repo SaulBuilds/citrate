@@ -1,0 +1,60 @@
+name: Nightly Perf
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build node image
+        run: docker build -t lattice:v3 lattice-v3
+
+      - name: Start cluster
+        run: |
+          docker compose -f lattice-v3/docker-compose.yml up -d --profile cluster lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5
+          docker compose -f lattice-v3/docker-compose.yml up -d --profile monitoring prometheus grafana
+
+      - name: Wait for Prometheus
+        run: |
+          for i in {1..60}; do curl -fsS http://localhost:9090/-/ready && break || sleep 5; done
+
+      - name: Warm up & load
+        env:
+          NODE_RPC: http://127.0.0.1:28545
+          RATE: '50'
+          MODE: call
+        run: |
+          node -v
+          timeout 120s node scripts/loadgen.js || true
+
+      - name: Collect metrics
+        run: |
+          mkdir -p perf
+          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(rate(lattice_blocks_total[5m]))' -o perf/blocks_per_sec.json || true
+          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(lattice_network_peers)' -o perf/peer_count.json || true
+          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(rate(lattice_transactions_total[5m]))' -o perf/tps.json || true
+          echo "Timestamp: $(date -u +%FT%TZ)" > perf/meta.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-metrics
+          path: perf/
+
+      - name: Teardown
+        if: always()
+        run: |
+          docker compose -f lattice-v3/docker-compose.yml down -v || true
+

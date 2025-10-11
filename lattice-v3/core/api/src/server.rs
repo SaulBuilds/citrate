@@ -1406,4 +1406,34 @@ mod tests {
         assert!(!bin_b.is_empty());
         assert_ne!(bin_a, bin_b);
     }
+
+    #[tokio::test]
+    async fn test_rpc_invalid_params_error_shape() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = Arc::new(StorageManager::new(temp_dir.path(), PruningConfig::default()).unwrap());
+        let mempool = Arc::new(Mempool::new(MempoolConfig::default()));
+        let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig::default()));
+        let state_db = Arc::new(lattice_execution::StateDB::new());
+        let executor = Arc::new(Executor::new(state_db));
+
+        let rpc = RpcServer::new(
+            RpcConfig::default(),
+            storage,
+            mempool.clone(),
+            peer_manager,
+            executor,
+            1,
+        );
+
+        let req = serde_json::json!({
+            "jsonrpc":"2.0","id":42,
+            "method":"lattice_verifyContract",
+            "params":[{"address":"0xdeadbeef","runtime_bytecode":"0x"}]
+        }).to_string();
+        let resp = rpc.io_handler.handle_request(&req).await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(v["jsonrpc"], "2.0");
+        assert_eq!(v["id"], 42);
+        assert!(v.get("error").is_some());
+    }
 }

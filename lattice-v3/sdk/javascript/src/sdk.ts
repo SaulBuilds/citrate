@@ -19,11 +19,9 @@ export class LatticeSDK extends EventEmitter {
   constructor(config: LatticeConfig) {
     super();
     
-    this.config = {
-      rpcEndpoint: 'http://localhost:8545',
-      chainId: 1337,
-      ...config
-    };
+    const rpcEndpoint = config.rpcEndpoint ?? 'http://localhost:8545';
+    const chainId = config.chainId ?? 1337;
+    this.config = { ...config, rpcEndpoint, chainId };
     
     this.rpcClient = axios.create({
       baseURL: this.config.rpcEndpoint,
@@ -75,9 +73,9 @@ export class LatticeSDK extends EventEmitter {
    * Get proof for an execution
    */
   async getProof(executionId: string): Promise<any> {
-    const response = await this.rpcCall('lattice_getProof', {
+    const response = await this.rpcCall('lattice_getProof', [{
       execution_id: executionId
-    });
+    }]);
     
     return response.proof;
   }
@@ -86,10 +84,10 @@ export class LatticeSDK extends EventEmitter {
    * Verify a proof
    */
   async verifyProof(proof: any, expectedOutput?: string): Promise<boolean> {
-    const response = await this.rpcCall('lattice_verifyProof', {
+    const response = await this.rpcCall('lattice_verifyProof', [{
       proof,
       output_hash: expectedOutput
-    });
+    }]);
     
     return response.valid;
   }

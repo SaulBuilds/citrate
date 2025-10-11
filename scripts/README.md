@@ -16,6 +16,7 @@ Common commands:
 - `testnet up|down` — start/stop native node in testnet mode (placeholder config)
 - `mainnet up|down` — placeholder hooks for mainnet
 - `docker up|down` — run devnet node via `lattice-v3/docker-compose.yml`
+- `docker cluster up|down` — start/stop a 5-node cluster (profile: cluster)
 - `logs` — tail logs from `run-logs/`
 - `clean` — clean Rust targets and common JS build outputs
 
@@ -35,9 +36,13 @@ scripts/lattice.sh dev down
 # Run node in Docker (devnet)
 scripts/lattice.sh docker up
 scripts/lattice.sh docker down
+
+# 5-node cluster (compose profile)
+scripts/lattice.sh docker cluster up
+scripts/lattice.sh docker cluster down
 ```
 
 Notes:
 - Explorer DB uses a local Postgres container named `lattice-explorer-db`.
 - Logs and PIDs are stored under `run-logs/` at the repo root.
-
+- Monitoring stack (Prometheus+Grafana) available via `scripts/lattice.sh docker monitoring up`.

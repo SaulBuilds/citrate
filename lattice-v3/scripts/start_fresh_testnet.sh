@@ -179,7 +179,7 @@ if [[ "$start_gui" == "y" || "$start_gui" == "Y" ]]; then
 }
 EOF
     
-    cd gui/lattice-core
+    cd ../gui/lattice-core
     if [ ! -d "node_modules" ]; then
         npm install > /dev/null 2>&1
     fi

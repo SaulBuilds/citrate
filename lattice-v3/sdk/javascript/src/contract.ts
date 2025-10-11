@@ -144,12 +144,12 @@ export class ContractManager {
     compilerVersion: string,
     optimizationEnabled: boolean = false
   ): Promise<string> {
-    const response = await this.rpcCall('lattice_verifyContract', {
+    const response = await this.rpcCall('lattice_verifyContract', [{
       address,
       source_code: sourceCode,
       compiler_version: compilerVersion,
       optimization_enabled: optimizationEnabled
-    });
+    }]);
     
     return response.verification_id;
   }

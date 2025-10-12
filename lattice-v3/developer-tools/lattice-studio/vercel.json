@@ -1,0 +1,42 @@
+{
+  "name": "lattice-studio",
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "REACT_APP_LATTICE_RPC": "https://rpc.lattice.ai",
+    "REACT_APP_IPFS_URL": "https://ipfs.lattice.ai",
+    "REACT_APP_WEBSOCKET_URL": "wss://ws.lattice.ai"
+  },
+  "build": {
+    "env": {
+      "REACT_APP_LATTICE_RPC": "https://rpc.lattice.ai",
+      "REACT_APP_IPFS_URL": "https://ipfs.lattice.ai",
+      "REACT_APP_WEBSOCKET_URL": "wss://ws.lattice.ai"
+    }
+  },
+  "functions": {
+    "app/api/**/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  }
+}

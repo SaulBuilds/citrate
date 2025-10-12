@@ -1,10 +1,10 @@
-use super::types::{SerializableProof, VerificationResult, ProofType, ZKPError, VerifyingKey};
-use ark_groth16::{Groth16, PreparedVerifyingKey, prepare_verifying_key};
+use super::types::{ProofType, SerializableProof, VerificationResult, VerifyingKey, ZKPError};
 use ark_bls12_381::{Bls12_381, Fr};
+use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey};
 use ark_snark::SNARK;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 /// Proof verifier for ZKP operations
 pub struct Verifier {
@@ -33,13 +33,15 @@ impl Verifier {
         proof_type: ProofType,
         proof: &SerializableProof,
     ) -> Result<VerificationResult, ZKPError> {
-        let prepared_vk = self.prepared_vks.read()
+        let prepared_vk = self
+            .prepared_vks
+            .read()
             .get(&proof_type)
             .ok_or_else(|| ZKPError::KeyNotFound(format!("{:?}", proof_type)))?
             .clone();
 
         let proof_obj = proof.to_proof()?;
-        
+
         // Convert public inputs from strings to field elements
         let public_inputs = self.parse_public_inputs(&proof.public_inputs)?;
 
@@ -47,7 +49,8 @@ impl Verifier {
             &prepared_vk,
             &public_inputs,
             &proof_obj,
-        ).map_err(|e| ZKPError::VerificationError(e.to_string()))?;
+        )
+        .map_err(|e| ZKPError::VerificationError(e.to_string()))?;
 
         Ok(VerificationResult {
             is_valid,
@@ -66,7 +69,9 @@ impl Verifier {
         proof_type: ProofType,
         proofs: &[SerializableProof],
     ) -> Result<Vec<VerificationResult>, ZKPError> {
-        let prepared_vk = self.prepared_vks.read()
+        let prepared_vk = self
+            .prepared_vks
+            .read()
             .get(&proof_type)
             .ok_or_else(|| ZKPError::KeyNotFound(format!("{:?}", proof_type)))?
             .clone();
@@ -81,7 +86,8 @@ impl Verifier {
                 &prepared_vk,
                 &public_inputs,
                 &proof_obj,
-            ).unwrap_or(false);
+            )
+            .unwrap_or(false);
 
             results.push(VerificationResult {
                 is_valid,
@@ -107,7 +113,7 @@ impl Verifier {
     ) -> Result<bool, ZKPError> {
         // Verify the proof
         let result = self.verify(ProofType::ModelExecution, proof)?;
-        
+
         if !result.is_valid {
             return Ok(false);
         }
@@ -122,9 +128,10 @@ impl Verifier {
         let output_hash_str = &proof.public_inputs[2];
 
         // Verify hashes match
-        if hex::encode(expected_model_hash) != *model_hash_str ||
-           hex::encode(expected_input_hash) != *input_hash_str ||
-           hex::encode(expected_output_hash) != *output_hash_str {
+        if hex::encode(expected_model_hash) != *model_hash_str
+            || hex::encode(expected_input_hash) != *input_hash_str
+            || hex::encode(expected_output_hash) != *output_hash_str
+        {
             return Ok(false);
         }
 
@@ -142,7 +149,7 @@ impl Verifier {
     ) -> Result<bool, ZKPError> {
         // Verify the proof
         let result = self.verify(ProofType::GradientSubmission, proof)?;
-        
+
         if !result.is_valid {
             return Ok(false);
         }
@@ -158,14 +165,16 @@ impl Verifier {
         let samples_str = &proof.public_inputs[4];
 
         // Verify hashes match
-        if hex::encode(expected_model_hash) != *model_hash_str ||
-           hex::encode(expected_dataset_hash) != *dataset_hash_str {
+        if hex::encode(expected_model_hash) != *model_hash_str
+            || hex::encode(expected_dataset_hash) != *dataset_hash_str
+        {
             return Ok(false);
         }
 
         // Verify loss threshold if provided
         if let Some(min) = min_loss {
-            let loss: f64 = loss_str.parse()
+            let loss: f64 = loss_str
+                .parse()
                 .map_err(|_| ZKPError::InvalidPublicInputs)?;
             if loss > min {
                 return Ok(false);
@@ -174,7 +183,8 @@ impl Verifier {
 
         // Verify sample count if provided
         if let Some(min) = min_samples {
-            let samples: u64 = samples_str.parse()
+            let samples: u64 = samples_str
+                .parse()
                 .map_err(|_| ZKPError::InvalidPublicInputs)?;
             if samples < min {
                 return Ok(false);
@@ -187,13 +197,13 @@ impl Verifier {
     /// Parse public inputs from strings to field elements
     fn parse_public_inputs(&self, inputs: &[String]) -> Result<Vec<Fr>, ZKPError> {
         let mut field_elements = Vec::new();
-        
+
         for input in inputs {
             // Try to parse as hex first
             if input.starts_with("0x") || input.len() == 64 {
                 let bytes = hex::decode(input.trim_start_matches("0x"))
                     .map_err(|_| ZKPError::InvalidPublicInputs)?;
-                
+
                 // Convert bytes to field element
                 // This is simplified - real implementation would be more careful
                 let mut value = Fr::from(0u64);
@@ -203,12 +213,11 @@ impl Verifier {
                 field_elements.push(value);
             } else {
                 // Try to parse as number
-                let num: u64 = input.parse()
-                    .unwrap_or(0);
+                let num: u64 = input.parse().unwrap_or(0);
                 field_elements.push(Fr::from(num));
             }
         }
-        
+
         Ok(field_elements)
     }
 
@@ -221,19 +230,21 @@ impl Verifier {
     ) -> Result<bool, ZKPError> {
         // In a real implementation, this would verify an aggregated proof
         // that proves multiple statements at once
-        
+
         let result = self.verify(proof_type, aggregated_proof)?;
-        
+
         if !result.is_valid {
             return Ok(false);
         }
 
         // Additional verification logic for aggregated proofs would go here
-        
+
         Ok(true)
     }
 }
 
 impl Default for Verifier {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

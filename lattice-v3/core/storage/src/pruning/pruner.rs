@@ -56,22 +56,22 @@ impl Pruner {
             config,
         }
     }
-    
+
     /// Start automatic pruning task
     pub async fn start_auto_pruning(self: Arc<Self>) {
         if !self.config.auto_prune {
             info!("Automatic pruning disabled");
             return;
         }
-        
+
         let mut ticker = interval(self.config.interval);
-        
+
         loop {
             ticker.tick().await;
-            
+
             info!("Starting pruning cycle");
             let start = Instant::now();
-            
+
             match self.prune().await {
                 Ok(stats) => {
                     info!(
@@ -87,41 +87,41 @@ impl Pruner {
             }
         }
     }
-    
+
     /// Perform pruning
     pub async fn prune(&self) -> Result<PruningStats> {
         let mut stats = PruningStats::default();
-        
+
         // Get current height
         let current_height = self.block_store.get_latest_height()?;
-        
+
         if current_height > self.config.keep_blocks {
             let prune_height = current_height - self.config.keep_blocks;
             stats.blocks_pruned = self.prune_blocks_before(prune_height).await?;
         }
-        
+
         if current_height > self.config.keep_states {
             let prune_state_height = current_height - self.config.keep_states;
             stats.states_pruned = self.prune_states_before(prune_state_height).await?;
         }
-        
+
         // Compact database after pruning
         self.compact().await?;
-        
+
         Ok(stats)
     }
-    
+
     /// Prune blocks before specified height
     async fn prune_blocks_before(&self, height: u64) -> Result<usize> {
         let mut pruned = 0;
         let mut batch_count = 0;
-        
+
         for h in 0..height {
             if let Some(hash) = self.block_store.get_block_by_height(h)? {
                 self.block_store.delete_block(&hash)?;
                 pruned += 1;
                 batch_count += 1;
-                
+
                 if batch_count >= self.config.batch_size {
                     // Yield to prevent blocking
                     tokio::task::yield_now().await;
@@ -129,41 +129,41 @@ impl Pruner {
                 }
             }
         }
-        
+
         debug!("Pruned {} blocks before height {}", pruned, height);
         Ok(pruned)
     }
-    
+
     /// Prune state snapshots before specified height
     async fn prune_states_before(&self, _height: u64) -> Result<usize> {
         // In a real implementation, this would prune old state snapshots
         // For now, we'll just return 0 as we don't have state snapshot height tracking
         Ok(0)
     }
-    
+
     /// Compact the database
     async fn compact(&self) -> Result<()> {
         info!("Compacting database");
-        
+
         self.block_store.compact()?;
         self.state_store.compact()?;
         self.db.flush()?;
-        
+
         info!("Database compaction completed");
         Ok(())
     }
-    
+
     /// Force immediate pruning
     pub async fn force_prune(&self) -> Result<PruningStats> {
         info!("Force pruning initiated");
         self.prune().await
     }
-    
+
     /// Get pruning statistics
     pub fn get_config(&self) -> &PruningConfig {
         &self.config
     }
-    
+
     /// Update pruning configuration
     pub fn update_config(&mut self, config: PruningConfig) {
         self.config = config;
@@ -185,7 +185,7 @@ mod tests {
     use crate::chain::BlockStore;
     use crate::state::StateStore;
     use tempfile::TempDir;
-    
+
     #[tokio::test]
     async fn test_pruning_config() {
         let config = PruningConfig::default();
@@ -193,14 +193,14 @@ mod tests {
         assert_eq!(config.keep_states, 10_000);
         assert!(config.auto_prune);
     }
-    
+
     #[tokio::test]
     async fn test_pruner_creation() {
         let temp_dir = TempDir::new().unwrap();
         let db = Arc::new(RocksDB::open(temp_dir.path()).unwrap());
         let block_store = Arc::new(BlockStore::new(db.clone()));
         let state_store = Arc::new(StateStore::new(db.clone()));
-        
+
         let config = PruningConfig {
             keep_blocks: 1000,
             keep_states: 100,
@@ -208,7 +208,7 @@ mod tests {
             batch_size: 100,
             auto_prune: false,
         };
-        
+
         let pruner = Pruner::new(db, block_store, state_store, config);
         assert_eq!(pruner.get_config().keep_blocks, 1000);
     }
@@ -221,13 +221,19 @@ mod tests {
         let state_store = Arc::new(StateStore::new(db.clone()));
 
         // Seed blocks at heights 0..=4
-        use lattice_consensus::types::{Block, BlockHeader, PublicKey, VrfProof, Signature, GhostDagParams, Hash};
+        use lattice_consensus::types::{
+            Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, VrfProof,
+        };
         for h in 0..=4u64 {
             let block = Block {
                 header: BlockHeader {
                     version: 1,
                     block_hash: Hash::new([h as u8; 32]),
-                    selected_parent_hash: if h == 0 { Hash::default() } else { Hash::new([(h-1) as u8; 32]) },
+                    selected_parent_hash: if h == 0 {
+                        Hash::default()
+                    } else {
+                        Hash::new([(h - 1) as u8; 32])
+                    },
                     merge_parent_hashes: vec![],
                     timestamp: h,
                     height: h,
@@ -235,7 +241,10 @@ mod tests {
                     blue_work: h as u128,
                     pruning_point: Hash::default(),
                     proposer_pubkey: PublicKey::new([0; 32]),
-                    vrf_reveal: VrfProof { proof: vec![], output: Hash::default() },
+                    vrf_reveal: VrfProof {
+                        proof: vec![],
+                        output: Hash::default(),
+                    },
                 },
                 state_root: Hash::default(),
                 tx_root: Hash::default(),
@@ -248,7 +257,13 @@ mod tests {
             block_store.put_block(&block).unwrap();
         }
 
-        let config = PruningConfig { keep_blocks: 2, keep_states: 0, interval: Duration::from_secs(60), batch_size: 100, auto_prune: false };
+        let config = PruningConfig {
+            keep_blocks: 2,
+            keep_states: 0,
+            interval: Duration::from_secs(60),
+            batch_size: 100,
+            auto_prune: false,
+        };
         let pruner = Pruner::new(db, block_store.clone(), state_store, config);
         let stats = pruner.prune().await.unwrap();
 
@@ -256,8 +271,17 @@ mod tests {
         assert_eq!(stats.blocks_pruned, 2);
 
         // Ensure height>=2 remain
-        assert!(block_store.get_block(&Hash::new([2; 32])).unwrap().is_some());
-        assert!(block_store.get_block(&Hash::new([4; 32])).unwrap().is_some());
-        assert!(block_store.get_block(&Hash::new([0; 32])).unwrap().is_none());
+        assert!(block_store
+            .get_block(&Hash::new([2; 32]))
+            .unwrap()
+            .is_some());
+        assert!(block_store
+            .get_block(&Hash::new([4; 32]))
+            .unwrap()
+            .is_some());
+        assert!(block_store
+            .get_block(&Hash::new([0; 32]))
+            .unwrap()
+            .is_none());
     }
 }

@@ -11,16 +11,17 @@ use std::sync::Arc;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use tracing::{info, error};
+use tracing::{error, info};
 
 use crate::methods::ai::{
-    AiApi, ChatCompletionRequest, ChatCompletionResponse, EmbeddingsRequest, EmbeddingsResponse,
-    DeployModelRequest, InferenceRequest, CreateTrainingJobRequest, CreateLoRARequest
+    AiApi, ChatCompletionRequest, ChatCompletionResponse, CreateLoRARequest,
+    CreateTrainingJobRequest, DeployModelRequest, EmbeddingsRequest, EmbeddingsResponse,
+    InferenceRequest,
 };
-use lattice_execution::types::Address;
-use lattice_storage::StorageManager;
-use lattice_sequencer::mempool::Mempool;
 use lattice_execution::executor::Executor;
+use lattice_execution::types::Address;
+use lattice_sequencer::mempool::Mempool;
+use lattice_storage::StorageManager;
 
 /// OpenAI/Anthropic compatible REST API server
 pub struct OpenAiRestServer {
@@ -77,38 +78,47 @@ impl OpenAiRestServer {
             executor,
         }
     }
-    
+
     /// Create the Axum router with all API endpoints
     pub fn router(&self) -> Router {
-        let ai_api = AiApi::new(self.storage.clone(), self.mempool.clone(), self.executor.clone());
+        let ai_api = AiApi::new(
+            self.storage.clone(),
+            self.mempool.clone(),
+            self.executor.clone(),
+        );
         let state = AppState { ai_api };
-        
+
         Router::new()
             // OpenAI-compatible endpoints
             .route("/v1/models", get(list_models))
             .route("/v1/chat/completions", post(chat_completions))
             .route("/v1/completions", post(completions))
             .route("/v1/embeddings", post(embeddings))
-            
             // Anthropic-compatible endpoints
             .route("/v1/messages", post(messages))
-            
             // Lattice-specific AI endpoints
             .route("/v1/lattice/models", get(lattice_list_models))
             .route("/v1/lattice/models", post(lattice_deploy_model))
             .route("/v1/lattice/models/:model_id", get(lattice_get_model))
-            .route("/v1/lattice/models/:model_id/stats", get(lattice_model_stats))
+            .route(
+                "/v1/lattice/models/:model_id/stats",
+                get(lattice_model_stats),
+            )
             .route("/v1/lattice/inference", post(lattice_request_inference))
-            .route("/v1/lattice/inference/:request_id", get(lattice_get_inference))
+            .route(
+                "/v1/lattice/inference/:request_id",
+                get(lattice_get_inference),
+            )
             .route("/v1/lattice/training", post(lattice_create_training_job))
-            .route("/v1/lattice/training/:job_id", get(lattice_get_training_job))
+            .route(
+                "/v1/lattice/training/:job_id",
+                get(lattice_get_training_job),
+            )
             .route("/v1/lattice/lora", post(lattice_create_lora))
             .route("/v1/lattice/lora/:adapter_id", get(lattice_get_lora))
-            
             // Health check
             .route("/health", get(health_check))
             .route("/", get(root))
-            
             .layer(
                 ServiceBuilder::new()
                     .layer(TraceLayer::new_for_http())
@@ -116,21 +126,21 @@ impl OpenAiRestServer {
                         CorsLayer::new()
                             .allow_origin(Any)
                             .allow_methods(Any)
-                            .allow_headers(Any)
-                    )
+                            .allow_headers(Any),
+                    ),
             )
             .with_state(state)
     }
-    
+
     /// Start the REST API server
     pub async fn start(&self, addr: std::net::SocketAddr) -> anyhow::Result<()> {
         let app = self.router();
-        
+
         info!("Starting OpenAI-compatible REST API server on {}", addr);
-        
+
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app).await?;
-        
+
         Ok(())
     }
 }
@@ -150,7 +160,7 @@ async fn list_models(State(state): State<AppState>) -> Result<Json<ModelListResp
                     owned_by: "lattice".to_string(),
                 })
                 .collect();
-            
+
             Ok(Json(ModelListResponse {
                 object: "list".to_string(),
                 data: models,
@@ -185,7 +195,8 @@ async fn completions(
     // Convert text completion to chat completion
     if let Some(prompt) = payload.get("prompt").and_then(|p| p.as_str()) {
         let chat_request = ChatCompletionRequest {
-            model: payload.get("model")
+            model: payload
+                .get("model")
                 .and_then(|m| m.as_str())
                 .unwrap_or("gpt-3.5-turbo")
                 .to_string(),
@@ -193,9 +204,18 @@ async fn completions(
                 role: "user".to_string(),
                 content: prompt.to_string(),
             }],
-            max_tokens: payload.get("max_tokens").and_then(|t| t.as_u64()).map(|t| t as u32),
-            temperature: payload.get("temperature").and_then(|t| t.as_f64()).map(|t| t as f32),
-            top_p: payload.get("top_p").and_then(|t| t.as_f64()).map(|t| t as f32),
+            max_tokens: payload
+                .get("max_tokens")
+                .and_then(|t| t.as_u64())
+                .map(|t| t as u32),
+            temperature: payload
+                .get("temperature")
+                .and_then(|t| t.as_f64())
+                .map(|t| t as f32),
+            top_p: payload
+                .get("top_p")
+                .and_then(|t| t.as_f64())
+                .map(|t| t as f32),
             n: payload.get("n").and_then(|n| n.as_u64()).map(|n| n as u32),
             stop: payload.get("stop").and_then(|s| {
                 if s.is_array() {
@@ -210,7 +230,7 @@ async fn completions(
             }),
             stream: payload.get("stream").and_then(|s| s.as_bool()),
         };
-        
+
         match state.ai_api.chat_completions(chat_request, None).await {
             Ok(chat_response) => {
                 // Convert back to completions format
@@ -274,21 +294,31 @@ async fn messages(
                 })
             })
             .collect();
-        
+
         let chat_request = ChatCompletionRequest {
-            model: payload.get("model")
+            model: payload
+                .get("model")
                 .and_then(|m| m.as_str())
                 .unwrap_or("claude-3-sonnet")
                 .to_string(),
             messages: chat_messages,
-            max_tokens: payload.get("max_tokens").and_then(|t| t.as_u64()).map(|t| t as u32),
-            temperature: payload.get("temperature").and_then(|t| t.as_f64()).map(|t| t as f32),
-            top_p: payload.get("top_p").and_then(|t| t.as_f64()).map(|t| t as f32),
+            max_tokens: payload
+                .get("max_tokens")
+                .and_then(|t| t.as_u64())
+                .map(|t| t as u32),
+            temperature: payload
+                .get("temperature")
+                .and_then(|t| t.as_f64())
+                .map(|t| t as f32),
+            top_p: payload
+                .get("top_p")
+                .and_then(|t| t.as_f64())
+                .map(|t| t as f32),
             n: Some(1),
             stop: None,
             stream: payload.get("stream").and_then(|s| s.as_bool()),
         };
-        
+
         match state.ai_api.chat_completions(chat_request, None).await {
             Ok(chat_response) => {
                 // Convert to Anthropic format
@@ -325,7 +355,8 @@ async fn lattice_list_models(
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let owner = params.get("owner").and_then(|addr_str| {
-        hex::decode(addr_str.trim_start_matches("0x")).ok()
+        hex::decode(addr_str.trim_start_matches("0x"))
+            .ok()
             .and_then(|bytes| {
                 if bytes.len() == 20 {
                     let mut addr_array = [0u8; 20];
@@ -336,15 +367,17 @@ async fn lattice_list_models(
                 }
             })
     });
-    
+
     let limit = params.get("limit").and_then(|l| l.parse().ok());
-    
+
     match state.ai_api.list_models(owner, limit).await {
         Ok(model_ids) => {
-            let models_detailed: Result<Vec<_>, _> = futures::future::join_all(
-                model_ids.iter().map(|id| state.ai_api.get_model(*id))
-            ).await.into_iter().collect();
-            
+            let models_detailed: Result<Vec<_>, _> =
+                futures::future::join_all(model_ids.iter().map(|id| state.ai_api.get_model(*id)))
+                    .await
+                    .into_iter()
+                    .collect();
+
             match models_detailed {
                 Ok(models) => Ok(Json(serde_json::json!({
                     "models": models,
@@ -372,8 +405,12 @@ async fn lattice_deploy_model(
     let from = Address::zero(); // Placeholder
     let gas_limit = 1_000_000;
     let gas_price = 10000;
-    
-    match state.ai_api.deploy_model(request, from, gas_limit, gas_price).await {
+
+    match state
+        .ai_api
+        .deploy_model(request, from, gas_limit, gas_price)
+        .await
+    {
         Ok(tx_hash) => Ok(Json(serde_json::json!({
             "transaction_hash": hex::encode(tx_hash.as_bytes()),
             "status": "pending"
@@ -394,10 +431,10 @@ async fn lattice_get_model(
         Ok(model_id_bytes) if model_id_bytes.len() == 32 => {
             let mut model_id_array = [0u8; 32];
             model_id_array.copy_from_slice(&model_id_bytes);
-            let model_id = lattice_execution::types::ModelId(
-                lattice_consensus::types::Hash::new(model_id_array)
-            );
-            
+            let model_id = lattice_execution::types::ModelId(lattice_consensus::types::Hash::new(
+                model_id_array,
+            ));
+
             match state.ai_api.get_model(model_id).await {
                 Ok(model) => Ok(Json(serde_json::to_value(model).unwrap())),
                 Err(e) => {
@@ -406,7 +443,7 @@ async fn lattice_get_model(
                 }
             }
         }
-        _ => Err(StatusCode::BAD_REQUEST)
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 
@@ -419,10 +456,10 @@ async fn lattice_model_stats(
         Ok(model_id_bytes) if model_id_bytes.len() == 32 => {
             let mut model_id_array = [0u8; 32];
             model_id_array.copy_from_slice(&model_id_bytes);
-            let model_id = lattice_execution::types::ModelId(
-                lattice_consensus::types::Hash::new(model_id_array)
-            );
-            
+            let model_id = lattice_execution::types::ModelId(lattice_consensus::types::Hash::new(
+                model_id_array,
+            ));
+
             match state.ai_api.get_model_stats(model_id).await {
                 Ok(stats) => Ok(Json(serde_json::to_value(stats).unwrap())),
                 Err(e) => {
@@ -431,7 +468,7 @@ async fn lattice_model_stats(
                 }
             }
         }
-        _ => Err(StatusCode::BAD_REQUEST)
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 
@@ -442,8 +479,12 @@ async fn lattice_request_inference(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let from = Address::zero(); // Placeholder - would get from auth
     let gas_price = 10000;
-    
-    match state.ai_api.request_inference(request, from, gas_price).await {
+
+    match state
+        .ai_api
+        .request_inference(request, from, gas_price)
+        .await
+    {
         Ok(request_hash) => Ok(Json(serde_json::json!({
             "request_id": hex::encode(request_hash.as_bytes()),
             "status": "submitted"
@@ -465,7 +506,7 @@ async fn lattice_get_inference(
             let mut hash_array = [0u8; 32];
             hash_array.copy_from_slice(&hash_bytes);
             let request_hash = lattice_consensus::types::Hash::new(hash_array);
-            
+
             match state.ai_api.get_inference_result(request_hash).await {
                 Ok(result) => Ok(Json(serde_json::to_value(result).unwrap())),
                 Err(e) => {
@@ -474,7 +515,7 @@ async fn lattice_get_inference(
                 }
             }
         }
-        _ => Err(StatusCode::BAD_REQUEST)
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 
@@ -486,8 +527,12 @@ async fn lattice_create_training_job(
     let from = Address::zero(); // Placeholder
     let gas_limit = 1_000_000;
     let gas_price = 10000;
-    
-    match state.ai_api.create_training_job(request, from, gas_limit, gas_price).await {
+
+    match state
+        .ai_api
+        .create_training_job(request, from, gas_limit, gas_price)
+        .await
+    {
         Ok(job_hash) => Ok(Json(serde_json::json!({
             "job_id": hex::encode(job_hash.as_bytes()),
             "status": "created"
@@ -508,10 +553,9 @@ async fn lattice_get_training_job(
         Ok(job_id_bytes) if job_id_bytes.len() == 32 => {
             let mut job_id_array = [0u8; 32];
             job_id_array.copy_from_slice(&job_id_bytes);
-            let job_id = lattice_execution::types::JobId(
-                lattice_consensus::types::Hash::new(job_id_array)
-            );
-            
+            let job_id =
+                lattice_execution::types::JobId(lattice_consensus::types::Hash::new(job_id_array));
+
             match state.ai_api.get_training_job(job_id).await {
                 Ok(job) => Ok(Json(serde_json::to_value(job).unwrap())),
                 Err(e) => {
@@ -520,7 +564,7 @@ async fn lattice_get_training_job(
                 }
             }
         }
-        _ => Err(StatusCode::BAD_REQUEST)
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 
@@ -530,7 +574,7 @@ async fn lattice_create_lora(
     Json(request): Json<CreateLoRARequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let from = Address::zero(); // Placeholder
-    
+
     match state.ai_api.create_lora(request, from).await {
         Ok(adapter_hash) => Ok(Json(serde_json::json!({
             "adapter_id": hex::encode(adapter_hash.as_bytes()),
@@ -553,7 +597,7 @@ async fn lattice_get_lora(
             let mut adapter_id_array = [0u8; 32];
             adapter_id_array.copy_from_slice(&adapter_id_bytes);
             let adapter_hash = lattice_consensus::types::Hash::new(adapter_id_array);
-            
+
             match state.ai_api.get_lora(adapter_hash).await {
                 Ok(adapter) => Ok(Json(serde_json::to_value(adapter).unwrap())),
                 Err(e) => {
@@ -562,7 +606,7 @@ async fn lattice_get_lora(
                 }
             }
         }
-        _ => Err(StatusCode::BAD_REQUEST)
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 
@@ -606,7 +650,7 @@ async fn root() -> Json<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_error_response_format() {
         let error = ErrorResponse {
@@ -616,7 +660,7 @@ mod tests {
                 code: Some("invalid_model".to_string()),
             },
         };
-        
+
         let json = serde_json::to_string(&error).unwrap();
         assert!(json.contains("Test error"));
         assert!(json.contains("invalid_request_error"));

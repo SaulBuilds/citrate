@@ -9,9 +9,9 @@ pub struct Address(pub [u8; 20]);
 impl Address {
     pub fn from_public_key(pubkey: &PublicKey) -> Self {
         // Check if this is an embedded EVM address (first 20 bytes non-zero, last 12 bytes zero)
-        let is_evm_address = pubkey.0[20..].iter().all(|&b| b == 0) && 
-                             !pubkey.0[..20].iter().all(|&b| b == 0);
-        
+        let is_evm_address =
+            pubkey.0[20..].iter().all(|&b| b == 0) && !pubkey.0[..20].iter().all(|&b| b == 0);
+
         if is_evm_address {
             // This is an embedded 20-byte EVM address, use it directly
             let mut addr = [0u8; 20];
@@ -23,13 +23,13 @@ impl Address {
             let mut hasher = Keccak256::default();
             hasher.update(pubkey.0);
             let hash = hasher.finalize();
-            
+
             let mut addr = [0u8; 20];
             addr.copy_from_slice(&hash[12..32]);
             Address(addr)
         }
     }
-    
+
     pub fn zero() -> Self {
         Address([0u8; 20])
     }
@@ -49,7 +49,9 @@ mod tests {
     fn test_address_from_public_key_embedded_evm() {
         // First 20 bytes non-zero, last 12 bytes zero → embedded address
         let mut bytes = [0u8; 32];
-        for (i, b) in bytes.iter_mut().enumerate().take(20) { *b = (i as u8) + 1; }
+        for (i, b) in bytes.iter_mut().enumerate().take(20) {
+            *b = (i as u8) + 1;
+        }
         // last 12 remain zero
         let pk = PublicKey::new(bytes);
         let addr = Address::from_public_key(&pk);
@@ -168,45 +170,40 @@ pub enum JobStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransactionType {
     /// Standard value transfer
-    Transfer {
-        to: Address,
-        value: U256,
-    },
-    
+    Transfer { to: Address, value: U256 },
+
     /// Deploy contract
-    Deploy {
-        code: Vec<u8>,
-        init_data: Vec<u8>,
-    },
-    
+    Deploy { code: Vec<u8>, init_data: Vec<u8> },
+
     /// Call contract
     Call {
         to: Address,
         data: Vec<u8>,
         value: U256,
     },
-    
+
     /// Register a new model
     RegisterModel {
         model_hash: Hash,
         metadata: ModelMetadata,
         access_policy: AccessPolicy,
+        artifact_cid: Option<String>,
     },
-    
+
     /// Update model version
     UpdateModel {
         model_id: ModelId,
         new_version: Hash,
         changelog: String,
     },
-    
+
     /// Request inference
     InferenceRequest {
         model_id: ModelId,
         input_data: Vec<u8>,
         max_gas: u64,
     },
-    
+
     /// Submit training gradient
     SubmitGradient {
         job_id: JobId,
@@ -246,21 +243,21 @@ pub struct GasSchedule {
     pub sload: u64,
     pub create: u64,
     pub call: u64,
-    
+
     // AI operations
     pub model_register: u64,
     pub model_update: u64,
     pub inference_base: u64,
     pub inference_per_mb: u64,
     pub training_submit: u64,
-    
+
     // AI opcodes
     pub tensor_op: u64,
     pub model_load: u64,
     pub model_exec: u64,
     pub zk_prove: u64,
     pub zk_verify: u64,
-    
+
     // Arithmetic operations
     pub add: u64,
     pub mul: u64,
@@ -268,13 +265,13 @@ pub struct GasSchedule {
     pub div: u64,
     pub exp: u64,
     pub sha3: u64,
-    
+
     // Stack operations
     pub push: u64,
     pub pop: u64,
     pub mload: u64,
     pub mstore: u64,
-    
+
     // Control flow
     pub jump: u64,
     pub jumpi: u64,
@@ -289,21 +286,21 @@ impl Default for GasSchedule {
             sload: 800,
             create: 32_000,
             call: 700,
-            
+
             // AI operations
             model_register: 100_000,
             model_update: 50_000,
             inference_base: 50_000,
             inference_per_mb: 10_000,
             training_submit: 200_000,
-            
+
             // AI opcodes
             tensor_op: 10_000,
             model_load: 50_000,
             model_exec: 100_000,
             zk_prove: 200_000,
             zk_verify: 50_000,
-            
+
             // Arithmetic operations
             add: 3,
             mul: 5,
@@ -326,46 +323,46 @@ impl Default for GasSchedule {
 pub enum ExecutionError {
     #[error("Insufficient balance: need {need}, have {have}")]
     InsufficientBalance { need: U256, have: U256 },
-    
+
     #[error("Invalid nonce: expected {expected}, got {got}")]
     InvalidNonce { expected: u64, got: u64 },
-    
+
     #[error("Out of gas")]
     OutOfGas,
-    
+
     #[error("Stack overflow")]
     StackOverflow,
-    
+
     #[error("Invalid opcode: {0}")]
     InvalidOpcode(u8),
-    
+
     #[error("Account not found: {0}")]
     AccountNotFound(Address),
-    
+
     #[error("Model not found: {0:?}")]
     ModelNotFound(ModelId),
-    
+
     #[error("Access denied")]
     AccessDenied,
-    
+
     #[error("Invalid input data")]
     InvalidInput,
-    
+
     #[error("Execution reverted: {0}")]
     Reverted(String),
-    
+
     #[error("Stack underflow")]
     StackUnderflow,
-    
+
     #[error("Invalid model")]
     InvalidModel,
-    
+
     #[error("Invalid tensor")]
     InvalidTensor,
-    
+
     #[error("Tensor shape mismatch")]
     TensorShapeMismatch,
-    
+
     #[error("Invalid opcode")]
     InvalidOpcodeGeneric,
 }

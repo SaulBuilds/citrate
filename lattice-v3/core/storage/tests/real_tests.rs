@@ -1,7 +1,9 @@
 // Real, working tests for the storage module
 
-use lattice_storage::{StorageManager, PruningConfig};
-use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams, Transaction};
+use lattice_consensus::types::{
+    Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, Transaction, VrfProof,
+};
+use lattice_storage::{PruningConfig, StorageManager};
 use std::sync::Arc;
 
 fn create_test_block(num: u8, height: u64) -> Block {
@@ -43,7 +45,8 @@ mod storage_manager_tests {
     fn test_storage_manager_creation() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let config = PruningConfig::default();
-        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
+        let storage =
+            StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
         assert!(storage.blocks.get_latest_height().unwrap_or(0) == 0);
     }
 
@@ -51,12 +54,18 @@ mod storage_manager_tests {
     fn test_block_storage() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let config = PruningConfig::default();
-        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
+        let storage =
+            StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         let block = create_test_block(1, 100);
-        storage.blocks.put_block(&block).expect("Failed to store block");
+        storage
+            .blocks
+            .put_block(&block)
+            .expect("Failed to store block");
 
-        let retrieved = storage.blocks.get_block(&block.hash())
+        let retrieved = storage
+            .blocks
+            .get_block(&block.hash())
             .expect("Failed to get block")
             .expect("Block not found");
 
@@ -88,7 +97,9 @@ mod storage_manager_tests {
         let block = create_test_block(5, 50);
         storage.blocks.put_block(&block).unwrap();
 
-        let hash = storage.blocks.get_block_hash_by_height(50)
+        let hash = storage
+            .blocks
+            .get_block_hash_by_height(50)
             .unwrap()
             .expect("Block at height 50 not found");
 
@@ -108,7 +119,10 @@ mod storage_manager_tests {
             signature: Signature::new([0u8; 64]),
         };
 
-        storage.transactions.put_transactions(&[tx.clone()]).unwrap();
+        storage
+            .transactions
+            .put_transactions(&[tx.clone()])
+            .unwrap();
 
         // Verify transaction was stored
         // Note: get_transaction might not exist, this is a placeholder
@@ -140,7 +154,9 @@ mod chain_store_tests {
         let genesis = create_test_block(0, 0);
         storage.blocks.put_block(&genesis).unwrap();
 
-        let retrieved = storage.blocks.get_block(&genesis.hash())
+        let retrieved = storage
+            .blocks
+            .get_block(&genesis.hash())
             .unwrap()
             .expect("Genesis not found");
 
@@ -243,7 +259,9 @@ mod persistence_tests {
         {
             let storage = StorageManager::new(config).unwrap();
             let block = create_test_block(99, 999);
-            let retrieved = storage.blocks.get_block(&block.hash())
+            let retrieved = storage
+                .blocks
+                .get_block(&block.hash())
                 .unwrap()
                 .expect("Block not persisted");
             assert_eq!(retrieved.header.height, 999);

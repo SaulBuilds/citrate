@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use lattice_consensus::{
+    types::{Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, VrfProof},
     GhostDag,
-    types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams},
 };
 use lattice_storage::StorageManager;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use tracing::{info, debug};
+use std::sync::Arc;
+use tracing::{debug, info};
 
 /// Manages DAG data for visualization and analysis
 pub struct DAGManager {
@@ -24,11 +24,11 @@ impl DAGManager {
     pub async fn get_dag_data(&self, limit: usize, start_height: Option<u64>) -> Result<DAGData> {
         let mut nodes: Vec<DAGNode> = Vec::new();
         let mut links = Vec::new();
-        
+
         // Get the latest height from storage
         let latest_height = self.storage.blocks.get_latest_height().unwrap_or(0);
         info!("DAG: Latest height in storage: {}", latest_height);
-        
+
         if latest_height == 0 {
             info!("DAG: No blocks in storage, returning empty data");
             // Return empty data if no blocks exist
@@ -46,13 +46,16 @@ impl DAGManager {
                 },
             });
         }
-        
+
         // Calculate the range of blocks to fetch
         let base_height = start_height.unwrap_or(latest_height.saturating_sub(limit as u64 - 1));
         let end_height = (base_height + limit as u64).min(latest_height + 1);
-        
-        info!("DAG: Fetching blocks from height {} to {} (limit: {})", base_height, end_height, limit);
-        
+
+        info!(
+            "DAG: Fetching blocks from height {} to {} (limit: {})",
+            base_height, end_height, limit
+        );
+
         // Fetch blocks from storage (build nodes, links)
         let mut nodes_tmp: Vec<(Hash, DAGNode)> = Vec::new();
         for height in base_height..end_height {
@@ -63,7 +66,7 @@ impl DAGManager {
                     match self.storage.blocks.get_block(&block_hash) {
                         Ok(Some(block)) => {
                             let block_hash_str = block.header.block_hash.to_hex();
-                            
+
                             // Create node for visualization; is_blue set after computing best tip blue set
                             let node = DAGNode {
                                 id: block_hash_str.clone(),
@@ -71,12 +74,18 @@ impl DAGManager {
                                 height: block.header.height,
                                 timestamp: block.header.timestamp,
                                 is_blue: false,
-                                blue_score: match self.ghostdag.get_blue_score(&block.header.block_hash).await {
+                                blue_score: match self
+                                    .ghostdag
+                                    .get_blue_score(&block.header.block_hash)
+                                    .await
+                                {
                                     Ok(s) => s,
                                     Err(_) => block.header.blue_score,
                                 },
                                 selected_parent: block.header.selected_parent_hash.to_hex(),
-                                merge_parents: block.header.merge_parent_hashes
+                                merge_parents: block
+                                    .header
+                                    .merge_parent_hashes
                                     .iter()
                                     .map(|h| h.to_hex())
                                     .collect(),
@@ -84,7 +93,7 @@ impl DAGManager {
                                 proposer: hex::encode(block.header.proposer_pubkey.as_bytes()),
                                 size: 1000 + (height as usize * 100), // Approximate size
                             };
-                            
+
                             // Create links for visualization
                             let selected_parent = block.header.selected_parent_hash.to_hex();
                             if !selected_parent.starts_with("00000000000000000000000000000000") {
@@ -95,11 +104,12 @@ impl DAGManager {
                                     link_type: LinkType::SelectedParent,
                                 });
                             }
-                            
+
                             // Add merge parent links
                             for merge_parent in &block.header.merge_parent_hashes {
                                 let merge_parent_str = merge_parent.to_hex();
-                                if !merge_parent_str.starts_with("00000000000000000000000000000000") {
+                                if !merge_parent_str.starts_with("00000000000000000000000000000000")
+                                {
                                     links.push(DAGLink {
                                         source: merge_parent_str,
                                         target: block_hash_str.clone(),
@@ -108,7 +118,7 @@ impl DAGManager {
                                     });
                                 }
                             }
-                            
+
                             nodes_tmp.push((block.header.block_hash, node));
                         }
                         Ok(None) => {
@@ -127,7 +137,7 @@ impl DAGManager {
                 }
             }
         }
-        
+
         // Determine blue set for the best tip and finalize nodes
         let mut blue_hashes: HashSet<Hash> = HashSet::new();
         if let Ok(best_tip_hash) = self.ghostdag.select_tip().await {
@@ -146,7 +156,11 @@ impl DAGManager {
         let mut tips: Vec<TipInfo> = Vec::new();
         for tip in self.ghostdag.get_tips().await {
             if let Ok(Some(block)) = self.storage.blocks.get_block(&tip) {
-                let blue_score = self.ghostdag.get_blue_score(&tip).await.unwrap_or(block.header.blue_score);
+                let blue_score = self
+                    .ghostdag
+                    .get_blue_score(&tip)
+                    .await
+                    .unwrap_or(block.header.blue_score);
                 tips.push(TipInfo {
                     hash: tip.to_hex(),
                     height: block.header.height,
@@ -164,7 +178,11 @@ impl DAGManager {
                 blue_blocks: nodes.iter().filter(|n| n.is_blue).count(),
                 red_blocks: nodes.iter().filter(|n| !n.is_blue).count(),
                 current_tips: tips.len(),
-                average_blue_score: if nodes.is_empty() { 0.0 } else { nodes.iter().map(|n| n.blue_score).sum::<u64>() as f64 / nodes.len() as f64 },
+                average_blue_score: if nodes.is_empty() {
+                    0.0
+                } else {
+                    nodes.iter().map(|n| n.blue_score).sum::<u64>() as f64 / nodes.len() as f64
+                },
                 max_height: nodes.iter().map(|n| n.height).max().unwrap_or(0),
             }
         } else {
@@ -177,7 +195,7 @@ impl DAGManager {
                 max_height: 0,
             }
         };
-        
+
         Ok(DAGData {
             nodes,
             links,
@@ -189,10 +207,21 @@ impl DAGManager {
     /// Get detailed block information
     pub async fn get_block_details(&self, hash: &str) -> Result<BlockDetails> {
         let h = Hash::from_bytes(&hex::decode(hash).unwrap_or_default());
-        let block = self.storage.blocks.get_block(&h)?
+        let block = self
+            .storage
+            .blocks
+            .get_block(&h)?
             .ok_or_else(|| anyhow::anyhow!("Block not found"))?;
-        let blue_score = self.ghostdag.get_blue_score(&block.header.block_hash).await.unwrap_or(block.header.blue_score);
-        let children = self.storage.blocks.get_children(&block.header.block_hash).unwrap_or_default();
+        let blue_score = self
+            .ghostdag
+            .get_blue_score(&block.header.block_hash)
+            .await
+            .unwrap_or(block.header.blue_score);
+        let children = self
+            .storage
+            .blocks
+            .get_children(&block.header.block_hash)
+            .unwrap_or_default();
 
         // Determine if this block is blue using the current best tip's blue set
         let mut is_blue = false;
@@ -211,42 +240,48 @@ impl DAGManager {
             is_blue,
             blue_score,
             selected_parent: block.header.selected_parent_hash.to_hex(),
-            merge_parents: block.header.merge_parent_hashes
+            merge_parents: block
+                .header
+                .merge_parent_hashes
                 .iter()
                 .map(|h| h.to_hex())
                 .collect(),
-            transactions: block.transactions.iter().map(|tx| {
-                // Derive wallet-style addresses from public keys (keccak256(pubkey)[12..])
-                let from_addr = {
-                    use sha3::{Digest, Keccak256};
-                    let mut hasher = Keccak256::new();
-                    hasher.update(tx.from.as_bytes());
-                    let digest = hasher.finalize();
-                    format!("0x{}", hex::encode(&digest[12..]))
-                };
-                let to_addr_opt = tx.to.as_ref().map(|to| {
-                    let bytes = to.as_bytes();
-                    if bytes[20..].iter().all(|&b| b == 0) {
-                        format!("0x{}", hex::encode(&bytes[0..20]))
-                    } else {
+            transactions: block
+                .transactions
+                .iter()
+                .map(|tx| {
+                    // Derive wallet-style addresses from public keys (keccak256(pubkey)[12..])
+                    let from_addr = {
                         use sha3::{Digest, Keccak256};
                         let mut hasher = Keccak256::new();
-                        hasher.update(bytes);
+                        hasher.update(tx.from.as_bytes());
                         let digest = hasher.finalize();
                         format!("0x{}", hex::encode(&digest[12..]))
+                    };
+                    let to_addr_opt = tx.to.as_ref().map(|to| {
+                        let bytes = to.as_bytes();
+                        if bytes[20..].iter().all(|&b| b == 0) {
+                            format!("0x{}", hex::encode(&bytes[0..20]))
+                        } else {
+                            use sha3::{Digest, Keccak256};
+                            let mut hasher = Keccak256::new();
+                            hasher.update(bytes);
+                            let digest = hasher.finalize();
+                            format!("0x{}", hex::encode(&digest[12..]))
+                        }
+                    });
+                    TransactionInfo {
+                        hash: tx.hash.to_hex(),
+                        from: hex::encode(tx.from.as_bytes()),
+                        to: tx.to.as_ref().map(|addr| hex::encode(addr.as_bytes())),
+                        from_addr,
+                        to_addr: to_addr_opt,
+                        value: tx.value.to_string(),
+                        gas_used: tx.gas_limit,
+                        status: true,
                     }
-                });
-                TransactionInfo {
-                    hash: tx.hash.to_hex(),
-                    from: hex::encode(tx.from.as_bytes()),
-                    to: tx.to.as_ref().map(|addr| hex::encode(addr.as_bytes())),
-                    from_addr,
-                    to_addr: to_addr_opt,
-                    value: tx.value.to_string(),
-                    gas_used: tx.gas_limit,
-                    status: true,
-                }
-            }).collect(),
+                })
+                .collect(),
             proposer: hex::encode(block.header.proposer_pubkey.as_bytes()),
             size: 0,
             state_root: block.state_root.to_hex(),
@@ -259,7 +294,10 @@ impl DAGManager {
     /// Get the blue set for a given block
     pub async fn get_blue_set(&self, block_hash: &str) -> Result<Vec<String>> {
         let hash = Hash::from_bytes(&hex::decode(block_hash).unwrap_or_default());
-        let block = self.storage.blocks.get_block(&hash)?
+        let block = self
+            .storage
+            .blocks
+            .get_block(&hash)?
             .ok_or_else(|| anyhow::anyhow!("Block not found"))?;
         let blue = self.ghostdag.calculate_blue_set(&block).await?;
         Ok(blue.blocks.iter().map(|h| h.to_hex()).collect())
@@ -270,7 +308,11 @@ impl DAGManager {
         let mut tips = Vec::new();
         for tip in self.ghostdag.get_tips().await {
             if let Ok(Some(block)) = self.storage.blocks.get_block(&tip) {
-                let blue = self.ghostdag.get_blue_score(&tip).await.unwrap_or(block.header.blue_score);
+                let blue = self
+                    .ghostdag
+                    .get_blue_score(&tip)
+                    .await
+                    .unwrap_or(block.header.blue_score);
                 tips.push(TipInfo {
                     hash: tip.to_hex(),
                     height: block.header.height,
@@ -286,7 +328,10 @@ impl DAGManager {
     /// Calculate the blue score for a block
     pub async fn calculate_blue_score(&self, block_hash: &str) -> Result<u64> {
         let h = Hash::from_bytes(&hex::decode(block_hash).unwrap_or_default());
-        self.ghostdag.get_blue_score(&h).await.map_err(|e| anyhow::anyhow!(e))
+        self.ghostdag
+            .get_blue_score(&h)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))
     }
 
     /// Get the path from genesis to a specific block
@@ -295,7 +340,9 @@ impl DAGManager {
         let mut current = Hash::from_bytes(&hex::decode(block_hash).unwrap_or_default());
         while let Some(block) = self.storage.blocks.get_block(&current)? {
             path.push(block.hash().to_hex());
-            if block.header.selected_parent_hash == Hash::default() { break; }
+            if block.header.selected_parent_hash == Hash::default() {
+                break;
+            }
             current = block.header.selected_parent_hash;
         }
         path.reverse();
@@ -309,9 +356,38 @@ impl DAGManager {
             header: BlockHeader {
                 version: 1,
                 block_hash: Hash::new([
-                    (height as u8), (height as u8 + 1), (height as u8 + 2), 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0
+                    (height as u8),
+                    (height as u8 + 1),
+                    (height as u8 + 2),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 ]),
                 selected_parent_hash: if parent_hash.is_empty() {
                     Hash::new([0u8; 32])

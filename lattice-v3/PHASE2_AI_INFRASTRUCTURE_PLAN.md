@@ -299,6 +299,12 @@ contract ModelAccess {
 - [ ] Payment/licensing system
 - [ ] Web3 integration tests
 
+#### Week 7-8 Status Update (current iteration)
+- Executor now persists on-chain registrations into persistent storage and MCP via adapter bridges, including IPFS CIDs for weights (`core/execution/src/executor.rs:1151`).
+- MCP registry tracks weight artifacts and `ModelExecutor` fetches model bytes from IPFS or manifests before inference (`core/mcp/src/registry.rs:74`, `core/mcp/src/execution.rs:26`).
+- Node runtime wires new storage & registry adapters so registerModel events hydrate StorageManager and MCP (`node/src/adapters.rs:1`, `node/src/main.rs:283`).
+- Model inference pipeline can retrieve weight blobs through IPFS, satisfying core registry/execution wiring ahead of Phase 2 inference milestones.
+
 ---
 
 ## Week 9-10: Inference Precompile

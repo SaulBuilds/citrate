@@ -186,6 +186,7 @@ The networking code was more complete than expected! Once we exposed the CLI fla
 - Landed in-node incentive accounting (`core/storage/src/ipfs/pinning.rs`) and surfaced pinning summaries for RPC consumption.
 - Added dedicated `IPFSIncentives` contract + Foundry coverage to pay out storage reporters.
 - Updated documentation to reflect that IPFS storage, chunking, and reward instrumentation are operational.
+- Executor now synchronises model registrations with StorageManager + MCP, wiring weight CIDs into IPFS-backed inference (`core/execution/src/executor.rs:1151`, `core/mcp/src/execution.rs:26`, `node/src/adapters.rs:1`).
 
 #### Phase 3: Distributed Compute (Weeks 13-20)
 **No changes to scope**, includes:

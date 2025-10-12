@@ -1,14 +1,16 @@
-use lattice_storage::{StorageManager};
-use lattice_storage::pruning::PruningConfig;
+use lattice_execution::executor::Executor;
 use lattice_sequencer::mempool::Mempool;
 use lattice_sequencer::mempool::MempoolConfig;
-use lattice_execution::executor::Executor;
-use tempfile::TempDir;
+use lattice_storage::pruning::PruningConfig;
+use lattice_storage::StorageManager;
 use std::sync::Arc;
+use tempfile::TempDir;
 
-use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, VrfProof, GhostDagParams, Signature, Transaction};
-use lattice_execution::types::{TransactionReceipt, Address};
-use lattice_execution::types::{ModelState, ModelMetadata, AccessPolicy, ModelId};
+use lattice_consensus::types::{
+    Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, Transaction, VrfProof,
+};
+use lattice_execution::types::{AccessPolicy, ModelId, ModelMetadata, ModelState};
+use lattice_execution::types::{Address, TransactionReceipt};
 
 fn make_block(height: u64, parent: Hash) -> Block {
     Block {
@@ -23,7 +25,10 @@ fn make_block(height: u64, parent: Hash) -> Block {
             blue_work: height as u128,
             pruning_point: Hash::default(),
             proposer_pubkey: PublicKey::new([0; 32]),
-            vrf_reveal: VrfProof { proof: vec![], output: Hash::default() },
+            vrf_reveal: VrfProof {
+                proof: vec![],
+                output: Hash::default(),
+            },
         },
         state_root: Hash::default(),
         tx_root: Hash::default(),
@@ -54,10 +59,17 @@ async fn test_eth_block_number_and_get_block() {
 
     // Build IoHandler with ETH methods only
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // eth_blockNumber (hex string)
-    let req_bn = serde_json::json!({"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]}).to_string();
+    let req_bn = serde_json::json!({"jsonrpc":"2.0","id":2,"method":"eth_blockNumber","params":[]})
+        .to_string();
     let resp_bn = io.handle_request(&req_bn).await.unwrap();
     let vbn: serde_json::Value = serde_json::from_str(&resp_bn).unwrap();
     assert_eq!(vbn["result"], "0x1");
@@ -68,7 +80,8 @@ async fn test_eth_block_number_and_get_block() {
         "id":3,
         "method":"eth_getBlockByNumber",
         "params":["0x1", false]
-    }).to_string();
+    })
+    .to_string();
     let resp_gbn = io.handle_request(&req_gbn).await.unwrap();
     let vgbn: serde_json::Value = serde_json::from_str(&resp_gbn).unwrap();
     assert!(vgbn["result"].is_object());
@@ -93,7 +106,13 @@ async fn test_eth_get_block_by_hash() {
 
     // Build IoHandler with ETH methods only
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // eth_getBlockByHash [hash, false]
     let req = serde_json::json!({
@@ -101,7 +120,8 @@ async fn test_eth_get_block_by_hash() {
         "id":1,
         "method":"eth_getBlockByHash",
         "params":[format!("0x{}", hex::encode(h1.as_bytes())), false]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     assert!(v["result"].is_object());
@@ -122,7 +142,7 @@ async fn test_eth_get_tx_and_receipt_by_hash() {
         value: 12345,
         gas_limit: 21000,
         gas_price: 1_000_000_000,
-        data: vec![1,2,3],
+        data: vec![1, 2, 3],
         signature: Signature::new([1; 64]),
         tx_type: None,
     };
@@ -150,7 +170,13 @@ async fn test_eth_get_tx_and_receipt_by_hash() {
 
     // Build IoHandler with ETH methods only
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // eth_getTransactionByHash
     let req_tx = serde_json::json!({
@@ -158,7 +184,8 @@ async fn test_eth_get_tx_and_receipt_by_hash() {
         "id":1,
         "method":"eth_getTransactionByHash",
         "params":[format!("0x{}", hex::encode(tx.hash.as_bytes()))]
-    }).to_string();
+    })
+    .to_string();
     let resp_tx = io.handle_request(&req_tx).await.unwrap();
     let vtx: serde_json::Value = serde_json::from_str(&resp_tx).unwrap();
     // Some environments may not index transactions for direct lookup yet; allow null here.
@@ -172,7 +199,8 @@ async fn test_eth_get_tx_and_receipt_by_hash() {
         "id":2,
         "method":"eth_getTransactionReceipt",
         "params":[format!("0x{}", hex::encode(tx.hash.as_bytes()))]
-    }).to_string();
+    })
+    .to_string();
     let resp_rc = io.handle_request(&req_rc).await.unwrap();
     let vrc: serde_json::Value = serde_json::from_str(&resp_rc).unwrap();
     assert!(vrc["result"].is_object());
@@ -185,24 +213,38 @@ async fn test_eth_get_transaction_count_latest_vs_pending() {
     let storage = Arc::new(StorageManager::new(tmp.path(), PruningConfig::default()).unwrap());
 
     // Deps
-    let mempool = Arc::new(Mempool::new(MempoolConfig { require_valid_signature: false, ..Default::default() }));
+    let mempool = Arc::new(Mempool::new(MempoolConfig {
+        require_valid_signature: false,
+        ..Default::default()
+    }));
     let state_db = Arc::new(lattice_execution::StateDB::new());
     let executor = Arc::new(Executor::new(state_db));
 
     // Sender address (derived from first 20 bytes of pubkey)
     let mut from_pk_bytes = [0u8; 32];
-    from_pk_bytes.iter_mut().take(20).enumerate().for_each(|(i, b)| *b = (i as u8) + 1);
+    from_pk_bytes
+        .iter_mut()
+        .take(20)
+        .enumerate()
+        .for_each(|(i, b)| *b = (i as u8) + 1);
     let from_pk = PublicKey::new(from_pk_bytes);
     let from_addr_hex = format!("0x{}", hex::encode(&from_pk_bytes[0..20]));
 
     // Build IoHandler
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool.clone(), executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool.clone(),
+        executor.clone(),
+        1,
+    );
 
     // Latest nonce initially 0
     let req_latest = serde_json::json!({
         "jsonrpc":"2.0","id":1,"method":"eth_getTransactionCount","params":[from_addr_hex, "latest"]
-    }).to_string();
+    })
+    .to_string();
     let resp_latest = io.handle_request(&req_latest).await.unwrap();
     let vl: serde_json::Value = serde_json::from_str(&resp_latest).unwrap();
     assert_eq!(vl["result"], "0x0");
@@ -220,10 +262,20 @@ async fn test_eth_get_transaction_count_latest_vs_pending() {
         signature: Signature::new([1; 64]),
         tx_type: None,
     };
-    let tx1 = Transaction { nonce: 1, hash: Hash::new([0x02; 32]), ..tx0.clone() };
+    let tx1 = Transaction {
+        nonce: 1,
+        hash: Hash::new([0x02; 32]),
+        ..tx0.clone()
+    };
     // Add to storage (not necessary for pending count) and mempool (for pending window)
-    mempool.add_transaction(tx0, lattice_sequencer::mempool::TxClass::Standard).await.unwrap();
-    mempool.add_transaction(tx1, lattice_sequencer::mempool::TxClass::Standard).await.unwrap();
+    mempool
+        .add_transaction(tx0, lattice_sequencer::mempool::TxClass::Standard)
+        .await
+        .unwrap();
+    mempool
+        .add_transaction(tx1, lattice_sequencer::mempool::TxClass::Standard)
+        .await
+        .unwrap();
 
     // Pending should reflect highest nonce + 1 = 2
     let req_pending = serde_json::json!({
@@ -253,7 +305,13 @@ async fn test_eth_get_balance_and_code_smoke() {
     // Build IoHandler
     let mempool = Arc::new(Mempool::new(MempoolConfig::default()));
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // eth_getBalance
     let req_bal = serde_json::json!({
@@ -284,12 +342,19 @@ async fn test_eth_send_raw_transaction_error_path() {
     let executor = Arc::new(Executor::new(state_db));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Invalid hex string should produce an error
     let req = serde_json::json!({
         "jsonrpc":"2.0","id":1,"method":"eth_sendRawTransaction","params":["0xZZZZ"]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     assert!(v.get("error").is_some());
@@ -312,7 +377,13 @@ async fn test_eth_call_smoke() {
 
     // Build IoHandler
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Call object: zero-value transfer with minimal gas, empty data
     let from_hex = format!("0x{}", hex::encode(from_addr.0));
@@ -341,11 +412,18 @@ async fn test_eth_estimate_gas_minimal() {
     let executor = Arc::new(Executor::new(state_db));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     let req = serde_json::json!({
         "jsonrpc":"2.0","id":1,"method":"eth_estimateGas","params":[]
-    }).to_string();
+    })
+    .to_string();
 
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
@@ -371,7 +449,13 @@ async fn test_eth_call_ai_tensor_opcode() {
     executor.set_balance(&from_addr, U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Data for tensor operation: op_type=0x01, dimensions=0x00000010 (16, little endian), plus padding
     let data_bytes = vec![0x01, 0x10, 0x00, 0x00, 0x00, 0xaa, 0xbb, 0xcc];
@@ -387,7 +471,8 @@ async fn test_eth_call_ai_tensor_opcode() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
 
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
@@ -407,13 +492,20 @@ async fn test_eth_call_invalid_to_address_and_insufficient_balance() {
     let executor = Arc::new(Executor::new(state_db.clone()));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool.clone(), executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool.clone(),
+        executor.clone(),
+        1,
+    );
 
     // Invalid 'to' address length
     let bad_to_req = serde_json::json!({
         "jsonrpc":"2.0","id":11,"method":"eth_call",
         "params":[{"to":"0x1234", "data":"0x"}, "latest"]
-    }).to_string();
+    })
+    .to_string();
     let bad_to_resp = io.handle_request(&bad_to_req).await.unwrap();
     let v_bad: serde_json::Value = serde_json::from_str(&bad_to_resp).unwrap();
     assert!(v_bad.get("error").is_some());
@@ -436,7 +528,8 @@ async fn test_eth_call_invalid_to_address_and_insufficient_balance() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp_low_bal = io.handle_request(&req_low_bal).await.unwrap();
     let v_low: serde_json::Value = serde_json::from_str(&resp_low_bal).unwrap();
     assert!(v_low.get("error").is_some());
@@ -451,12 +544,19 @@ async fn test_eth_estimate_gas_with_object_returns_constant() {
     let executor = Arc::new(Executor::new(state_db));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     let req = serde_json::json!({
         "jsonrpc":"2.0","id":13,"method":"eth_estimateGas",
         "params":[{"to":"0x0000000000000000000000000000000000000001","data":"0x"}]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     assert_eq!(v["result"], "0x5208");
@@ -479,7 +579,13 @@ async fn test_eth_call_ai_zk_verify_valid_proof() {
     executor.set_balance(&from, primitive_types::U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Input: 64-byte proof of 0xF3 values → valid, expect 0x01
     let mut data = vec![0xF3; 64];
@@ -496,7 +602,8 @@ async fn test_eth_call_ai_zk_verify_valid_proof() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     let out = v["result"].as_str().unwrap();
@@ -520,7 +627,13 @@ async fn test_eth_call_ai_zk_verify_invalid_proof() {
     executor.set_balance(&from, primitive_types::U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Input: 64-byte proof of 0x00 values → invalid, expect 0x00
     let mut data = vec![0x00; 64];
@@ -537,7 +650,8 @@ async fn test_eth_call_ai_zk_verify_invalid_proof() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     let out = v["result"].as_str().unwrap();
@@ -561,7 +675,13 @@ async fn test_eth_call_ai_zk_prove_output_length() {
     executor.set_balance(&from, primitive_types::U256::from(5_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Input: arbitrary payload; expect 64-byte proof output
     let data = vec![0xAA; 128];
@@ -577,7 +697,8 @@ async fn test_eth_call_ai_zk_prove_output_length() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     if let Some(out) = v["result"].as_str() {
@@ -609,7 +730,13 @@ async fn test_eth_call_invalid_data_shapes_error() {
     executor.set_balance(&from, primitive_types::U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Tensor op requires at least 8 bytes of data; send too short
     let bad_tensor_req = serde_json::json!({
@@ -620,7 +747,8 @@ async fn test_eth_call_invalid_data_shapes_error() {
              "gas":"0x186a0","gasPrice":"0x1","data":"0x01"},
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp_t = io.handle_request(&bad_tensor_req).await.unwrap();
     let vt: serde_json::Value = serde_json::from_str(&resp_t).unwrap();
     if vt.get("error").is_none() {
@@ -637,7 +765,8 @@ async fn test_eth_call_invalid_data_shapes_error() {
              "data": format!("0x{}", hex::encode([0x01, 0x02, 0x03]))},
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp_z = io.handle_request(&bad_zk_req).await.unwrap();
     let vz: serde_json::Value = serde_json::from_str(&resp_z).unwrap();
     if vz.get("error").is_none() {
@@ -656,7 +785,8 @@ async fn test_eth_call_invalid_data_shapes_error() {
              "data": "0xdeadbeef"},
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp_ml = io.handle_request(&bad_ml_req).await.unwrap();
     let vml: serde_json::Value = serde_json::from_str(&resp_ml).unwrap();
     if vml.get("error").is_none() {
@@ -692,7 +822,10 @@ async fn test_eth_call_ai_model_load_path() {
         access_policy: AccessPolicy::Public,
         usage_stats: Default::default(),
     };
-    executor.state_db().register_model(model_id, model_state).unwrap();
+    executor
+        .state_db()
+        .register_model(model_id, model_state)
+        .unwrap();
 
     // Code with MODEL_LOAD opcode (0xF1)
     let to = Address([0x66; 20]);
@@ -701,7 +834,13 @@ async fn test_eth_call_ai_model_load_path() {
     executor.set_balance(&from, primitive_types::U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    lattice_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor.clone(), 1);
+    lattice_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage.clone(),
+        mempool,
+        executor.clone(),
+        1,
+    );
 
     // Data: 32-byte model hash
     let req = serde_json::json!({
@@ -716,7 +855,8 @@ async fn test_eth_call_ai_model_load_path() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     let out = v["result"].as_str().unwrap();
@@ -753,7 +893,10 @@ async fn test_eth_call_ai_model_exec_path() {
         access_policy: AccessPolicy::Public,
         usage_stats: Default::default(),
     };
-    executor.state_db().register_model(model_id, model_state).unwrap();
+    executor
+        .state_db()
+        .register_model(model_id, model_state)
+        .unwrap();
 
     // Code with MODEL_EXEC opcode (0xF2)
     let to = Address([0x99; 20]);
@@ -779,7 +922,8 @@ async fn test_eth_call_ai_model_exec_path() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     let out = v["result"].as_str().unwrap();
@@ -823,7 +967,8 @@ async fn test_eth_call_ai_model_exec_missing_model_errors() {
             },
             "latest"
         ]
-    }).to_string();
+    })
+    .to_string();
     let resp = io.handle_request(&req).await.unwrap();
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     // Execution failure is represented as empty output hex

@@ -1,5 +1,5 @@
 use super::types::{Tensor, TensorError};
-use ndarray::{ArrayD, IxDyn, Axis};
+use ndarray::{ArrayD, Axis, IxDyn};
 
 /// Tensor operations implementation
 pub struct TensorOps;
@@ -78,7 +78,7 @@ impl TensorOps {
 
         if a_shape.len() < 2 || b_shape.len() < 2 {
             return Err(TensorError::InvalidShape(
-                "Tensors must have at least 2 dimensions for matmul".to_string()
+                "Tensors must have at least 2 dimensions for matmul".to_string(),
             ));
         }
 
@@ -91,9 +91,15 @@ impl TensorOps {
 
         // Perform matrix multiplication using ndarray's dot product
         // This is a simplified version - full implementation would handle batched matmul
-        let a_2d = a.data.view().into_dimensionality::<ndarray::Ix2>()
+        let a_2d = a
+            .data
+            .view()
+            .into_dimensionality::<ndarray::Ix2>()
             .map_err(|_| TensorError::InvalidShape("Cannot convert to 2D".to_string()))?;
-        let b_2d = b.data.view().into_dimensionality::<ndarray::Ix2>()
+        let b_2d = b
+            .data
+            .view()
+            .into_dimensionality::<ndarray::Ix2>()
             .map_err(|_| TensorError::InvalidShape("Cannot convert to 2D".to_string()))?;
 
         let result_2d = a_2d.dot(&b_2d);
@@ -114,7 +120,7 @@ impl TensorOps {
         let shape = &tensor.shape.0;
         if shape.len() < 2 {
             return Err(TensorError::InvalidShape(
-                "Tensor must have at least 2 dimensions".to_string()
+                "Tensor must have at least 2 dimensions".to_string(),
             ));
         }
 
@@ -170,12 +176,14 @@ impl TensorOps {
     /// Apply Softmax activation along the last axis
     pub fn softmax(tensor: &Tensor) -> Result<Tensor, TensorError> {
         let axis = tensor.shape.0.len() - 1;
-        
+
         // Compute exp(x - max) for numerical stability
-        let max = tensor.data.fold_axis(Axis(axis), f32::NEG_INFINITY, |&a, &b| a.max(b));
+        let max = tensor
+            .data
+            .fold_axis(Axis(axis), f32::NEG_INFINITY, |&a, &b| a.max(b));
         let exp_values = &tensor.data - &max.insert_axis(Axis(axis));
         let exp_values = exp_values.mapv(|x| x.exp());
-        
+
         // Sum along axis
         let sum = exp_values.sum_axis(Axis(axis)).insert_axis(Axis(axis));
         let result = exp_values / sum;
@@ -223,22 +231,22 @@ impl TensorOps {
     ) -> Result<Tensor, TensorError> {
         // This is a simplified implementation
         // Full implementation would handle multiple channels, batches, etc.
-        
+
         let input_shape = &input.shape.0;
         let kernel_shape = &kernel.shape.0;
 
         if input_shape.len() != 4 || kernel_shape.len() != 4 {
             return Err(TensorError::InvalidShape(
-                "Conv2d expects 4D tensors (batch, channel, height, width)".to_string()
+                "Conv2d expects 4D tensors (batch, channel, height, width)".to_string(),
             ));
         }
 
         // Calculate output dimensions
         let out_h = (input_shape[2] + 2 * padding.0 - kernel_shape[2]) / stride.0 + 1;
         let out_w = (input_shape[3] + 2 * padding.1 - kernel_shape[3]) / stride.1 + 1;
-        
+
         let output_shape = vec![input_shape[0], kernel_shape[0], out_h, out_w];
-        
+
         // Create output tensor (simplified - just zeros for now)
         // Full implementation would perform actual convolution
         Ok(Tensor::zeros(output_shape))
@@ -251,19 +259,19 @@ impl TensorOps {
         stride: (usize, usize),
     ) -> Result<Tensor, TensorError> {
         let input_shape = &input.shape.0;
-        
+
         if input_shape.len() != 4 {
             return Err(TensorError::InvalidShape(
-                "MaxPool2d expects 4D tensor".to_string()
+                "MaxPool2d expects 4D tensor".to_string(),
             ));
         }
 
         // Calculate output dimensions
         let out_h = (input_shape[2] - kernel_size.0) / stride.0 + 1;
         let out_w = (input_shape[3] - kernel_size.1) / stride.1 + 1;
-        
+
         let output_shape = vec![input_shape[0], input_shape[1], out_h, out_w];
-        
+
         // Create output tensor (simplified - just zeros for now)
         // Full implementation would perform actual max pooling
         Ok(Tensor::zeros(output_shape))
@@ -278,14 +286,18 @@ impl TensorOps {
     ) -> Result<Tensor, TensorError> {
         // Compute mean and variance along batch dimension
         let mean = Self::mean(input);
-        let variance = input.data.mapv(|x| (x - mean).powi(2)).mean().unwrap_or(0.0);
-        
+        let variance = input
+            .data
+            .mapv(|x| (x - mean).powi(2))
+            .mean()
+            .unwrap_or(0.0);
+
         // Normalize
         let normalized = input.data.mapv(|x| (x - mean) / (variance + eps).sqrt());
-        
+
         // Scale and shift
         let scaled = &normalized * &gamma.data + &beta.data;
-        
+
         Ok(Tensor {
             data: scaled,
             shape: input.shape.clone(),
@@ -300,12 +312,12 @@ impl TensorOps {
             return tensor.clone();
         }
 
-        use ndarray_rand::RandomExt;
         use ndarray_rand::rand_distr::Uniform;
-        
+        use ndarray_rand::RandomExt;
+
         let mask = ArrayD::random(tensor.data.raw_dim(), Uniform::new(0.0, 1.0));
         let mask = mask.mapv(|x| if x > p { 1.0 / (1.0 - p) } else { 0.0 });
-        
+
         Tensor {
             data: &tensor.data * &mask,
             shape: tensor.shape.clone(),

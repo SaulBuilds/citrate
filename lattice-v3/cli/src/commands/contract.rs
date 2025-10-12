@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
+use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
-use serde_json::json;
 
 use crate::config::Config;
 
@@ -13,15 +13,15 @@ pub enum ContractCommands {
     Deploy {
         /// Path to contract bytecode or WASM file
         contract: PathBuf,
-        
+
         /// Constructor arguments (JSON)
         #[arg(short, long)]
         args: Option<String>,
-        
+
         /// Account to deploy from
         #[arg(short, long)]
         account: Option<String>,
-        
+
         /// Contract value in wei
         #[arg(short, long, default_value = "0")]
         value: String,
@@ -31,18 +31,18 @@ pub enum ContractCommands {
     Call {
         /// Contract address
         address: String,
-        
+
         /// Method signature (e.g., "transfer(address,uint256)")
         method: String,
-        
+
         /// Method arguments (JSON array)
         #[arg(short, long)]
         args: Option<String>,
-        
+
         /// Account to call from
         #[arg(short, long)]
         account: Option<String>,
-        
+
         /// Value to send in wei
         #[arg(short, long, default_value = "0")]
         value: String,
@@ -52,10 +52,10 @@ pub enum ContractCommands {
     Read {
         /// Contract address
         address: String,
-        
+
         /// Method signature
         method: String,
-        
+
         /// Method arguments (JSON array)
         #[arg(short, long)]
         args: Option<String>,
@@ -65,7 +65,7 @@ pub enum ContractCommands {
     Code {
         /// Contract address
         address: String,
-        
+
         /// Output file path (optional)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -75,14 +75,14 @@ pub enum ContractCommands {
     Verify {
         /// Contract address
         address: String,
-        
+
         /// Source code file
         source: PathBuf,
-        
+
         /// Compiler version
         #[arg(short, long)]
         compiler: String,
-        
+
         /// Optimization enabled
         #[arg(short, long)]
         optimized: bool,
@@ -90,7 +90,7 @@ pub enum ContractCommands {
         /// Optional runtime bytecode (hex). If not provided, RPC can compile source if configured.
         #[arg(long)]
         runtime_bytecode: Option<String>,
-        
+
         /// Optional path to runtime bytecode file (hex). Used if --runtime-bytecode not set.
         #[arg(long)]
         runtime_bytecode_file: Option<PathBuf>,
@@ -112,23 +112,55 @@ pub enum ContractCommands {
 
 pub async fn execute(cmd: ContractCommands, config: &Config) -> Result<()> {
     match cmd {
-        ContractCommands::Deploy { contract, args, account, value } => {
+        ContractCommands::Deploy {
+            contract,
+            args,
+            account,
+            value,
+        } => {
             deploy_contract(config, contract, args, account, value).await?;
         }
-        ContractCommands::Call { address, method, args, account, value } => {
+        ContractCommands::Call {
+            address,
+            method,
+            args,
+            account,
+            value,
+        } => {
             call_contract(config, &address, &method, args, account, value).await?;
         }
-        ContractCommands::Read { address, method, args } => {
+        ContractCommands::Read {
+            address,
+            method,
+            args,
+        } => {
             read_contract(config, &address, &method, args).await?;
         }
         ContractCommands::Code { address, output } => {
             get_contract_code(config, &address, output).await?;
         }
-        ContractCommands::Verify { address, source, compiler, optimized, runtime_bytecode, runtime_bytecode_file, get } => {
+        ContractCommands::Verify {
+            address,
+            source,
+            compiler,
+            optimized,
+            runtime_bytecode,
+            runtime_bytecode_file,
+            get,
+        } => {
             if let Some(addr) = get {
                 get_verification(config, &addr).await?;
             } else {
-                verify_contract(config, &address, source, &compiler, optimized, runtime_bytecode, runtime_bytecode_file).await?;
+                verify_contract(
+                    config,
+                    &address,
+                    source,
+                    &compiler,
+                    optimized,
+                    runtime_bytecode,
+                    runtime_bytecode_file,
+                )
+                .await?;
             }
         }
         ContractCommands::VerifyGet { address } => {
@@ -149,7 +181,7 @@ async fn deploy_contract(
     value: String,
 ) -> Result<()> {
     println!("{}", "Deploying contract...".cyan());
-    
+
     // Read contract bytecode
     let bytecode = if contract_path.extension().and_then(|s| s.to_str()) == Some("wasm") {
         // WASM contract
@@ -162,22 +194,22 @@ async fn deploy_contract(
             .with_context(|| format!("Failed to read contract file {:?}", contract_path))?;
         content.trim().trim_start_matches("0x").to_string()
     };
-    
+
     // Parse constructor arguments
     let _constructor_args = if let Some(args_str) = args {
         serde_json::from_str(&args_str).context("Invalid constructor arguments JSON")?
     } else {
         json!([])
     };
-    
+
     // Get account
-    let from_account = account.or(config.default_account.clone())
+    let from_account = account
+        .or(config.default_account.clone())
         .context("No account specified and no default account configured")?;
-    
+
     // Parse value
-    let value_wei = value.parse::<u128>()
-        .context("Invalid value")?;
-    
+    let value_wei = value.parse::<u128>().context("Invalid value")?;
+
     // Make RPC call to deploy
     let client = reqwest::Client::new();
     let response = client
@@ -197,18 +229,18 @@ async fn deploy_contract(
         .send()
         .await
         .context("Failed to connect to RPC endpoint")?;
-    
+
     let result: serde_json::Value = response.json().await?;
-    
+
     if let Some(tx_hash) = result["result"].as_str() {
         println!("{}", "✓ Contract deployment initiated".green());
         println!("Transaction: {}", tx_hash.cyan());
-        
+
         // Wait for receipt
         println!("Waiting for confirmation...");
-        
+
         let receipt = wait_for_receipt(config, tx_hash).await?;
-        
+
         if let Some(contract_address) = receipt["contractAddress"].as_str() {
             println!("{}", "✓ Contract deployed successfully".green().bold());
             println!("Contract Address: {}", contract_address.cyan().bold());
@@ -217,11 +249,14 @@ async fn deploy_contract(
             anyhow::bail!("Contract deployment failed");
         }
     } else if let Some(error) = result["error"].as_object() {
-        anyhow::bail!("Deployment failed: {}", error["message"].as_str().unwrap_or("Unknown error"));
+        anyhow::bail!(
+            "Deployment failed: {}",
+            error["message"].as_str().unwrap_or("Unknown error")
+        );
     } else {
         anyhow::bail!("Unexpected response from RPC");
     }
-    
+
     Ok(())
 }
 
@@ -234,25 +269,25 @@ async fn call_contract(
     value: String,
 ) -> Result<()> {
     println!("{}", format!("Calling {}...", method).cyan());
-    
+
     // Parse method arguments
     let method_args = if let Some(args_str) = args {
         serde_json::from_str(&args_str).context("Invalid method arguments JSON")?
     } else {
         json!([])
     };
-    
+
     // Encode method call
     let call_data = encode_method_call(method, method_args)?;
-    
+
     // Get account
-    let from_account = account.or(config.default_account.clone())
+    let from_account = account
+        .or(config.default_account.clone())
         .context("No account specified and no default account configured")?;
-    
+
     // Parse value
-    let value_wei = value.parse::<u128>()
-        .context("Invalid value")?;
-    
+    let value_wei = value.parse::<u128>().context("Invalid value")?;
+
     // Make RPC call
     let client = reqwest::Client::new();
     let response = client
@@ -273,22 +308,22 @@ async fn call_contract(
         .send()
         .await
         .context("Failed to connect to RPC endpoint")?;
-    
+
     let result: serde_json::Value = response.json().await?;
-    
+
     if let Some(tx_hash) = result["result"].as_str() {
         println!("{}", "✓ Transaction sent".green());
         println!("Transaction: {}", tx_hash.cyan());
-        
+
         // Wait for receipt
         println!("Waiting for confirmation...");
-        
+
         let receipt = wait_for_receipt(config, tx_hash).await?;
-        
+
         if receipt["status"].as_str() == Some("0x1") {
             println!("{}", "✓ Transaction successful".green().bold());
             println!("Gas Used: {}", receipt["gasUsed"].as_str().unwrap_or("N/A"));
-            
+
             // Decode logs if any
             if let Some(logs) = receipt["logs"].as_array() {
                 if !logs.is_empty() {
@@ -306,11 +341,14 @@ async fn call_contract(
             anyhow::bail!("Transaction failed");
         }
     } else if let Some(error) = result["error"].as_object() {
-        anyhow::bail!("Call failed: {}", error["message"].as_str().unwrap_or("Unknown error"));
+        anyhow::bail!(
+            "Call failed: {}",
+            error["message"].as_str().unwrap_or("Unknown error")
+        );
     } else {
         anyhow::bail!("Unexpected response from RPC");
     }
-    
+
     Ok(())
 }
 
@@ -326,10 +364,10 @@ async fn read_contract(
     } else {
         json!([])
     };
-    
+
     // Encode method call
     let call_data = encode_method_call(method, method_args)?;
-    
+
     // Make RPC call (eth_call doesn't require from address)
     let client = reqwest::Client::new();
     let response = client
@@ -346,13 +384,13 @@ async fn read_contract(
         .send()
         .await
         .context("Failed to connect to RPC endpoint")?;
-    
+
     let result: serde_json::Value = response.json().await?;
-    
+
     if let Some(data) = result["result"].as_str() {
         println!("{}", "Result:".bold());
         println!("Raw: {}", data);
-        
+
         // Try to decode as common types
         if data.len() == 66 {
             // Possibly uint256
@@ -366,26 +404,28 @@ async fn read_contract(
             // Try as string
             if let Ok(bytes) = hex::decode(&data[2..]) {
                 if let Ok(text) = String::from_utf8(bytes.clone()) {
-                    if text.chars().all(|c| c.is_ascii_graphic() || c.is_ascii_whitespace()) {
+                    if text
+                        .chars()
+                        .all(|c| c.is_ascii_graphic() || c.is_ascii_whitespace())
+                    {
                         println!("Decoded (string): {}", text.trim());
                     }
                 }
             }
         }
     } else if let Some(error) = result["error"].as_object() {
-        anyhow::bail!("Call failed: {}", error["message"].as_str().unwrap_or("Unknown error"));
+        anyhow::bail!(
+            "Call failed: {}",
+            error["message"].as_str().unwrap_or("Unknown error")
+        );
     } else {
         anyhow::bail!("Unexpected response from RPC");
     }
-    
+
     Ok(())
 }
 
-async fn get_contract_code(
-    config: &Config,
-    address: &str,
-    output: Option<PathBuf>,
-) -> Result<()> {
+async fn get_contract_code(config: &Config, address: &str, output: Option<PathBuf>) -> Result<()> {
     // Make RPC call to get code
     let client = reqwest::Client::new();
     let response = client
@@ -399,19 +439,18 @@ async fn get_contract_code(
         .send()
         .await
         .context("Failed to connect to RPC endpoint")?;
-    
+
     let result: serde_json::Value = response.json().await?;
-    
+
     if let Some(code) = result["result"].as_str() {
         if code == "0x" {
             println!("{}", "No contract code at this address".yellow());
         } else {
-            let code_bytes = hex::decode(&code[2..])
-                .context("Invalid code format")?;
-            
+            let code_bytes = hex::decode(&code[2..]).context("Invalid code format")?;
+
             println!("{}", "Contract code retrieved".green());
             println!("Size: {} bytes", code_bytes.len());
-            
+
             if let Some(path) = output {
                 fs::write(&path, &code_bytes)
                     .with_context(|| format!("Failed to write code to {:?}", path))?;
@@ -425,11 +464,14 @@ async fn get_contract_code(
             }
         }
     } else if let Some(error) = result["error"].as_object() {
-        anyhow::bail!("Query failed: {}", error["message"].as_str().unwrap_or("Unknown error"));
+        anyhow::bail!(
+            "Query failed: {}",
+            error["message"].as_str().unwrap_or("Unknown error")
+        );
     } else {
         anyhow::bail!("Unexpected response from RPC");
     }
-    
+
     Ok(())
 }
 
@@ -443,7 +485,7 @@ async fn verify_contract(
     runtime_bytecode_file: Option<PathBuf>,
 ) -> Result<()> {
     println!("{}", "Verifying contract...".cyan());
-    
+
     // Read source code
     let source_code = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read source file {:?}", source_path))?;
@@ -452,16 +494,24 @@ async fn verify_contract(
     let mut runtime_bc_hex: Option<String> = None;
     if let Some(hex_in) = runtime_bytecode {
         let s = hex_in.trim();
-        let s = if s.starts_with("0x") { s.to_string() } else { format!("0x{}", s) };
+        let s = if s.starts_with("0x") {
+            s.to_string()
+        } else {
+            format!("0x{}", s)
+        };
         runtime_bc_hex = Some(s);
     } else if let Some(path) = runtime_bytecode_file {
         let content = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read runtime bytecode file {:?}", path))?;
         let s = content.trim();
-        let s = if s.starts_with("0x") { s.to_string() } else { format!("0x{}", s) };
+        let s = if s.starts_with("0x") {
+            s.to_string()
+        } else {
+            format!("0x{}", s)
+        };
         runtime_bc_hex = Some(s);
     }
-    
+
     // Make RPC call to verify
     let client = reqwest::Client::new();
     let response = client
@@ -481,18 +531,26 @@ async fn verify_contract(
         .send()
         .await
         .context("Failed to connect to RPC endpoint")?;
-    
+
     let result: serde_json::Value = response.json().await?;
-    
+
     if result["result"]["verified"].as_bool() == Some(true) {
         println!("{}", "✓ Contract verified successfully".green().bold());
-        println!("Verification ID: {}", result["result"]["verification_id"].as_str().unwrap_or("N/A"));
+        println!(
+            "Verification ID: {}",
+            result["result"]["verification_id"]
+                .as_str()
+                .unwrap_or("N/A")
+        );
     } else if let Some(error) = result["error"].as_object() {
-        anyhow::bail!("Verification failed: {}", error["message"].as_str().unwrap_or("Unknown error"));
+        anyhow::bail!(
+            "Verification failed: {}",
+            error["message"].as_str().unwrap_or("Unknown error")
+        );
     } else {
         anyhow::bail!("Contract verification failed");
     }
-    
+
     Ok(())
 }
 
@@ -513,10 +571,22 @@ async fn get_verification(config: &Config, address: &str) -> Result<()> {
     let v: serde_json::Value = response.json().await?;
     if let Some(rec) = v["result"].as_object() {
         println!("{}", "Verification Record:".bold());
-        println!("Address: {}", rec.get("address").and_then(|s| s.as_str()).unwrap_or(""));
-        println!("Verified: {}", rec.get("verified").and_then(|b| b.as_bool()).unwrap_or(false));
-        if let Some(id) = rec.get("verification_id").and_then(|s| s.as_str()) { println!("ID: {}", id); }
-        if let Some(ts) = rec.get("timestamp").and_then(|s| s.as_str()) { println!("Timestamp: {}", ts); }
+        println!(
+            "Address: {}",
+            rec.get("address").and_then(|s| s.as_str()).unwrap_or("")
+        );
+        println!(
+            "Verified: {}",
+            rec.get("verified")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false)
+        );
+        if let Some(id) = rec.get("verification_id").and_then(|s| s.as_str()) {
+            println!("ID: {}", id);
+        }
+        if let Some(ts) = rec.get("timestamp").and_then(|s| s.as_str()) {
+            println!("Timestamp: {}", ts);
+        }
         Ok(())
     } else {
         println!("No verification record for {}", address);
@@ -555,10 +625,10 @@ async fn list_verifications(config: &Config) -> Result<()> {
 
 async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::Value> {
     let client = reqwest::Client::new();
-    
+
     for _ in 0..30 {
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-        
+
         let response = client
             .post(&config.rpc_endpoint)
             .json(&json!({
@@ -569,14 +639,14 @@ async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::
             }))
             .send()
             .await?;
-        
+
         let result: serde_json::Value = response.json().await?;
-        
+
         if let Some(receipt) = result["result"].as_object() {
             return Ok(json!(receipt));
         }
     }
-    
+
     anyhow::bail!("Transaction receipt not found after 60 seconds");
 }
 
@@ -591,10 +661,10 @@ fn encode_method_call(method_sig: &str, args: serde_json::Value) -> Result<Strin
     let selector = &hash[..4];
 
     // Parse types from signature, e.g. "transfer(address,uint256)"
-    let open = method_sig
-        .find('(')
-        .context("Invalid method signature: missing '
-'")?;
+    let open = method_sig.find('(').context(
+        "Invalid method signature: missing '
+'",
+    )?;
     let close = method_sig
         .rfind(')')
         .context("Invalid method signature: missing ')'")?;
@@ -629,9 +699,7 @@ fn encode_method_call(method_sig: &str, args: serde_json::Value) -> Result<Strin
         match ty.as_str() {
             // address: 20 bytes, left-padded to 32
             "address" => {
-                let s = val
-                    .as_str()
-                    .context("address must be a hex string")?;
+                let s = val.as_str().context("address must be a hex string")?;
                 let hexstr = s.trim().trim_start_matches("0x");
                 let bytes = hex::decode(hexstr).context("invalid address hex")?;
                 if bytes.len() != 20 {
@@ -660,9 +728,7 @@ fn encode_method_call(method_sig: &str, args: serde_json::Value) -> Result<Strin
             }
             // bytes32: fixed 32 bytes (or shorter and right-padded with zeros)
             "bytes32" => {
-                let s = val
-                    .as_str()
-                    .context("bytes32 must be a hex string")?;
+                let s = val.as_str().context("bytes32 must be a hex string")?;
                 let hexstr = s.trim().trim_start_matches("0x");
                 let mut bytes = hex::decode(hexstr).context("invalid bytes32 hex")?;
                 if bytes.len() > 32 {
@@ -701,9 +767,7 @@ fn encode_method_call(method_sig: &str, args: serde_json::Value) -> Result<Strin
                             word[32 - bytes.len()..32].copy_from_slice(&bytes);
                         } else {
                             // Decimal string, parse into u128
-                            let val = ss
-                                .parse::<u128>()
-                                .context("invalid uint decimal string")?;
+                            let val = ss.parse::<u128>().context("invalid uint decimal string")?;
                             let be = val.to_be_bytes();
                             word[16..32].copy_from_slice(&be);
                         }

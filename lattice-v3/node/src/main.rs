@@ -1,26 +1,27 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lattice_api::{RpcServer, RpcConfig};
+use lattice_api::{RpcConfig, RpcServer};
 use lattice_consensus::crypto;
 use lattice_execution::{Executor, StateDB};
-use lattice_network::peer::{PeerManager, PeerManagerConfig};
 use lattice_network::peer::PeerId;
+use lattice_network::peer::{PeerManager, PeerManagerConfig};
 use lattice_sequencer::mempool::{Mempool, MempoolConfig};
-use lattice_storage::{StorageManager, pruning::PruningConfig};
+use lattice_storage::{pruning::PruningConfig, StorageManager};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
+mod adapters;
+mod artifact;
 mod config;
 mod genesis;
-mod producer;
 mod inference;
-mod artifact;
+mod producer;
 
 use config::NodeConfig;
-use genesis::{GenesisConfig, initialize_genesis_state};
+use genesis::{initialize_genesis_state, GenesisConfig};
 use producer::BlockProducer;
 
 #[derive(Parser)]
@@ -85,10 +86,10 @@ enum Commands {
         #[arg(long, default_value = "1337")]
         chain_id: u64,
     },
-    
+
     /// Run devnet with default configuration
     Devnet,
-    
+
     /// Generate a new keypair for signing
     Keygen,
 }
@@ -97,14 +98,11 @@ enum Commands {
 async fn main() -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("lattice=info".parse()?)
-        )
+        .with_env_filter(EnvFilter::from_default_env().add_directive("lattice=info".parse()?))
         .init();
-    
+
     let cli = Cli::parse();
-    
+
     // Handle subcommands
     match cli.command {
         Some(Commands::Init { chain_id }) => {
@@ -123,7 +121,7 @@ async fn main() -> Result<()> {
             // Run normal node
         }
     }
-    
+
     // Load or create config
     let config = if let Some(config_path) = cli.config {
         NodeConfig::from_file(&config_path)?
@@ -142,14 +140,16 @@ async fn main() -> Result<()> {
 
     // Network configuration overrides
     if let Some(p2p_addr) = cli.p2p_addr {
-        config.network.listen_addr = p2p_addr.parse()
+        config.network.listen_addr = p2p_addr
+            .parse()
             .map_err(|e| anyhow::anyhow!("Invalid P2P address: {}", e))?;
     }
     if !cli.bootstrap_nodes.is_empty() {
         config.network.bootstrap_nodes = cli.bootstrap_nodes;
     }
     if let Some(rpc_addr) = cli.rpc_addr {
-        config.rpc.listen_addr = rpc_addr.parse()
+        config.rpc.listen_addr = rpc_addr
+            .parse()
             .map_err(|e| anyhow::anyhow!("Invalid RPC address: {}", e))?;
     }
     config.network.max_peers = cli.max_peers;
@@ -165,80 +165,79 @@ async fn main() -> Result<()> {
     // If running as bootstrap node, clear bootstrap_nodes list
     if cli.bootstrap {
         config.network.bootstrap_nodes.clear();
-        info!("Running as bootstrap node on {}", config.network.listen_addr);
+        info!(
+            "Running as bootstrap node on {}",
+            config.network.listen_addr
+        );
     }
-    
+
     // Start node
     start_node(config).await
 }
 
 async fn init_chain(chain_id: u64) -> Result<()> {
     info!("Initializing new chain with ID {}", chain_id);
-    
+
     let temp_dir = PathBuf::from(".lattice");
     std::fs::create_dir_all(&temp_dir)?;
-    
+
     // Create storage
-    let storage = Arc::new(StorageManager::new(
-        &temp_dir,
-        PruningConfig::default(),
-    )?);
-    
+    let storage = Arc::new(StorageManager::new(&temp_dir, PruningConfig::default())?);
+
     // Create executor with persistent storage
     let state_db = Arc::new(StateDB::new());
     let executor = Arc::new(Executor::with_storage(
         state_db,
-        Some(storage.state.clone())
+        Some(storage.state.clone()),
     ));
-    
+
     // Initialize genesis
     let genesis_config = GenesisConfig {
         chain_id,
         ..Default::default()
     };
-    
-    let genesis_hash = initialize_genesis_state(
-        storage.clone(),
-        executor,
-        &genesis_config,
-    ).await?;
-    
-    info!("Genesis block created: {:?}", hex::encode(&genesis_hash.as_bytes()[..8]));
+
+    let genesis_hash = initialize_genesis_state(storage.clone(), executor, &genesis_config).await?;
+
+    info!(
+        "Genesis block created: {:?}",
+        hex::encode(&genesis_hash.as_bytes()[..8])
+    );
     info!("Chain initialized in {:?}", temp_dir);
-    
+
     Ok(())
 }
 
 async fn run_devnet() -> Result<()> {
     info!("Starting devnet...");
-    
+
     let mut config = NodeConfig::devnet();
     config.storage.data_dir = PathBuf::from(".lattice-devnet");
-    
+
     // Initialize chain if needed
     if !config.storage.data_dir.exists() {
         std::fs::create_dir_all(&config.storage.data_dir)?;
-        
+
         let storage = Arc::new(StorageManager::new(
             &config.storage.data_dir,
             PruningConfig::default(),
         )?);
-        
+
         let state_db = Arc::new(StateDB::new());
         let executor = Arc::new(Executor::with_storage(
             state_db,
-            Some(storage.state.clone())
+            Some(storage.state.clone()),
         ));
-        
+
         let genesis_config = GenesisConfig {
             chain_id: config.chain.chain_id,
             ..Default::default()
         };
-        
+
         initialize_genesis_state(storage, executor, &genesis_config).await?;
         info!("Devnet chain initialized");
     }
-    
+
     // Start node with devnet config
     start_node(config).await
 }
@@ -246,7 +245,7 @@ async fn run_devnet() -> Result<()> {
 fn generate_keypair() {
     let signing_key = crypto::generate_keypair();
     let verifying_key = signing_key.verifying_key();
-    
+
     println!("New keypair generated:");
     println!("Private key: {}", hex::encode(signing_key.to_bytes()));
     println!("Public key:  {}", hex::encode(verifying_key.to_bytes()));
@@ -256,7 +255,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     info!("Starting Lattice node...");
     info!("Chain ID: {}", config.chain.chain_id);
     info!("Data directory: {:?}", config.storage.data_dir);
-    
+
     // Create storage
     let storage = Arc::new(StorageManager::new(
         &config.storage.data_dir,
@@ -268,58 +267,93 @@ async fn start_node(config: NodeConfig) -> Result<()> {
             auto_prune: config.storage.pruning,
         },
     )?);
-    
+
     // Create state DB and executor with persistent storage
     let state_db = Arc::new(StateDB::new());
     // MCP + inference service
     let vm_for_mcp = Arc::new(lattice_execution::vm::VM::new(10_000_000));
-    let mcp = Arc::new(lattice_mcp::MCPService::new(storage.clone(), vm_for_mcp.clone()));
+    let mcp = Arc::new(lattice_mcp::MCPService::new(
+        storage.clone(),
+        vm_for_mcp.clone(),
+    ));
     // Provider address from config.mining.coinbase (hex 0x...)
     let provider_addr = {
         let mut a = [0u8; 20];
         let s = config.mining.coinbase.trim_start_matches("0x");
         if let Ok(bytes) = hex::decode(s) {
-            if bytes.len() >= 20 { a.copy_from_slice(&bytes[..20]); }
+            if bytes.len() >= 20 {
+                a.copy_from_slice(&bytes[..20]);
+            }
         }
         lattice_execution::types::Address(a)
     };
     // Flat provider fee = 0.01 LATT (1e16 wei)
     let provider_fee = primitive_types::U256::from(10u128.pow(16));
-    let inf_svc = Arc::new(crate::inference::NodeInferenceService::new(mcp.clone(), provider_addr, provider_fee));
+    let inf_svc = Arc::new(crate::inference::NodeInferenceService::new(
+        mcp.clone(),
+        provider_addr,
+        provider_fee,
+    ));
 
     // Artifact service with governance provider list override
     let gov_addr = {
-        let mut a = [0u8;20]; a[18]=0x10; a[19]=0x03; lattice_execution::types::Address(a)
+        let mut a = [0u8; 20];
+        a[18] = 0x10;
+        a[19] = 0x03;
+        lattice_execution::types::Address(a)
     };
-    let providers_from_gov: Option<Vec<String>> = state_db.get_storage(&gov_addr, b"PARAM:ipfs_providers")
+    let providers_from_gov: Option<Vec<String>> = state_db
+        .get_storage(&gov_addr, b"PARAM:ipfs_providers")
         .and_then(|bytes| String::from_utf8(bytes).ok())
-        .map(|s| s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect());
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        });
     let art_svc = if let Some(providers) = providers_from_gov {
-        Arc::new(crate::artifact::NodeArtifactService::new_with_providers(providers))
+        Arc::new(crate::artifact::NodeArtifactService::new_with_providers(
+            providers,
+        ))
     } else {
         let ipfs_api = std::env::var("LATTICE_IPFS_API").ok();
         Arc::new(crate::artifact::NodeArtifactService::new(ipfs_api))
     };
 
+    let storage_bridge: Arc<dyn lattice_execution::executor::AIModelStorage> =
+        Arc::new(adapters::StorageAdapter::new(storage.clone()));
+    let registry_bridge: Arc<dyn lattice_execution::executor::ModelRegistryAdapter> =
+        Arc::new(adapters::MCPRegistryBridge::new(mcp.clone()));
+
     let exec_base = Executor::with_storage(state_db, Some(storage.state.clone()));
     let executor = Arc::new(
         exec_base
+            .with_ai_storage_adapter(storage_bridge)
+            .with_model_registry_adapter(registry_bridge)
             .with_inference_service(inf_svc)
-            .with_artifact_service(art_svc)
+            .with_artifact_service(art_svc),
     );
-    
+
     // Governance params: read min_gas_price override
     let governance_addr = {
-        let mut a = [0u8;20]; a[18]=0x10; a[19]=0x03; lattice_execution::types::Address(a)
+        let mut a = [0u8; 20];
+        a[18] = 0x10;
+        a[19] = 0x03;
+        lattice_execution::types::Address(a)
     };
     let mut min_gas_price_override: Option<u64> = None;
-    if let Some(bytes) = executor.state_db().get_storage(&governance_addr, b"PARAM:min_gas_price") {
+    if let Some(bytes) = executor
+        .state_db()
+        .get_storage(&governance_addr, b"PARAM:min_gas_price")
+    {
         if bytes.len() >= 8 {
-            let mut arr=[0u8;8]; arr.copy_from_slice(&bytes[..8]);
+            let mut arr = [0u8; 8];
+            arr.copy_from_slice(&bytes[..8]);
             min_gas_price_override = Some(u64::from_le_bytes(arr));
         } else if bytes.len() >= 4 {
             // support 32-bit little endian as fallback
-            let mut arr=[0u8;4]; arr.copy_from_slice(&bytes[..4]);
+            let mut arr = [0u8; 4];
+            arr.copy_from_slice(&bytes[..4]);
             min_gas_price_override = Some(u32::from_le_bytes(arr) as u64);
         }
     }
@@ -358,7 +392,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         require_valid_signature,
         chain_id: config.chain.chain_id,
     }));
-    
+
     // Create peer manager
     let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig {
         max_peers: config.network.max_peers,
@@ -370,14 +404,18 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     }));
 
     // Optionally start Prometheus metrics server
-    let metrics_enabled = std::env::var("LATTICE_METRICS").map(|v| {
-        matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on")
-    }).unwrap_or(false);
+    let metrics_enabled = std::env::var("LATTICE_METRICS")
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false);
     if metrics_enabled {
-        let addr_str = std::env::var("LATTICE_METRICS_ADDR").unwrap_or_else(|_| "0.0.0.0:9100".to_string());
+        let addr_str =
+            std::env::var("LATTICE_METRICS_ADDR").unwrap_or_else(|_| "0.0.0.0:9100".to_string());
         let addr: std::net::SocketAddr = addr_str.parse().unwrap();
         tokio::spawn(async move {
-            if let Err(e) = lattice_api::metrics_server::MetricsServer::new(addr).start().await {
+            if let Err(e) = lattice_api::metrics_server::MetricsServer::new(addr)
+                .start()
+                .await
+            {
                 tracing::warn!("Metrics server failed: {}", e);
             }
         });
@@ -407,14 +445,15 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         let network_id: u32 = config.chain.chain_id as u32;
 
         // Incoming message channel (log-only for now)
-        let (in_tx, mut in_rx) = tokio::sync::mpsc::channel::<(PeerId, lattice_network::NetworkMessage)>(512);
+        let (in_tx, mut in_rx) =
+            tokio::sync::mpsc::channel::<(PeerId, lattice_network::NetworkMessage)>(512);
         peer_manager.set_incoming(in_tx).await;
         let pm_for_rx = peer_manager.clone();
         let storage_for_handler = storage.clone();
         let mempool_for_handler = mempool.clone();
         tokio::spawn(async move {
-            use lattice_network::NetworkMessage;
             use lattice_consensus::types::Hash;
+            use lattice_network::NetworkMessage;
             use lattice_sequencer::mempool::TxClass;
             while let Some((pid, msg)) = in_rx.recv().await {
                 tracing::debug!("[P2P] from={} msg={:?}", pid.0, msg);
@@ -424,15 +463,19 @@ async fn start_node(config: NodeConfig) -> Result<()> {
                         tracing::info!("Received GetBlocks request from peer {} for {} blocks starting from {:?}", 
                                      pid.0, count, from);
                         let mut blocks = Vec::new();
-                        
+
                         // Handle genesis request (zero hash)
                         if from == Hash::new([0u8; 32]) {
                             tracing::info!("Serving blocks from genesis");
                             let mut h = 0u64;
                             let end_h = count as u64;
                             while h < end_h && blocks.len() < count as usize {
-                                if let Ok(Some(hash)) = storage_for_handler.blocks.get_block_by_height(h) {
-                                    if let Ok(Some(block)) = storage_for_handler.blocks.get_block(&hash) {
+                                if let Ok(Some(hash)) =
+                                    storage_for_handler.blocks.get_block_by_height(h)
+                                {
+                                    if let Ok(Some(block)) =
+                                        storage_for_handler.blocks.get_block(&hash)
+                                    {
                                         blocks.push(block);
                                     }
                                 }
@@ -440,13 +483,19 @@ async fn start_node(config: NodeConfig) -> Result<()> {
                             }
                         } else {
                             // Get blocks after the specified hash
-                            if let Ok(Some(start_block)) = storage_for_handler.blocks.get_block(&from) {
+                            if let Ok(Some(start_block)) =
+                                storage_for_handler.blocks.get_block(&from)
+                            {
                                 let start_h = start_block.header.height + 1;
                                 let end_h = start_h.saturating_add(count as u64);
                                 let mut h = start_h;
                                 while h < end_h && blocks.len() < count as usize {
-                                    if let Ok(Some(hash)) = storage_for_handler.blocks.get_block_by_height(h) {
-                                        if let Ok(Some(block)) = storage_for_handler.blocks.get_block(&hash) {
+                                    if let Ok(Some(hash)) =
+                                        storage_for_handler.blocks.get_block_by_height(h)
+                                    {
+                                        if let Ok(Some(block)) =
+                                            storage_for_handler.blocks.get_block(&hash)
+                                        {
                                             blocks.push(block);
                                         }
                                     }
@@ -454,9 +503,11 @@ async fn start_node(config: NodeConfig) -> Result<()> {
                                 }
                             }
                         }
-                        
+
                         tracing::info!("Sending {} blocks to peer {}", blocks.len(), pid.0);
-                        let _ = pm_for_rx.send_to_peers(&[pid.clone()], &NetworkMessage::Blocks { blocks }).await;
+                        let _ = pm_for_rx
+                            .send_to_peers(&[pid.clone()], &NetworkMessage::Blocks { blocks })
+                            .await;
                     }
                     NetworkMessage::GetTransactions { hashes } => {
                         let mut txs = Vec::new();
@@ -465,22 +516,37 @@ async fn start_node(config: NodeConfig) -> Result<()> {
                                 txs.push(tx);
                             }
                         }
-                        let _ = pm_for_rx.send_to_peers(&[pid.clone()], &NetworkMessage::Transactions { transactions: txs }).await;
+                        let _ = pm_for_rx
+                            .send_to_peers(
+                                &[pid.clone()],
+                                &NetworkMessage::Transactions { transactions: txs },
+                            )
+                            .await;
                     }
                     NetworkMessage::NewTransaction { transaction } => {
                         // Add to mempool if not already present
                         if !mempool_for_handler.contains(&transaction.hash).await {
-                            let _ = mempool_for_handler.add_transaction(transaction.clone(), TxClass::Standard).await;
+                            let _ = mempool_for_handler
+                                .add_transaction(transaction.clone(), TxClass::Standard)
+                                .await;
                             // Re-broadcast to other peers
-                            let _ = pm_for_rx.broadcast(&NetworkMessage::NewTransaction { transaction }).await;
+                            let _ = pm_for_rx
+                                .broadcast(&NetworkMessage::NewTransaction { transaction })
+                                .await;
                         }
                     }
                     NetworkMessage::NewBlock { block } => {
                         // Store block if we don't have it
-                        if !storage_for_handler.blocks.has_block(&block.header.block_hash).unwrap_or(false) {
+                        if !storage_for_handler
+                            .blocks
+                            .has_block(&block.header.block_hash)
+                            .unwrap_or(false)
+                        {
                             let _ = storage_for_handler.blocks.put_block(&block);
                             // Re-broadcast to other peers
-                            let _ = pm_for_rx.broadcast(&NetworkMessage::NewBlock { block }).await;
+                            let _ = pm_for_rx
+                                .broadcast(&NetworkMessage::NewBlock { block })
+                                .await;
                         }
                     }
                     _ => {
@@ -493,7 +559,13 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         // Start TCP listener
         let listen_addr = config.network.listen_addr;
         if let Err(e) = peer_manager
-            .start_listener(listen_addr, network_id, genesis_hash, head_height, head_hash)
+            .start_listener(
+                listen_addr,
+                network_id,
+                genesis_hash,
+                head_height,
+                head_hash,
+            )
             .await
         {
             warn!("Failed to start P2P listener on {}: {}", listen_addr, e);
@@ -505,25 +577,34 @@ async fn start_node(config: NodeConfig) -> Result<()> {
                 let pm = peer_manager.clone();
                 let g = genesis_hash;
                 tokio::spawn(async move {
-                    let _ = pm.connect_bootnode_real(Some(pid), addr, network_id, g, head_height, head_hash).await;
+                    let _ = pm
+                        .connect_bootnode_real(
+                            Some(pid),
+                            addr,
+                            network_id,
+                            g,
+                            head_height,
+                            head_hash,
+                        )
+                        .await;
                 });
             } else {
                 tracing::warn!("Invalid bootstrap node: {}", entry);
             }
         }
     }
-    
+
     // Start RPC server if enabled
     let rpc_handle = if config.rpc.enabled {
         info!("Starting RPC server on {}", config.rpc.listen_addr);
-        
+
         let rpc_config = RpcConfig {
             listen_addr: config.rpc.listen_addr,
             max_connections: 100,
             cors_domains: vec!["*".to_string()],
             threads: 4,
         };
-        
+
         let rpc_server = RpcServer::new(
             rpc_config,
             storage.clone(),
@@ -532,7 +613,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
             executor.clone(),
             config.chain.chain_id,
         );
-        
+
         Some(tokio::spawn(async move {
             match rpc_server.spawn() {
                 Ok((close_handle, join_handle)) => {
@@ -555,24 +636,28 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     } else {
         None
     };
-    
+
     // Start block producer if mining is enabled
     if config.mining.enabled {
         info!("Starting block producer...");
-        
+
         // Parse coinbase address
-        let coinbase_bytes = hex::decode(&config.mining.coinbase)
-            .unwrap_or_else(|_| vec![0; 32]);
+        let coinbase_bytes = hex::decode(&config.mining.coinbase).unwrap_or_else(|_| vec![0; 32]);
         let mut coinbase = [0u8; 32];
         coinbase.copy_from_slice(&coinbase_bytes[..32.min(coinbase_bytes.len())]);
-        
+
         // Always use peer manager if we have one (network is already setup above)
         let producer_peer_manager = Some(peer_manager.clone());
-        
+
         // Treasury percentage from governance
         let mut treasury_percentage = 10u8;
-        if let Some(bytes) = executor.state_db().get_storage(&governance_addr, b"PARAM:treasury_percentage") {
-            if !bytes.is_empty() { treasury_percentage = bytes[0]; }
+        if let Some(bytes) = executor
+            .state_db()
+            .get_storage(&governance_addr, b"PARAM:treasury_percentage")
+        {
+            if !bytes.is_empty() {
+                treasury_percentage = bytes[0];
+            }
         }
 
         let reward_config = lattice_economics::rewards::RewardConfig {
@@ -593,23 +678,23 @@ async fn start_node(config: NodeConfig) -> Result<()> {
             config.mining.target_block_time,
             reward_config,
         ));
-        
+
         tokio::spawn(async move {
             producer.start().await;
         });
-        
+
         info!("Block producer started");
     }
-    
+
     // Wait for shutdown signal
     tokio::signal::ctrl_c().await?;
     info!("Shutting down...");
-    
+
     // Wait for RPC to shut down
     if let Some(handle) = rpc_handle {
         handle.abort();
     }
-    
+
     Ok(())
 }
 

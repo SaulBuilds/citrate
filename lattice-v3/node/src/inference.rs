@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use async_trait::async_trait;
-use lattice_execution::{Address, ModelId, executor::InferenceService};
+use lattice_execution::{executor::InferenceService, Address, ModelId};
 use lattice_mcp::MCPService;
 use primitive_types::U256;
+use std::sync::Arc;
 
 /// Simple MCP-backed inference service that executes locally via MCP's ModelExecutor
 pub struct NodeInferenceService {
@@ -13,7 +13,11 @@ pub struct NodeInferenceService {
 
 impl NodeInferenceService {
     pub fn new(mcp: Arc<MCPService>, provider: Address, provider_fee_wei: U256) -> Self {
-        Self { mcp, provider, provider_fee_wei }
+        Self {
+            mcp,
+            provider,
+            provider_fee_wei,
+        }
     }
 }
 
@@ -24,7 +28,8 @@ impl InferenceService for NodeInferenceService {
         model_id: ModelId,
         input: Vec<u8>,
         _max_gas: u64,
-    ) -> Result<(Vec<u8>, u64, Address, U256, Option<Vec<u8>>), lattice_execution::ExecutionError> {
+    ) -> Result<(Vec<u8>, u64, Address, U256, Option<Vec<u8>>), lattice_execution::ExecutionError>
+    {
         // Convert execution ModelId(Hash) to MCP ModelId([u8;32])
         let mcp_model_id = lattice_mcp::types::ModelId::from_hash(&model_id.0);
         let result = self
@@ -41,8 +46,15 @@ impl InferenceService for NodeInferenceService {
             "io_commitment": hex::encode(result.proof.io_commitment.as_bytes()),
             "provider": hex::encode(self.provider.0),
             "timestamp": result.proof.timestamp,
-        })).ok();
+        }))
+        .ok();
 
-        Ok((result.output, result.gas_used, self.provider, self.provider_fee_wei, proof_bytes))
+        Ok((
+            result.output,
+            result.gas_used,
+            self.provider,
+            self.provider_fee_wei,
+            proof_bytes,
+        ))
     }
 }

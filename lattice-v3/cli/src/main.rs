@@ -7,7 +7,7 @@ mod commands;
 mod config;
 mod utils;
 
-use commands::{account, contract, model, network, governance};
+use commands::{account, contract, governance, model, network};
 
 #[derive(Parser)]
 #[command(
@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
         3 => "debug",
         _ => "trace",
     };
-    
+
     tracing_subscriber::fmt()
         .with_env_filter(log_level)
         .with_target(false)

@@ -1,18 +1,18 @@
-use crate::types::{Transaction, PublicKey, Signature};
-use ed25519_dalek::{Verifier, SigningKey, VerifyingKey, Signature as DalekSignature, Signer};
+use crate::types::{PublicKey, Signature, Transaction};
+use ed25519_dalek::{Signature as DalekSignature, Signer, SigningKey, Verifier, VerifyingKey};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CryptoError {
     #[error("Invalid public key")]
     InvalidPublicKey,
-    
+
     #[error("Invalid signature")]
     InvalidSignature,
-    
+
     #[error("Signature verification failed")]
     VerificationFailed,
-    
+
     #[error("Serialization error: {0}")]
     SerializationError(String),
 }
@@ -21,13 +21,13 @@ pub enum CryptoError {
 pub fn verify_transaction(tx: &Transaction) -> Result<bool, CryptoError> {
     // Get canonical bytes to verify (everything except signature)
     let message = canonical_tx_bytes(tx)?;
-    
+
     // Convert our types to ed25519-dalek types
-    let public_key = VerifyingKey::from_bytes(tx.from.as_bytes())
-        .map_err(|_| CryptoError::InvalidPublicKey)?;
-    
+    let public_key =
+        VerifyingKey::from_bytes(tx.from.as_bytes()).map_err(|_| CryptoError::InvalidPublicKey)?;
+
     let signature = DalekSignature::from_bytes(tx.signature.as_bytes());
-    
+
     // Verify the signature
     match public_key.verify(&message, &signature) {
         Ok(_) => Ok(true),
@@ -48,7 +48,7 @@ pub fn sign_transaction(tx: &mut Transaction, signing_key: &SigningKey) -> Resul
 
     // Update signature in transaction
     tx.signature = Signature::new(signature.to_bytes());
-    
+
     Ok(())
 }
 
@@ -56,11 +56,11 @@ pub fn sign_transaction(tx: &mut Transaction, signing_key: &SigningKey) -> Resul
 /// This excludes the signature field and uses a deterministic encoding
 fn canonical_tx_bytes(tx: &Transaction) -> Result<Vec<u8>, CryptoError> {
     let mut data = Vec::new();
-    
+
     // Fixed-size fields first (exclude tx.hash to avoid circular dependency)
     data.extend_from_slice(&tx.nonce.to_le_bytes());
     data.extend_from_slice(tx.from.as_bytes());
-    
+
     // Optional to field
     if let Some(to) = &tx.to {
         data.push(1); // Present flag
@@ -68,16 +68,16 @@ fn canonical_tx_bytes(tx: &Transaction) -> Result<Vec<u8>, CryptoError> {
     } else {
         data.push(0); // Absent flag
     }
-    
+
     // Value and gas fields
     data.extend_from_slice(&tx.value.to_le_bytes());
     data.extend_from_slice(&tx.gas_limit.to_le_bytes());
     data.extend_from_slice(&tx.gas_price.to_le_bytes());
-    
+
     // Variable-length data field
     data.extend_from_slice(&(tx.data.len() as u32).to_le_bytes());
     data.extend_from_slice(&tx.data);
-    
+
     Ok(data)
 }
 
@@ -90,12 +90,12 @@ pub fn generate_keypair() -> SigningKey {
 mod tests {
     use super::*;
     use crate::types::Hash;
-    
+
     #[test]
     fn test_transaction_signing_and_verification() {
         // Generate a keypair
         let signing_key = generate_keypair();
-        
+
         // Create a transaction
         let mut tx = Transaction {
             hash: Hash::new([1; 32]),
@@ -109,20 +109,20 @@ mod tests {
             signature: Signature::new([0; 64]), // Will be updated by sign
             tx_type: None,
         };
-        
+
         // Sign it
         sign_transaction(&mut tx, &signing_key).unwrap();
-        
+
         // Verify it
         assert!(verify_transaction(&tx).unwrap());
-        
+
         // Tamper with it
         tx.value = 2000;
-        
+
         // Should fail verification
         assert!(!verify_transaction(&tx).unwrap());
     }
-    
+
     #[test]
     fn test_canonical_bytes_deterministic() {
         let tx = Transaction {
@@ -137,7 +137,7 @@ mod tests {
             signature: Signature::new([8; 64]),
             tx_type: None,
         };
-        
+
         // Should produce same bytes every time
         let bytes1 = canonical_tx_bytes(&tx).unwrap();
         let bytes2 = canonical_tx_bytes(&tx).unwrap();

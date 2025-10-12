@@ -1,4 +1,8 @@
-use crate::{NetworkError, protocol::PeerAddress, peer::{PeerManager, PeerId}};
+use crate::{
+    peer::{PeerId, PeerManager},
+    protocol::PeerAddress,
+    NetworkError,
+};
 use dashmap::DashMap;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -12,16 +16,16 @@ use tracing::{debug, info};
 pub struct DiscoveryConfig {
     /// Bootstrap nodes
     pub bootstrap_nodes: Vec<String>,
-    
+
     /// Maximum peers to discover
     pub max_peers: usize,
-    
+
     /// Discovery interval
     pub discovery_interval: Duration,
-    
+
     /// Peer exchange size
     pub peer_exchange_size: usize,
-    
+
     /// Peer expiry time
     pub peer_expiry: Duration,
 }
@@ -65,7 +69,7 @@ impl Discovery {
             peer_manager,
         }
     }
-    
+
     /// Initialize with bootstrap nodes
     pub async fn init(&self) -> Result<(), NetworkError> {
         for node in &self.config.bootstrap_nodes {
@@ -74,21 +78,25 @@ impl Discovery {
                     format!("bootstrap_{}", node),
                     addr,
                     100, // High score for bootstrap nodes
-                ).await;
+                )
+                .await;
             }
         }
-        
-        info!("Initialized discovery with {} bootstrap nodes", self.config.bootstrap_nodes.len());
+
+        info!(
+            "Initialized discovery with {} bootstrap nodes",
+            self.config.bootstrap_nodes.len()
+        );
         Ok(())
     }
-    
+
     /// Add a discovered peer
     pub async fn add_peer(&self, id: String, addr: SocketAddr, score: i32) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let peer = KnownPeer {
             id: id.clone(),
             addr,
@@ -96,35 +104,39 @@ impl Discovery {
             score,
             attempts: 0,
         };
-        
+
         self.known_peers.insert(id, peer);
         debug!("Added peer to discovery: {}", addr);
     }
-    
+
     /// Mark peer as connected
     pub async fn mark_connected(&self, peer_id: &str) {
-        self.connected_peers.write().await.insert(peer_id.to_string());
+        self.connected_peers
+            .write()
+            .await
+            .insert(peer_id.to_string());
     }
-    
+
     /// Mark peer as disconnected
     pub async fn mark_disconnected(&self, peer_id: &str) {
         self.connected_peers.write().await.remove(peer_id);
     }
-    
+
     /// Get peers for exchange
     pub async fn get_peers_for_exchange(&self) -> Vec<PeerAddress> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
+
         let connected = self.connected_peers.read().await;
-        
-        let mut peers: Vec<PeerAddress> = self.known_peers
+
+        let mut peers: Vec<PeerAddress> = self
+            .known_peers
             .iter()
             .filter(|p| {
-                !connected.contains(&p.value().id) &&
-                (now - p.value().last_seen) < self.config.peer_expiry.as_secs()
+                !connected.contains(&p.value().id)
+                    && (now - p.value().last_seen) < self.config.peer_expiry.as_secs()
             })
             .take(self.config.peer_exchange_size)
             .map(|p| PeerAddress {
@@ -134,13 +146,13 @@ impl Discovery {
                 score: p.value().score,
             })
             .collect();
-        
+
         peers.sort_by(|a, b| b.score.cmp(&a.score));
         peers.truncate(self.config.peer_exchange_size);
-        
+
         peers
     }
-    
+
     /// Handle peer exchange
     pub async fn handle_peer_exchange(&self, peers: Vec<PeerAddress>) {
         for peer in peers {
@@ -149,54 +161,52 @@ impl Discovery {
                 if self.connected_peers.read().await.contains(&peer.id) {
                     continue;
                 }
-                
+
                 if self.peer_manager.is_banned(&addr).await {
                     continue;
                 }
-                
+
                 self.add_peer(peer.id, addr, peer.score).await;
             }
         }
     }
-    
+
     /// Find new peers to connect to
     pub async fn find_peers(&self) -> Vec<(String, SocketAddr)> {
         let connected = self.connected_peers.read().await;
         let (current_peers, _, _) = self.peer_manager.get_peer_counts().await;
-        
+
         if current_peers >= self.config.max_peers {
             return Vec::new();
         }
-        
+
         let needed = self.config.max_peers - current_peers;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
-        let mut candidates: Vec<_> = self.known_peers
+
+        let mut candidates: Vec<_> = self
+            .known_peers
             .iter()
             .filter(|p| {
-                !connected.contains(&p.value().id) &&
-                p.value().attempts < 3 &&
-                (now - p.value().last_seen) < self.config.peer_expiry.as_secs()
+                !connected.contains(&p.value().id)
+                    && p.value().attempts < 3
+                    && (now - p.value().last_seen) < self.config.peer_expiry.as_secs()
             })
             .map(|p| p.value().clone())
             .collect();
-        
+
         // Sort by score and attempts
-        candidates.sort_by(|a, b| {
-            b.score.cmp(&a.score)
-                .then(a.attempts.cmp(&b.attempts))
-        });
-        
+        candidates.sort_by(|a, b| b.score.cmp(&a.score).then(a.attempts.cmp(&b.attempts)));
+
         candidates
             .into_iter()
             .take(needed)
             .map(|p| (p.id, p.addr))
             .collect()
     }
-    
+
     /// Update peer attempts
     pub async fn update_attempts(&self, peer_id: &str, success: bool) {
         if let Some(mut peer) = self.known_peers.get_mut(peer_id) {
@@ -209,47 +219,52 @@ impl Discovery {
             }
         }
     }
-    
+
     /// Clean up expired peers
     pub async fn cleanup_expired(&self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
-        let expired: Vec<String> = self.known_peers
+
+        let expired: Vec<String> = self
+            .known_peers
             .iter()
             .filter(|p| (now - p.value().last_seen) > self.config.peer_expiry.as_secs())
             .map(|p| p.key().clone())
             .collect();
-        
+
         for id in expired {
             self.known_peers.remove(&id);
             debug!("Removed expired peer: {}", id);
         }
     }
-    
+
     /// Run discovery loop
     pub async fn run(&self) {
         let mut interval = time::interval(self.config.discovery_interval);
-        
+
         loop {
             interval.tick().await;
-            
+
             // Clean up expired peers
             self.cleanup_expired().await;
-            
+
             // Find new peers to connect to
             let candidates = self.find_peers().await;
-            
+
             if !candidates.is_empty() {
                 info!("Discovery found {} potential peers", candidates.len());
-                
+
                 // Initiate connections to candidates
                 for (id, addr) in candidates {
                     debug!("Attempting to connect to: {} ({})", id, addr);
-                    
-                    match self.peer_manager.connect_to_peer(PeerId::new(id.clone()), addr).await {
+
+                    match self
+                        .peer_manager
+                        .connect_to_peer(PeerId::new(id.clone()), addr)
+                        .await
+                    {
                         Ok(_) => {
                             info!("Successfully initiated connection to {}", id);
                             self.mark_connected(&id).await;
@@ -270,41 +285,44 @@ impl Discovery {
 mod tests {
     use super::*;
     use crate::peer::PeerManagerConfig;
-    
+
     #[tokio::test]
     async fn test_discovery_bootstrap() {
         let config = DiscoveryConfig {
-            bootstrap_nodes: vec![
-                "127.0.0.1:8001".to_string(),
-                "127.0.0.1:8002".to_string(),
-            ],
+            bootstrap_nodes: vec!["127.0.0.1:8001".to_string(), "127.0.0.1:8002".to_string()],
             ..Default::default()
         };
-        
+
         let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig::default()));
         let discovery = Discovery::new(config, peer_manager);
-        
+
         discovery.init().await.unwrap();
-        
+
         assert_eq!(discovery.known_peers.len(), 2);
     }
-    
+
     #[tokio::test]
     async fn test_peer_exchange() {
         let config = DiscoveryConfig::default();
         let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig::default()));
         let discovery = Discovery::new(config, peer_manager);
-        
+
         // Add some peers
-        discovery.add_peer("peer1".to_string(), "127.0.0.1:8001".parse().unwrap(), 50).await;
-        discovery.add_peer("peer2".to_string(), "127.0.0.1:8002".parse().unwrap(), 75).await;
-        discovery.add_peer("peer3".to_string(), "127.0.0.1:8003".parse().unwrap(), 25).await;
-        
+        discovery
+            .add_peer("peer1".to_string(), "127.0.0.1:8001".parse().unwrap(), 50)
+            .await;
+        discovery
+            .add_peer("peer2".to_string(), "127.0.0.1:8002".parse().unwrap(), 75)
+            .await;
+        discovery
+            .add_peer("peer3".to_string(), "127.0.0.1:8003".parse().unwrap(), 25)
+            .await;
+
         // Mark one as connected
         discovery.mark_connected("peer1").await;
-        
+
         let peers = discovery.get_peers_for_exchange().await;
-        
+
         // Should only return non-connected peers, sorted by score
         assert_eq!(peers.len(), 2);
         assert_eq!(peers[0].id, "peer2"); // Highest score

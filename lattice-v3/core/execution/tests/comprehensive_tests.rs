@@ -1,7 +1,10 @@
 // Comprehensive tests for the execution module
 
-use lattice_execution::{Executor, address_utils, types::*, StateDB};
-use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams, Transaction as ConsensusTransaction};
+use lattice_consensus::types::{
+    Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature,
+    Transaction as ConsensusTransaction, VrfProof,
+};
+use lattice_execution::{address_utils, types::*, Executor, StateDB};
 use primitive_types::U256;
 use std::sync::Arc;
 
@@ -33,7 +36,12 @@ fn create_test_block(height: u64) -> Block {
     }
 }
 
-fn create_test_transaction(from: PublicKey, to: Option<PublicKey>, value: u128, nonce: u64) -> ConsensusTransaction {
+fn create_test_transaction(
+    from: PublicKey,
+    to: Option<PublicKey>,
+    value: u128,
+    nonce: u64,
+) -> ConsensusTransaction {
     let mut hash_bytes = [0u8; 32];
     hash_bytes[0] = nonce as u8;
 

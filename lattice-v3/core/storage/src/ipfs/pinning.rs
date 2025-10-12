@@ -111,8 +111,7 @@ impl PinningManager {
 
         pinner_entry.total_pinned_bytes =
             pinner_entry.total_pinned_bytes.saturating_add(pinned_bytes);
-        pinner_entry.rewards_earned =
-            pinner_entry.rewards_earned.saturating_add(reward as u128);
+        pinner_entry.rewards_earned = pinner_entry.rewards_earned.saturating_add(reward as u128);
         pinner_entry.reports = pinner_entry.reports.saturating_add(1);
         pinner_entry.last_reported_at = now;
 
@@ -193,10 +192,8 @@ mod tests {
 
     #[test]
     fn reward_for_bytes_scales_with_model_type() {
-        let language_reward =
-            PinningManager::reward_for_bytes(1_073_741_824, &ModelType::Language);
-        let vision_reward =
-            PinningManager::reward_for_bytes(1_073_741_824, &ModelType::Vision);
+        let language_reward = PinningManager::reward_for_bytes(1_073_741_824, &ModelType::Language);
+        let vision_reward = PinningManager::reward_for_bytes(1_073_741_824, &ModelType::Vision);
 
         assert_eq!(language_reward, 2);
         assert_eq!(vision_reward, 3);

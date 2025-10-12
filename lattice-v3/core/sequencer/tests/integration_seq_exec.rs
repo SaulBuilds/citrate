@@ -1,8 +1,8 @@
 use lattice_consensus::types::{BlockHeader, Hash, PublicKey, Signature, Transaction, VrfProof};
-use lattice_execution::types::Address;
 use lattice_execution::executor::Executor;
-use lattice_sequencer::mempool::{Mempool, MempoolConfig, TxClass};
+use lattice_execution::types::Address;
 use lattice_sequencer::block_builder::{BlockBuilder, BlockBuilderConfig};
+use lattice_sequencer::mempool::{Mempool, MempoolConfig, TxClass};
 use std::sync::Arc;
 
 #[allow(dead_code)]
@@ -18,7 +18,10 @@ fn make_block_header(parent: Hash, height: u64) -> BlockHeader {
         blue_work: height as u128,
         pruning_point: Hash::default(),
         proposer_pubkey: PublicKey::new([0; 32]),
-        vrf_reveal: VrfProof { proof: vec![], output: Hash::default() },
+        vrf_reveal: VrfProof {
+            proof: vec![],
+            output: Hash::default(),
+        },
     }
 }
 
@@ -43,8 +46,14 @@ fn make_tx(nonce: u64, gas_price: u64, from: [u8; 32], to: [u8; 32], data: Vec<u
 #[tokio::test]
 async fn test_build_block_and_execute_transactions() {
     // Mempool and builder
-    let mempool = Arc::new(Mempool::new(MempoolConfig { require_valid_signature: false, ..Default::default() }));
-    let cfg = BlockBuilderConfig { enable_bundling: true, ..Default::default() };
+    let mempool = Arc::new(Mempool::new(MempoolConfig {
+        require_valid_signature: false,
+        ..Default::default()
+    }));
+    let cfg = BlockBuilderConfig {
+        enable_bundling: true,
+        ..Default::default()
+    };
     let proposer = PublicKey::new([7; 32]);
     let builder = BlockBuilder::new(cfg, mempool.clone(), proposer);
 
@@ -53,13 +62,28 @@ async fn test_build_block_and_execute_transactions() {
     let tx2 = make_tx(0, 2_000_000_000, [3; 32], [4; 32], b"inference".to_vec());
     let tx3 = make_tx(0, 2_000_000_000, [5; 32], [6; 32], vec![]);
 
-    mempool.add_transaction(tx1.clone(), TxClass::Standard).await.unwrap();
-    mempool.add_transaction(tx2.clone(), TxClass::Inference).await.unwrap();
-    mempool.add_transaction(tx3.clone(), TxClass::Standard).await.unwrap();
+    mempool
+        .add_transaction(tx1.clone(), TxClass::Standard)
+        .await
+        .unwrap();
+    mempool
+        .add_transaction(tx2.clone(), TxClass::Inference)
+        .await
+        .unwrap();
+    mempool
+        .add_transaction(tx3.clone(), TxClass::Standard)
+        .await
+        .unwrap();
 
     let parent = Hash::new([0xAA; 32]);
-    let vrf = VrfProof { proof: vec![0; 32], output: Hash::new([0; 32]) };
-    let block = builder.build_block(parent, vec![], 0, 1, vrf).await.unwrap();
+    let vrf = VrfProof {
+        proof: vec![0; 32],
+        output: Hash::new([0; 32]),
+    };
+    let block = builder
+        .build_block(parent, vec![], 0, 1, vrf)
+        .await
+        .unwrap();
 
     // Validate block constraints
     builder.validate_block(&block).unwrap();
@@ -87,7 +111,10 @@ async fn test_build_block_and_execute_transactions() {
         let mut etx = tx.clone();
         etx.gas_price = 0;
         etx.value = 0;
-        let rc = exec.execute_transaction(&block, &etx).await.expect("exec ok");
+        let rc = exec
+            .execute_transaction(&block, &etx)
+            .await
+            .expect("exec ok");
         assert_eq!(rc.block_number, block.header.height);
         assert!(rc.status);
     }

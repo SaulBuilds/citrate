@@ -1,11 +1,16 @@
-use crate::types::{ModelId, ExecutionProof};
 use crate::cache::ModelCache;
+use crate::registry::ModelRegistry;
+use crate::types::{ExecutionProof, ModelId};
 use crate::verification::ExecutionVerifier;
-use lattice_execution::{Address, Hash};
+use anyhow::{anyhow, Result};
+use hex;
 use lattice_execution::vm::VM;
+use lattice_execution::{Address, Hash};
+use lattice_storage::ipfs::{chunking, Cid, IPFSService};
+use serde_json;
 use std::sync::Arc;
-use anyhow::Result;
-use tracing::{info, debug};
+use tokio::sync::Mutex;
+use tracing::{debug, info, warn};
 
 /// Result of model inference
 #[derive(Debug, Clone)]
@@ -23,6 +28,8 @@ pub struct ModelExecutor {
     vm: Arc<VM>,
     cache: Arc<ModelCache>,
     verifier: Arc<ExecutionVerifier>,
+    registry: Arc<ModelRegistry>,
+    ipfs: Mutex<IPFSService>,
 }
 
 impl ModelExecutor {
@@ -30,10 +37,18 @@ impl ModelExecutor {
         vm: Arc<VM>,
         cache: Arc<ModelCache>,
         verifier: Arc<ExecutionVerifier>,
+        registry: Arc<ModelRegistry>,
+        ipfs: IPFSService,
     ) -> Self {
-        Self { vm, cache, verifier }
+        Self {
+            vm,
+            cache,
+            verifier,
+            registry,
+            ipfs: Mutex::new(ipfs),
+        }
     }
-    
+
     /// Execute model inference
     pub async fn execute_inference(
         &self,
@@ -42,29 +57,31 @@ impl ModelExecutor {
         provider: Address,
     ) -> Result<InferenceResult> {
         let start_time = std::time::Instant::now();
-        
+
         // 1. Load model from cache or storage
         let model = self.load_model(model_id).await?;
-        
+
         // 2. Verify model integrity
         self.verifier.verify_model(&model)?;
-        
+
         // 3. Prepare execution context
         let context = self.prepare_context(&model, &input)?;
-        
+
         // 4. Execute inference in VM
         let (output, gas_used) = self.execute_in_vm(&context).await?;
-        
+
         // 5. Generate execution proof
         let proof = self.generate_proof(&model, &input, &output, provider)?;
-        
+
         let latency_ms = start_time.elapsed().as_millis() as u64;
-        
-        info!("Inference completed for model {:?} in {}ms using {} gas",
-              hex::encode(&model_id.0[..8]),
-              latency_ms,
-              gas_used);
-        
+
+        info!(
+            "Inference completed for model {:?} in {}ms using {} gas",
+            hex::encode(&model_id.0[..8]),
+            latency_ms,
+            gas_used
+        );
+
         Ok(InferenceResult {
             output,
             proof,
@@ -73,7 +90,7 @@ impl ModelExecutor {
             provider,
         })
     }
-    
+
     /// Execute training step
     pub async fn execute_training(
         &self,
@@ -83,16 +100,16 @@ impl ModelExecutor {
         provider: Address,
     ) -> Result<TrainingResult> {
         let start_time = std::time::Instant::now();
-        
+
         // 1. Load model architecture
         let model = self.load_model(model_id).await?;
-        
+
         // 2. Prepare training context
         let context = self.prepare_training_context(&model, &training_data, &current_weights)?;
-        
+
         // 3. Execute training step in VM
         let (updated_weights, metrics, gas_used) = self.execute_training_in_vm(&context).await?;
-        
+
         // 4. Generate training proof
         let proof = self.generate_training_proof(
             &model,
@@ -101,13 +118,15 @@ impl ModelExecutor {
             &updated_weights,
             provider,
         )?;
-        
+
         let latency_ms = start_time.elapsed().as_millis() as u64;
-        
-        info!("Training step completed for model {:?} in {}ms",
-              hex::encode(&model_id.0[..8]),
-              latency_ms);
-        
+
+        info!(
+            "Training step completed for model {:?} in {}ms",
+            hex::encode(&model_id.0[..8]),
+            latency_ms
+        );
+
         Ok(TrainingResult {
             updated_weights,
             metrics,
@@ -117,30 +136,59 @@ impl ModelExecutor {
             provider,
         })
     }
-    
+
     /// Load model from cache or storage
     async fn load_model(&self, model_id: ModelId) -> Result<Model> {
-        // Try cache first
         if let Some(model) = self.cache.get(&model_id).await {
-            debug!("Model loaded from cache: {:?}", hex::encode(&model_id.0[..8]));
+            debug!(
+                "Model loaded from cache: {:?}",
+                hex::encode(&model_id.0[..8])
+            );
             return Ok(model);
         }
-        
-        // Load from storage (placeholder)
-        // In real implementation, this would fetch from IPFS or other storage
+
+        let record = self.registry.get_record(&model_id).await?;
+        let weight_cid = record.weight_cid.clone().ok_or_else(|| {
+            anyhow!(
+                "Model {:?} missing weight CID",
+                hex::encode(&model_id.0[..8])
+            )
+        })?;
+
+        let weights = {
+            let ipfs = self.ipfs.lock().await;
+            let cid = Cid(weight_cid.clone());
+            let raw = ipfs.retrieve_model(&cid).await?;
+            if let Ok(manifest) = serde_json::from_slice::<chunking::ChunkManifest>(&raw) {
+                let mut assembled = Vec::with_capacity(manifest.total_size as usize);
+                for chunk_cid in manifest.chunks {
+                    match ipfs.fetch_raw(&chunk_cid).await {
+                        Ok(bytes) => assembled.extend(bytes),
+                        Err(err) => {
+                            warn!("Failed to fetch chunk {}: {}", chunk_cid.0, err);
+                            return Err(err);
+                        }
+                    }
+                }
+                assembled
+            } else {
+                raw
+            }
+        };
+
+        let metadata_bytes = serde_json::to_vec(&record.metadata)?;
         let model = Model {
             id: model_id,
-            architecture: vec![],  // Placeholder
-            weights: vec![],       // Placeholder
-            metadata: vec![],      // Placeholder
+            architecture: Vec::new(),
+            weights,
+            metadata: metadata_bytes,
         };
-        
-        // Cache for future use
+
         self.cache.put(model_id, model.clone()).await?;
-        
+
         Ok(model)
     }
-    
+
     /// Prepare execution context
     fn prepare_context(&self, model: &Model, input: &[u8]) -> Result<ExecutionContext> {
         Ok(ExecutionContext {
@@ -151,7 +199,7 @@ impl ModelExecutor {
             execution_mode: ExecutionMode::Inference,
         })
     }
-    
+
     /// Prepare training context
     fn prepare_training_context(
         &self,
@@ -169,7 +217,7 @@ impl ModelExecutor {
             },
         })
     }
-    
+
     /// Execute in VM
     async fn execute_in_vm(&self, _context: &ExecutionContext) -> Result<(Vec<u8>, u64)> {
         // Placeholder for VM execution
@@ -178,13 +226,13 @@ impl ModelExecutor {
         // 2. Set up input tensors
         // 3. Execute forward pass
         // 4. Return output tensors
-        
+
         let output = vec![0u8; 100]; // Placeholder output
-        let gas_used = 1_000_000;    // Placeholder gas
-        
+        let gas_used = 1_000_000; // Placeholder gas
+
         Ok((output, gas_used))
     }
-    
+
     /// Execute training in VM
     async fn execute_training_in_vm(
         &self,
@@ -198,10 +246,10 @@ impl ModelExecutor {
             epoch: 1,
         };
         let gas_used = 5_000_000;
-        
+
         Ok((updated_weights, metrics, gas_used))
     }
-    
+
     /// Generate execution proof
     fn generate_proof(
         &self,
@@ -211,7 +259,7 @@ impl ModelExecutor {
         provider: Address,
     ) -> Result<ExecutionProof> {
         use sha3::{Digest, Sha3_256};
-        
+
         // Hash model
         let model_hash = {
             let mut hasher = Sha3_256::new();
@@ -219,20 +267,20 @@ impl ModelExecutor {
             hasher.update(&model.weights);
             Hash::new(hasher.finalize().into())
         };
-        
+
         // Hash input/output
         let input_hash = {
             let mut hasher = Sha3_256::new();
             hasher.update(input);
             Hash::new(hasher.finalize().into())
         };
-        
+
         let output_hash = {
             let mut hasher = Sha3_256::new();
             hasher.update(output);
             Hash::new(hasher.finalize().into())
         };
-        
+
         // Create IO commitment
         let io_commitment = {
             let mut hasher = Sha3_256::new();
@@ -240,19 +288,19 @@ impl ModelExecutor {
             hasher.update(output_hash.as_bytes());
             Hash::new(hasher.finalize().into())
         };
-        
+
         Ok(ExecutionProof {
             model_hash,
             input_hash,
             output_hash,
             io_commitment,
-            statement: vec![], // Placeholder for ZK statement
+            statement: vec![],  // Placeholder for ZK statement
             proof_data: vec![], // Placeholder for ZK proof
             timestamp: chrono::Utc::now().timestamp() as u64,
             provider,
         })
     }
-    
+
     /// Generate training proof
     fn generate_training_proof(
         &self,

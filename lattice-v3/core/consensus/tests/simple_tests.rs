@@ -4,7 +4,7 @@
 fn test_consensus_module_loads() {
     // This test simply verifies the module can be imported
     use lattice_consensus::*;
-    
+
     // Verify GhostDagParams exists and has expected defaults
     let params = GhostDagParams::default();
     assert_eq!(params.k, 18);

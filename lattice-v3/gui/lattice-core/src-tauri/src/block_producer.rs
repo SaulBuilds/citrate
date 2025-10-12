@@ -1,19 +1,21 @@
+use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
-use anyhow::Result;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
-use lattice_consensus::{
-    GhostDag,
-    types::{Block, BlockHeader, Hash, Transaction, PublicKey, Signature, VrfProof, GhostDagParams},
-};
-use lattice_sequencer::Mempool;
-use lattice_execution::Executor;
-use lattice_execution::types::{TransactionReceipt, Address};
-use lattice_storage::StorageManager;
 use crate::wallet::WalletManager;
-use lattice_network::{PeerManager, NetworkMessage};
+use lattice_consensus::{
+    types::{
+        Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, Transaction, VrfProof,
+    },
+    GhostDag,
+};
+use lattice_execution::types::{Address, TransactionReceipt};
+use lattice_execution::Executor;
+use lattice_network::{NetworkMessage, PeerManager};
+use lattice_sequencer::Mempool;
+use lattice_storage::StorageManager;
 
 pub struct BlockProducer {
     ghostdag: Arc<GhostDag>,
@@ -61,7 +63,7 @@ impl BlockProducer {
             return Ok(tokio::spawn(async {}));
         }
         *running_guard = true;
-        
+
         info!("Starting block producer");
 
         // Create genesis block if DAG is empty
@@ -91,9 +93,11 @@ impl BlockProducer {
 
             match self.produce_block().await {
                 Ok(block) => {
-                    info!("Produced block {} at height {}", 
-                          hex::encode(&block.header.block_hash.as_bytes()[..8]), 
-                          block.header.height);
+                    info!(
+                        "Produced block {} at height {}",
+                        hex::encode(&block.header.block_hash.as_bytes()[..8]),
+                        block.header.height
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to produce block: {}", e);
@@ -110,7 +114,7 @@ impl BlockProducer {
             return Err(anyhow::anyhow!("No tips available for block production"));
         }
 
-        // Select parents 
+        // Select parents
         let (selected_parent, merge_parents) = self.select_parents(&tips).await?;
 
         // Get transactions from mempool (limit to 100 for now)
@@ -118,9 +122,12 @@ impl BlockProducer {
             let mempool_guard = self.mempool.read().await;
             mempool_guard.get_transactions(100).await
         };
-        
+
         // Calculate new height
-        let parent_block = self.storage.blocks.get_block(&selected_parent)?
+        let parent_block = self
+            .storage
+            .blocks
+            .get_block(&selected_parent)?
             .ok_or_else(|| anyhow::anyhow!("Selected parent block not found"))?;
         let height = parent_block.header.height + 1;
 
@@ -136,15 +143,16 @@ impl BlockProducer {
         let blue_score = height * 10; // Simplified calculation
 
         // Get reward address
-        let reward_address = self.reward_address.read().await.clone()
-            .unwrap_or_default();
+        let reward_address = self.reward_address.read().await.clone().unwrap_or_default();
 
         // Create block hash deterministically from parent, height and timestamp
         let block_hash = {
             use sha3::{Digest, Keccak256};
             let mut hasher = Keccak256::new();
             hasher.update(selected_parent.as_bytes());
-            for p in &merge_parents { hasher.update(p.as_bytes()); }
+            for p in &merge_parents {
+                hasher.update(p.as_bytes());
+            }
             hasher.update(height.to_le_bytes());
             hasher.update(blue_score.to_le_bytes());
             let bytes = hasher.finalize();
@@ -189,7 +197,9 @@ impl BlockProducer {
 
         // Store transactions and receipts for RPC visibility
         if !block.transactions.is_empty() {
-            self.storage.transactions.put_transactions(&block.transactions)?;
+            self.storage
+                .transactions
+                .put_transactions(&block.transactions)?;
             let pairs: Vec<(Hash, TransactionReceipt)> = block
                 .transactions
                 .iter()
@@ -214,7 +224,11 @@ impl BlockProducer {
 
         // Broadcast block to network peers
         if let Some(pm) = &self.peer_manager {
-            let _ = pm.broadcast(&NetworkMessage::NewBlock { block: block.clone() }).await;
+            let _ = pm
+                .broadcast(&NetworkMessage::NewBlock {
+                    block: block.clone(),
+                })
+                .await;
         }
 
         Ok(block)
@@ -294,7 +308,11 @@ impl BlockProducer {
         Ok((best_tip, merge_parents))
     }
 
-    async fn execute_transactions(&self, transactions: &[Transaction], height: u64) -> Result<(Hash, Vec<TransactionReceipt>)> {
+    async fn execute_transactions(
+        &self,
+        transactions: &[Transaction],
+        height: u64,
+    ) -> Result<(Hash, Vec<TransactionReceipt>)> {
         // Execute transactions using the real executor to produce receipts
         let mut receipts: Vec<TransactionReceipt> = Vec::new();
 
@@ -310,7 +328,10 @@ impl BlockProducer {
             blue_work: (height as u128) * 1000,
             pruning_point: Hash::default(),
             proposer_pubkey: PublicKey::new([0u8; 32]),
-            vrf_reveal: VrfProof { proof: vec![0u8; 80], output: Hash::default() },
+            vrf_reveal: VrfProof {
+                proof: vec![0u8; 80],
+                output: Hash::default(),
+            },
         };
         let temp_block = Block {
             header: temp_header,
@@ -352,11 +373,11 @@ impl BlockProducer {
     fn calculate_tx_root(&self, transactions: &[Transaction]) -> Hash {
         use sha3::{Digest, Keccak256};
         let mut hasher = Keccak256::new();
-        
+
         for tx in transactions {
             hasher.update(tx.hash.as_bytes());
         }
-        
+
         let result = hasher.finalize();
         Hash::from_bytes(&result)
     }
@@ -384,10 +405,13 @@ impl BlockProducer {
         // Parse reward address - handle both hex strings and base58
         let validator_address = if let Some(stripped) = reward_address.strip_prefix("0x") {
             // Parse as hex ethereum address
-            let addr_bytes = hex::decode(stripped)
-                .map_err(|e| anyhow::anyhow!("Invalid hex address: {}", e))?;
+            let addr_bytes =
+                hex::decode(stripped).map_err(|e| anyhow::anyhow!("Invalid hex address: {}", e))?;
             if addr_bytes.len() != 20 {
-                return Err(anyhow::anyhow!("Invalid address length: expected 20 bytes, got {}", addr_bytes.len()));
+                return Err(anyhow::anyhow!(
+                    "Invalid address length: expected 20 bytes, got {}",
+                    addr_bytes.len()
+                ));
             }
             let mut addr = [0u8; 20];
             addr.copy_from_slice(&addr_bytes);
@@ -395,8 +419,8 @@ impl BlockProducer {
         } else {
             // Assume it's a public key string, derive address from it
             // For now, take first 20 bytes of the public key as address (simplified)
-            let pk_bytes = hex::decode(reward_address)
-                .unwrap_or_else(|_| reward_address.as_bytes().to_vec());
+            let pk_bytes =
+                hex::decode(reward_address).unwrap_or_else(|_| reward_address.as_bytes().to_vec());
             let mut addr = [0u8; 20];
             let len = pk_bytes.len().min(20);
             addr[..len].copy_from_slice(&pk_bytes[..len]);
@@ -407,12 +431,14 @@ impl BlockProducer {
         let current_balance = self.executor.get_balance(&validator_address);
         let new_balance = current_balance + amount_wei;
         self.executor.set_balance(&validator_address, new_balance);
-        
-        info!("Minted {} LAT ({} wei) to validator {} (new balance: {} wei)", 
-              BLOCK_REWARD_TOKENS, 
-              amount_wei,
-              hex::encode(validator_address.0), 
-              new_balance);
+
+        info!(
+            "Minted {} LAT ({} wei) to validator {} (new balance: {} wei)",
+            BLOCK_REWARD_TOKENS,
+            amount_wei,
+            hex::encode(validator_address.0),
+            new_balance
+        );
 
         // Also update wallet manager if present (for UI display)
         if let Some(wm) = &self.wallet_manager {
@@ -422,7 +448,8 @@ impl BlockProducer {
                 } else {
                     new_balance.as_u128()
                 };
-                wm.update_balance(reward_address, balance_u128).await
+                wm.update_balance(reward_address, balance_u128)
+                    .await
                     .map_err(|e| anyhow::anyhow!(e))?;
             }
         }

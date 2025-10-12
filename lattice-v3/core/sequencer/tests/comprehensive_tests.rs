@@ -1,7 +1,7 @@
 // Comprehensive tests for the sequencer module
 
+use lattice_consensus::types::{Hash, PublicKey, Signature, Transaction};
 use lattice_sequencer::{Mempool, MempoolConfig, TxClass};
-use lattice_consensus::types::{Transaction, Hash, PublicKey, Signature};
 use std::sync::Arc;
 
 fn create_test_transaction(nonce: u64, gas_price: u64) -> Transaction {
@@ -72,7 +72,10 @@ mod mempool_tests {
         // Add multiple transactions
         for i in 0..5 {
             let tx = create_test_transaction(i, 2_000_000_000 + i * 100_000_000);
-            mempool.add_transaction(tx, TxClass::Standard).await.unwrap();
+            mempool
+                .add_transaction(tx, TxClass::Standard)
+                .await
+                .unwrap();
         }
 
         // Get transactions (should be sorted by gas price)
@@ -90,7 +93,10 @@ mod mempool_tests {
         let tx = create_test_transaction(1, 2_000_000_000);
         let tx_hash = tx.hash;
 
-        mempool.add_transaction(tx, TxClass::Standard).await.unwrap();
+        mempool
+            .add_transaction(tx, TxClass::Standard)
+            .await
+            .unwrap();
         assert_eq!(mempool.stats().await.total_transactions, 1);
 
         let removed = mempool.remove_transaction(&tx_hash).await;
@@ -108,10 +114,16 @@ mod mempool_tests {
         let tx = create_test_transaction(1, 2_000_000_000);
 
         // First add should succeed
-        assert!(mempool.add_transaction(tx.clone(), TxClass::Standard).await.is_ok());
+        assert!(mempool
+            .add_transaction(tx.clone(), TxClass::Standard)
+            .await
+            .is_ok());
 
         // Second add of same transaction should fail
-        assert!(mempool.add_transaction(tx, TxClass::Standard).await.is_err());
+        assert!(mempool
+            .add_transaction(tx, TxClass::Standard)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -150,9 +162,18 @@ mod mempool_tests {
         let tx2 = create_test_transaction(2, 2_000_000_000);
         let tx3 = create_test_transaction(3, 1_750_000_000);
 
-        mempool.add_transaction(tx1, TxClass::Standard).await.unwrap();
-        mempool.add_transaction(tx2, TxClass::Standard).await.unwrap();
-        mempool.add_transaction(tx3, TxClass::Standard).await.unwrap();
+        mempool
+            .add_transaction(tx1, TxClass::Standard)
+            .await
+            .unwrap();
+        mempool
+            .add_transaction(tx2, TxClass::Standard)
+            .await
+            .unwrap();
+        mempool
+            .add_transaction(tx3, TxClass::Standard)
+            .await
+            .unwrap();
 
         // Get all transactions - should be ordered by gas price (highest first)
         let txs = mempool.get_transactions(10).await;
@@ -200,7 +221,10 @@ mod mempool_tests {
         // Add transactions
         for i in 0..5 {
             let tx = create_test_transaction(i, 2_000_000_000);
-            mempool.add_transaction(tx, TxClass::Standard).await.unwrap();
+            mempool
+                .add_transaction(tx, TxClass::Standard)
+                .await
+                .unwrap();
         }
 
         assert_eq!(mempool.stats().await.total_transactions, 5);
@@ -221,7 +245,10 @@ mod mempool_tests {
         let mempool = Mempool::new(config);
 
         let tx = create_test_transaction(1, 2_000_000_000);
-        mempool.add_transaction(tx, TxClass::Standard).await.unwrap();
+        mempool
+            .add_transaction(tx, TxClass::Standard)
+            .await
+            .unwrap();
 
         // Wait for expiry
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;

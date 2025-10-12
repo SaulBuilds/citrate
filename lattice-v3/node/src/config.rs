@@ -7,16 +7,16 @@ use std::path::PathBuf;
 pub struct NodeConfig {
     /// Chain configuration
     pub chain: ChainConfig,
-    
+
     /// Network configuration
     pub network: NetworkConfig,
-    
+
     /// RPC configuration
     pub rpc: RpcConfig,
-    
+
     /// Storage configuration
     pub storage: StorageConfig,
-    
+
     /// Mining configuration
     pub mining: MiningConfig,
 }
@@ -25,13 +25,13 @@ pub struct NodeConfig {
 pub struct ChainConfig {
     /// Chain ID
     pub chain_id: u64,
-    
+
     /// Genesis block hash (empty for new chain)
     pub genesis_hash: Option<String>,
-    
+
     /// Block time in seconds
     pub block_time: u64,
-    
+
     /// GhostDAG K parameter
     pub ghostdag_k: u16,
 }
@@ -40,10 +40,10 @@ pub struct ChainConfig {
 pub struct NetworkConfig {
     /// P2P listen address
     pub listen_addr: SocketAddr,
-    
+
     /// Bootstrap nodes
     pub bootstrap_nodes: Vec<String>,
-    
+
     /// Max peers
     pub max_peers: usize,
 }
@@ -52,10 +52,10 @@ pub struct NetworkConfig {
 pub struct RpcConfig {
     /// RPC enabled
     pub enabled: bool,
-    
+
     /// RPC listen address
     pub listen_addr: SocketAddr,
-    
+
     /// WebSocket listen address
     pub ws_addr: SocketAddr,
 }
@@ -64,10 +64,10 @@ pub struct RpcConfig {
 pub struct StorageConfig {
     /// Data directory
     pub data_dir: PathBuf,
-    
+
     /// Prune old blocks
     pub pruning: bool,
-    
+
     /// Blocks to keep if pruning
     pub keep_blocks: u64,
 }
@@ -76,13 +76,13 @@ pub struct StorageConfig {
 pub struct MiningConfig {
     /// Enable mining
     pub enabled: bool,
-    
+
     /// Coinbase address (hex)
     pub coinbase: String,
-    
+
     /// Target block time (seconds)
     pub target_block_time: u64,
-    
+
     /// Min gas price
     pub min_gas_price: u64,
 }
@@ -132,14 +132,14 @@ impl NodeConfig {
         config.mining.target_block_time = 2; // Fast blocks for testing
         config
     }
-    
+
     /// Load from file
     pub fn from_file(path: &PathBuf) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: NodeConfig = toml::from_str(&content)?;
         Ok(config)
     }
-    
+
     /// Save to file
     #[allow(dead_code)]
     pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {

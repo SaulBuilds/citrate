@@ -1,14 +1,14 @@
 // Iterative sync implementation for GUI to avoid stack overflow
 // Uses bounded queues and iterative processing
 
-use std::sync::Arc;
-use std::collections::{VecDeque, HashSet};
 use anyhow::Result;
 use lattice_consensus::types::{Block, Hash};
-use lattice_storage::StorageManager;
 use lattice_network::{NetworkMessage, PeerManager};
+use lattice_storage::StorageManager;
+use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, debug, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration for sync behavior
 #[derive(Clone)]
@@ -30,12 +30,12 @@ pub struct SyncConfig {
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
-            batch_size: 50,           // Smaller batches to avoid overwhelming
-            max_queue_size: 200,       // Limit memory usage
-            sync_interval: 5,          // Sync every 5 seconds
+            batch_size: 50,      // Smaller batches to avoid overwhelming
+            max_queue_size: 200, // Limit memory usage
+            sync_interval: 5,    // Sync every 5 seconds
             max_retries: 3,
-            sparse_sync: true,         // Use sparse sync for initial catch-up
-            sparse_step: 10,           // Every 10th block initially
+            sparse_sync: true, // Use sparse sync for initial catch-up
+            sparse_step: 10,   // Every 10th block initially
         }
     }
 }
@@ -99,7 +99,7 @@ impl IterativeSyncManager {
     /// Start the sync process
     pub async fn start_sync(&self) -> Result<()> {
         info!("Starting iterative sync manager");
-        
+
         // Update sync state
         {
             let mut state = self.sync_state.write().await;
@@ -126,7 +126,9 @@ impl IterativeSyncManager {
                     seen_blocks.clone(),
                     sync_state.clone(),
                     failed_blocks.clone(),
-                ).await {
+                )
+                .await
+                {
                     warn!("Sync iteration failed: {}", e);
                 }
 
@@ -151,7 +153,7 @@ impl IterativeSyncManager {
         failed_blocks: Arc<RwLock<VecDeque<BlockWithRetry>>>,
     ) -> Result<()> {
         let current_height = storage.blocks.get_latest_height().unwrap_or(0);
-        
+
         // Update sync state
         {
             let mut state = sync_state.write().await;
@@ -162,8 +164,10 @@ impl IterativeSyncManager {
         // Check if we need more blocks
         let pending_count = pending_blocks.read().await.len();
         if pending_count >= config.max_queue_size {
-            debug!("Pending queue full ({}/{}), skipping sync request", 
-                pending_count, config.max_queue_size);
+            debug!(
+                "Pending queue full ({}/{}), skipping sync request",
+                pending_count, config.max_queue_size
+            );
             return Ok(());
         }
 
@@ -174,12 +178,18 @@ impl IterativeSyncManager {
             (Hash::new([0u8; 32]), config.batch_size as u32)
         } else {
             // Request blocks after our current height
-            let current_hash = storage.blocks.get_block_by_height(current_height)?
+            let current_hash = storage
+                .blocks
+                .get_block_by_height(current_height)?
                 .ok_or_else(|| anyhow::anyhow!("Current block not found"))?;
-            
-            let request_count = (config.max_queue_size - pending_count).min(config.batch_size) as u32;
-            
-            info!("Requesting {} blocks after height {}", request_count, current_height);
+
+            let request_count =
+                (config.max_queue_size - pending_count).min(config.batch_size) as u32;
+
+            info!(
+                "Requesting {} blocks after height {}",
+                request_count, current_height
+            );
             (current_hash, request_count)
         };
 
@@ -190,18 +200,16 @@ impl IterativeSyncManager {
             1
         };
 
-        peer_manager.broadcast(&NetworkMessage::GetBlocks {
-            from: from_hash,
-            count: request_count,
-            step,
-        }).await?;
+        peer_manager
+            .broadcast(&NetworkMessage::GetBlocks {
+                from: from_hash,
+                count: request_count,
+                step,
+            })
+            .await?;
 
         // Retry failed blocks periodically
-        Self::retry_failed_blocks(
-            failed_blocks,
-            pending_blocks,
-            config.max_retries,
-        ).await;
+        Self::retry_failed_blocks(failed_blocks, pending_blocks, config.max_retries).await;
 
         Ok(())
     }
@@ -209,7 +217,7 @@ impl IterativeSyncManager {
     /// Process blocks from the pending queue iteratively
     async fn start_block_processor(&self) {
         info!("Starting block processor");
-        
+
         let storage = self.storage.clone();
         let pending_blocks = self.pending_blocks.clone();
         let seen_blocks = self.seen_blocks.clone();
@@ -226,16 +234,17 @@ impl IterativeSyncManager {
                 };
 
                 if let Some(block_with_retry) = block_to_process {
-                    match Self::process_block_iterative(
-                        &storage,
-                        block_with_retry.block.clone(),
-                    ).await {
+                    match Self::process_block_iterative(&storage, block_with_retry.block.clone())
+                        .await
+                    {
                         Ok(processed) => {
                             if processed {
                                 let mut state = sync_state.write().await;
                                 state.processed_blocks += 1;
-                                debug!("Processed block at height {}", 
-                                    block_with_retry.block.header.height);
+                                debug!(
+                                    "Processed block at height {}",
+                                    block_with_retry.block.header.height
+                                );
                             } else {
                                 // Block was skipped (already exists)
                                 debug!("Skipped existing block");
@@ -243,7 +252,7 @@ impl IterativeSyncManager {
                         }
                         Err(e) => {
                             warn!("Failed to process block: {}", e);
-                            
+
                             // Add to failed queue for retry
                             if block_with_retry.retries < max_retries {
                                 let mut failed = failed_blocks.write().await;
@@ -273,10 +282,7 @@ impl IterativeSyncManager {
     }
 
     /// Process a single block iteratively (no recursion)
-    async fn process_block_iterative(
-        storage: &Arc<StorageManager>,
-        block: Block,
-    ) -> Result<bool> {
+    async fn process_block_iterative(storage: &Arc<StorageManager>, block: Block) -> Result<bool> {
         // Check if block already exists
         if storage.blocks.has_block(&block.header.block_hash)? {
             return Ok(false);
@@ -310,10 +316,7 @@ impl IterativeSyncManager {
     }
 
     /// Check if parent blocks exist
-    async fn check_parents_exist(
-        storage: &Arc<StorageManager>,
-        block: &Block,
-    ) -> Result<bool> {
+    async fn check_parents_exist(storage: &Arc<StorageManager>, block: &Block) -> Result<bool> {
         if block.header.height > 0 {
             // For non-genesis blocks, check if parent exists
             // Note: The block header structure doesn't have explicit parent fields
@@ -340,7 +343,9 @@ impl IterativeSyncManager {
         // Start with parent blocks (by height)
         if block.header.height > 0 {
             // Get parent by height
-            if let Ok(Some(parent_hash)) = storage.blocks.get_block_by_height(block.header.height - 1) {
+            if let Ok(Some(parent_hash)) =
+                storage.blocks.get_block_by_height(block.header.height - 1)
+            {
                 queue.push_back((parent_hash, 0));
             }
         }
@@ -358,7 +363,10 @@ impl IterativeSyncManager {
 
                 // Add parent to queue (limited depth)
                 if ancestor.header.height > 0 && depth + 1 < MAX_DEPTH {
-                    if let Ok(Some(parent_hash)) = storage.blocks.get_block_by_height(ancestor.header.height - 1) {
+                    if let Ok(Some(parent_hash)) = storage
+                        .blocks
+                        .get_block_by_height(ancestor.header.height - 1)
+                    {
                         queue.push_back((parent_hash, depth + 1));
                     }
                 }
@@ -397,10 +405,7 @@ impl IterativeSyncManager {
         for block in blocks {
             if !seen.contains(&block.header.block_hash) {
                 seen.insert(block.header.block_hash);
-                pending.push_back(BlockWithRetry {
-                    block,
-                    retries: 0,
-                });
+                pending.push_back(BlockWithRetry { block, retries: 0 });
 
                 // Limit queue size
                 if pending.len() > self.config.max_queue_size * 2 {

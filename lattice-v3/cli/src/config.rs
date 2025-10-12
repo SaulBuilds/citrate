@@ -73,11 +73,13 @@ impl Config {
     }
 
     pub fn init(force: bool) -> Result<()> {
-        let config_path = Self::default_config_path()
-            .context("Unable to determine config path")?;
+        let config_path = Self::default_config_path().context("Unable to determine config path")?;
 
         if config_path.exists() && !force {
-            anyhow::bail!("Config already exists at {:?}. Use --force to overwrite", config_path);
+            anyhow::bail!(
+                "Config already exists at {:?}. Use --force to overwrite",
+                config_path
+            );
         }
 
         let config = Self::default();

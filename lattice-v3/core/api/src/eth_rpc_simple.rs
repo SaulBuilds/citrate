@@ -1,13 +1,13 @@
 use crate::methods::{ChainApi, StateApi};
+use futures::executor::block_on;
 use jsonrpc_core::{IoHandler, Params, Value};
-use lattice_storage::StorageManager;
-use lattice_sequencer::mempool::Mempool;
+use lattice_consensus::types::Hash;
 use lattice_execution::executor::Executor;
 use lattice_execution::types::Address;
-use lattice_consensus::types::Hash;
-use std::sync::Arc;
-use futures::executor::block_on;
+use lattice_sequencer::mempool::Mempool;
+use lattice_storage::StorageManager;
 use serde_json::json;
+use std::sync::Arc;
 
 /// Add simplified Ethereum-compatible RPC methods to the IoHandler
 pub fn register_eth_methods(
@@ -21,9 +21,7 @@ pub fn register_eth_methods(
     io_handler.add_sync_method("eth_blockNumber", move |_params: Params| {
         let api = ChainApi::new(storage_bn.clone());
         match block_on(api.get_height()) {
-            Ok(height) => {
-                Ok(Value::String(format!("0x{:x}", height)))
-            },
+            Ok(height) => Ok(Value::String(format!("0x{:x}", height))),
             Err(_) => Ok(Value::String("0x0".to_string())),
         }
     });
@@ -88,7 +86,7 @@ pub fn register_eth_methods(
         }
     });
 
-    // eth_getBlockByHash - Returns block by hash  
+    // eth_getBlockByHash - Returns block by hash
     let storage_gbh = storage.clone();
     io_handler.add_sync_method("eth_getBlockByHash", move |params: Params| {
         let api = ChainApi::new(storage_gbh.clone());
@@ -163,9 +161,7 @@ pub fn register_eth_methods(
     });
 
     // eth_syncing - Returns sync status
-    io_handler.add_sync_method("eth_syncing", move |_params: Params| {
-        Ok(Value::Bool(false))
-    });
+    io_handler.add_sync_method("eth_syncing", move |_params: Params| Ok(Value::Bool(false)));
 
     // net_peerCount - Returns number of peers
     io_handler.add_sync_method("net_peerCount", move |_params: Params| {
@@ -182,31 +178,31 @@ pub fn register_eth_methods(
     let executor_bal = executor.clone();
     io_handler.add_sync_method("eth_getBalance", move |params: Params| {
         let state_api = StateApi::new(storage_bal.clone(), executor_bal.clone());
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(_) => return Ok(Value::String("0x0".to_string())),
         };
-        
+
         if params.is_empty() {
             return Ok(Value::String("0x0".to_string()));
         }
-        
+
         let addr_str = match params[0].as_str() {
             Some(a) if a.starts_with("0x") => &a[2..],
             Some(a) => a,
             None => return Ok(Value::String("0x0".to_string())),
         };
-        
+
         let addr_bytes = match hex::decode(addr_str) {
             Ok(b) if b.len() == 20 => {
                 let mut arr = [0u8; 20];
                 arr.copy_from_slice(&b);
                 arr
-            },
+            }
             _ => return Ok(Value::String("0x0".to_string())),
         };
-        
+
         match block_on(state_api.get_balance(Address(addr_bytes))) {
             Ok(balance) => Ok(Value::String(format!("0x{:x}", balance))),
             Err(_) => Ok(Value::String("0x0".to_string())),
@@ -218,31 +214,31 @@ pub fn register_eth_methods(
     let executor_code = executor.clone();
     io_handler.add_sync_method("eth_getCode", move |params: Params| {
         let state_api = StateApi::new(storage_code.clone(), executor_code.clone());
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(_) => return Ok(Value::String("0x".to_string())),
         };
-        
+
         if params.is_empty() {
             return Ok(Value::String("0x".to_string()));
         }
-        
+
         let addr_str = match params[0].as_str() {
             Some(a) if a.starts_with("0x") => &a[2..],
             Some(a) => a,
             None => return Ok(Value::String("0x".to_string())),
         };
-        
+
         let addr_bytes = match hex::decode(addr_str) {
             Ok(b) if b.len() == 20 => {
                 let mut arr = [0u8; 20];
                 arr.copy_from_slice(&b);
                 arr
-            },
+            }
             _ => return Ok(Value::String("0x".to_string())),
         };
-        
+
         match block_on(state_api.get_code(Address(addr_bytes))) {
             Ok(code) => Ok(Value::String(format!("0x{}", hex::encode(code)))),
             Err(_) => Ok(Value::String("0x".to_string())),
@@ -254,31 +250,31 @@ pub fn register_eth_methods(
     let executor_nonce = executor.clone();
     io_handler.add_sync_method("eth_getTransactionCount", move |params: Params| {
         let state_api = StateApi::new(storage_nonce.clone(), executor_nonce.clone());
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(_) => return Ok(Value::String("0x0".to_string())),
         };
-        
+
         if params.is_empty() {
             return Ok(Value::String("0x0".to_string()));
         }
-        
+
         let addr_str = match params[0].as_str() {
             Some(a) if a.starts_with("0x") => &a[2..],
             Some(a) => a,
             None => return Ok(Value::String("0x0".to_string())),
         };
-        
+
         let addr_bytes = match hex::decode(addr_str) {
             Ok(b) if b.len() == 20 => {
                 let mut arr = [0u8; 20];
                 arr.copy_from_slice(&b);
                 arr
-            },
+            }
             _ => return Ok(Value::String("0x0".to_string())),
         };
-        
+
         match block_on(state_api.get_nonce(Address(addr_bytes))) {
             Ok(nonce) => Ok(Value::String(format!("0x{:x}", nonce))),
             Err(_) => Ok(Value::String("0x0".to_string())),
@@ -289,7 +285,10 @@ pub fn register_eth_methods(
     io_handler.add_sync_method("eth_sendRawTransaction", move |_params: Params| {
         // Return mock hash for now
         let mock_hash = Hash::new([0u8; 32]);
-        Ok(Value::String(format!("0x{}", hex::encode(mock_hash.as_bytes()))))
+        Ok(Value::String(format!(
+            "0x{}",
+            hex::encode(mock_hash.as_bytes())
+        )))
     });
 
     // eth_call - Execute call without creating transaction

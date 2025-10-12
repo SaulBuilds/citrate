@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
-use ark_groth16;
 use ark_bls12_381::Bls12_381;
+use ark_groth16;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 
 /// Proof type alias for Groth16 over BLS12-381
@@ -50,9 +50,10 @@ pub struct SerializableProof {
 impl SerializableProof {
     pub fn from_proof(proof: &Proof, public_inputs: Vec<String>) -> Result<Self, ZKPError> {
         let mut proof_bytes = Vec::new();
-        proof.serialize_compressed(&mut proof_bytes)
+        proof
+            .serialize_compressed(&mut proof_bytes)
             .map_err(|e| ZKPError::SerializationError(e.to_string()))?;
-        
+
         Ok(Self {
             proof_bytes,
             public_inputs,
@@ -78,28 +79,28 @@ pub struct VerificationResult {
 pub enum ZKPError {
     #[error("Circuit synthesis failed: {0}")]
     SynthesisError(String),
-    
+
     #[error("Proof generation failed: {0}")]
     ProvingError(String),
-    
+
     #[error("Verification failed: {0}")]
     VerificationError(String),
-    
+
     #[error("Invalid public inputs")]
     InvalidPublicInputs,
-    
+
     #[error("Setup failed: {0}")]
     SetupError(String),
-    
+
     #[error("Serialization error: {0}")]
     SerializationError(String),
-    
+
     #[error("Deserialization error: {0}")]
     DeserializationError(String),
-    
+
     #[error("Key not found: {0}")]
     KeyNotFound(String),
-    
+
     #[error("Invalid circuit")]
     InvalidCircuit,
 }

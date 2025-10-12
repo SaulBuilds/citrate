@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
 
 /// Manages AI models in the Lattice network
@@ -34,11 +34,14 @@ impl ModelManager {
     /// Deploy a model to the network
     pub async fn deploy_model(&self, deployment: ModelDeployment) -> Result<String> {
         let deployment_id = format!("deploy_{}", chrono::Utc::now().timestamp());
-        
+
         // Add to deployments
         self.deployments.write().await.push(deployment.clone());
-        
-        info!("Deployed model: {} with ID: {}", deployment.model_id, deployment_id);
+
+        info!(
+            "Deployed model: {} with ID: {}",
+            deployment.model_id, deployment_id
+        );
         Ok(deployment_id)
     }
 
@@ -50,10 +53,10 @@ impl ModelManager {
     /// Start a training job
     pub async fn start_training(&self, job: TrainingJob) -> Result<String> {
         let job_id = format!("job_{}", chrono::Utc::now().timestamp());
-        
+
         // Add to training jobs
         self.training_jobs.write().await.push(job.clone());
-        
+
         info!("Started training job: {}", job_id);
         Ok(job_id)
     }
@@ -85,7 +88,7 @@ impl ModelManager {
 
     fn load_sample_models() -> HashMap<String, ModelInfo> {
         let mut models = HashMap::new();
-        
+
         // Add sample models
         models.insert(
             "gpt-lattice".to_string(),
@@ -105,7 +108,7 @@ impl ModelManager {
                 metadata: HashMap::new(),
             },
         );
-        
+
         models.insert(
             "stable-lattice".to_string(),
             ModelInfo {
@@ -124,7 +127,7 @@ impl ModelManager {
                 metadata: HashMap::new(),
             },
         );
-        
+
         models
     }
 }

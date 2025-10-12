@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use std::fmt;
 
 /// Hash type for block and transaction identifiers
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, PartialOrd, Ord,
+)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
@@ -40,7 +42,7 @@ impl PublicKey {
     pub fn new(data: [u8; 32]) -> Self {
         Self(data)
     }
-    
+
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
@@ -54,7 +56,7 @@ impl Signature {
     pub fn new(data: [u8; 64]) -> Self {
         Self(data)
     }
-    
+
     pub fn as_bytes(&self) -> &[u8; 64] {
         &self.0
     }
@@ -102,16 +104,16 @@ pub struct VrfProof {
 pub struct GhostDagParams {
     /// K-cluster parameter for blue set calculation
     pub k: u32,
-    
+
     /// Maximum number of parents a block can have
     pub max_parents: usize,
-    
+
     /// Maximum allowed blue score difference for reorg
     pub max_blue_score_diff: u64,
-    
+
     /// Pruning window size
     pub pruning_window: u64,
-    
+
     /// Finality depth
     pub finality_depth: u64,
 }
@@ -119,8 +121,8 @@ pub struct GhostDagParams {
 impl Default for GhostDagParams {
     fn default() -> Self {
         Self {
-            k: 18,  // Standard k-cluster parameter
-            max_parents: 10,  // Maximum 10 parents per block
+            k: 18,           // Standard k-cluster parameter
+            max_parents: 10, // Maximum 10 parents per block
             max_blue_score_diff: 1000,
             pruning_window: 100000,
             finality_depth: 100,
@@ -162,28 +164,28 @@ impl Block {
     pub fn hash(&self) -> Hash {
         self.header.block_hash
     }
-    
+
     /// Get selected parent
     pub fn selected_parent(&self) -> Hash {
         self.header.selected_parent_hash
     }
-    
+
     /// Get all parent hashes (selected + merge)
     pub fn parents(&self) -> Vec<Hash> {
         let mut parents = vec![self.header.selected_parent_hash];
         parents.extend(self.header.merge_parent_hashes.clone());
         parents
     }
-    
+
     /// Get blue score
     pub fn blue_score(&self) -> u64 {
         self.header.blue_score
     }
-    
+
     /// Check if this is a genesis block
     pub fn is_genesis(&self) -> bool {
-        self.header.selected_parent_hash == Hash::default() && 
-        self.header.merge_parent_hashes.is_empty()
+        self.header.selected_parent_hash == Hash::default()
+            && self.header.merge_parent_hashes.is_empty()
     }
 }
 
@@ -213,16 +215,16 @@ impl TransactionType {
             TransactionType::Standard
         }
     }
-    
+
     /// Get priority weight for mempool ordering
     pub fn priority_weight(&self) -> u32 {
         match self {
-            TransactionType::ModelDeploy => 100,      // Highest priority
+            TransactionType::ModelDeploy => 100, // Highest priority
             TransactionType::TrainingJob => 90,
             TransactionType::ModelUpdate => 80,
             TransactionType::LoraAdapter => 70,
             TransactionType::InferenceRequest => 60,
-            TransactionType::Standard => 10,          // Lowest priority
+            TransactionType::Standard => 10, // Lowest priority
         }
     }
 }
@@ -248,13 +250,14 @@ impl Transaction {
     pub fn determine_type(&mut self) {
         self.tx_type = Some(TransactionType::from_data(&self.data));
     }
-    
+
     /// Get transaction priority for mempool
     pub fn priority(&self) -> u64 {
-        let type_weight = self.tx_type
+        let type_weight = self
+            .tx_type
             .unwrap_or(TransactionType::Standard)
             .priority_weight() as u64;
-        
+
         // Combine type weight with gas price for final priority
         (type_weight * 1_000_000) + self.gas_price
     }
@@ -265,10 +268,10 @@ impl Transaction {
 pub struct BlueSet {
     /// Set of blue block hashes
     pub blocks: HashSet<Hash>,
-    
+
     /// Blue score (cumulative blue blocks in ancestry)
     pub score: u64,
-    
+
     /// Blue work (cumulative difficulty)
     pub work: u128,
 }
@@ -281,23 +284,25 @@ impl BlueSet {
             work: 0,
         }
     }
-    
+
     pub fn contains(&self, hash: &Hash) -> bool {
         self.blocks.contains(hash)
     }
-    
+
     pub fn insert(&mut self, hash: Hash) {
         self.blocks.insert(hash);
         self.score += 1;
     }
-    
+
     pub fn size(&self) -> usize {
         self.blocks.len()
     }
 }
 
 impl Default for BlueSet {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// DAG relationship between blocks
@@ -346,11 +351,8 @@ mod tests {
     fn test_block_parents() {
         let mut block = create_test_block();
         block.header.selected_parent_hash = Hash::new([1; 32]);
-        block.header.merge_parent_hashes = vec![
-            Hash::new([2; 32]),
-            Hash::new([3; 32]),
-        ];
-        
+        block.header.merge_parent_hashes = vec![Hash::new([2; 32]), Hash::new([3; 32])];
+
         let parents = block.parents();
         assert_eq!(parents.len(), 3);
         assert_eq!(parents[0], Hash::new([1; 32]));
@@ -362,10 +364,10 @@ mod tests {
     fn test_blue_set() {
         let mut blue_set = BlueSet::new();
         assert_eq!(blue_set.score, 0);
-        
+
         blue_set.insert(Hash::new([1; 32]));
         blue_set.insert(Hash::new([2; 32]));
-        
+
         assert_eq!(blue_set.score, 2);
         assert_eq!(blue_set.size(), 2);
         assert!(blue_set.contains(&Hash::new([1; 32])));

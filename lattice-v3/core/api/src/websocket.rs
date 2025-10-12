@@ -1,13 +1,13 @@
+use crate::methods::ai::InferenceResult;
+use futures::{SinkExt, StreamExt};
+use lattice_execution::types::{Address, JobId, ModelId};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::collections::HashMap;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use futures::{SinkExt, StreamExt};
-use serde::{Serialize, Deserialize};
-use tracing::{info, error, warn, debug};
-use lattice_execution::types::{ModelId, JobId, Address};
-use crate::methods::ai::InferenceResult;
+use tracing::{debug, error, info, warn};
 
 /// WebSocket subscription types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,25 +33,16 @@ pub enum WsMessage {
         subscription: SubscriptionType,
     },
     /// Unsubscribe from events
-    Unsubscribe {
-        id: String,
-        subscription_id: String,
-    },
+    Unsubscribe { id: String, subscription_id: String },
     /// Subscription confirmation
-    SubscriptionConfirm {
-        id: String,
-        subscription_id: String,
-    },
+    SubscriptionConfirm { id: String, subscription_id: String },
     /// Subscription data
     SubscriptionData {
         subscription_id: String,
         data: serde_json::Value,
     },
     /// Error response
-    Error {
-        id: String,
-        error: String,
-    },
+    Error { id: String, error: String },
     /// Ping for keep-alive
     Ping,
     /// Pong response
@@ -68,7 +59,8 @@ pub struct WebSocketConnection {
 /// WebSocket server for real-time AI updates
 pub struct WebSocketServer {
     addr: SocketAddr,
-    connections: Arc<tokio::sync::RwLock<HashMap<String, Arc<tokio::sync::Mutex<WebSocketConnection>>>>>,
+    connections:
+        Arc<tokio::sync::RwLock<HashMap<String, Arc<tokio::sync::Mutex<WebSocketConnection>>>>>,
 }
 
 impl WebSocketServer {
@@ -79,38 +71,38 @@ impl WebSocketServer {
             connections: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Start the WebSocket server
     pub async fn start(self) -> anyhow::Result<()> {
         let listener = TcpListener::bind(self.addr).await?;
         info!("WebSocket server listening on {}", self.addr);
-        
+
         let connections = self.connections.clone();
-        
+
         while let Ok((stream, peer_addr)) = listener.accept().await {
             let connections = connections.clone();
-            
+
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(stream, peer_addr, connections).await {
                     error!("WebSocket connection error from {}: {}", peer_addr, e);
                 }
             });
         }
-        
+
         Ok(())
     }
-    
+
     /// Broadcast inference result to subscribers
     pub async fn broadcast_inference_result(&self, result: &InferenceResult) {
         let connections = self.connections.read().await;
-        
+
         for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let result = result.clone();
-            
+
             tokio::spawn(async move {
                 let mut conn = connection.lock().await;
-                
+
                 // Check if connection is subscribed to inference results
                 let subscriptions = conn.subscriptions.clone();
                 for (sub_id, sub_type) in &subscriptions {
@@ -121,12 +113,12 @@ impl WebSocketServer {
                                 continue;
                             }
                         }
-                        
+
                         let message = WsMessage::SubscriptionData {
                             subscription_id: sub_id.clone(),
                             data: serde_json::to_value(&result).unwrap_or(serde_json::Value::Null),
                         };
-                        
+
                         if let Ok(msg_json) = serde_json::to_string(&message) {
                             let _ = conn.sink.send(Message::Text(msg_json)).await;
                         }
@@ -135,28 +127,36 @@ impl WebSocketServer {
             });
         }
     }
-    
+
     /// Broadcast training job update to subscribers
-    pub async fn broadcast_training_job_update(&self, job_id: JobId, status: String, model_id: ModelId) {
+    pub async fn broadcast_training_job_update(
+        &self,
+        job_id: JobId,
+        status: String,
+        model_id: ModelId,
+    ) {
         let connections = self.connections.read().await;
-        
+
         let update_data = serde_json::json!({
             "job_id": hex::encode(job_id.0.as_bytes()),
             "model_id": hex::encode(model_id.0.as_bytes()),
             "status": status,
             "timestamp": chrono::Utc::now().timestamp()
         });
-        
+
         for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let update_data = update_data.clone();
-            
+
             tokio::spawn(async move {
                 let mut conn = connection.lock().await;
-                
+
                 let subscriptions = conn.subscriptions.clone();
                 for (sub_id, sub_type) in &subscriptions {
-                    if let SubscriptionType::TrainingJobs { model_id: filter_model_id } = sub_type {
+                    if let SubscriptionType::TrainingJobs {
+                        model_id: filter_model_id,
+                    } = sub_type
+                    {
                         // Filter by model ID if specified
                         if let Some(filter_model_id) = filter_model_id {
                             let filter_model_hex = filter_model_id;
@@ -165,12 +165,12 @@ impl WebSocketServer {
                                 continue;
                             }
                         }
-                        
+
                         let message = WsMessage::SubscriptionData {
                             subscription_id: sub_id.clone(),
                             data: update_data.clone(),
                         };
-                        
+
                         if let Ok(msg_json) = serde_json::to_string(&message) {
                             let _ = conn.sink.send(Message::Text(msg_json)).await;
                         }
@@ -179,25 +179,25 @@ impl WebSocketServer {
             });
         }
     }
-    
+
     /// Broadcast new model deployment
     pub async fn broadcast_new_model(&self, model_id: ModelId, owner: Address, name: String) {
         let connections = self.connections.read().await;
-        
+
         let model_data = serde_json::json!({
             "model_id": hex::encode(model_id.0.as_bytes()),
             "owner": hex::encode(owner.0),
             "name": name,
             "timestamp": chrono::Utc::now().timestamp()
         });
-        
+
         for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let model_data = model_data.clone();
-            
+
             tokio::spawn(async move {
                 let mut conn = connection.lock().await;
-                
+
                 let subscriptions = conn.subscriptions.clone();
                 for (sub_id, sub_type) in &subscriptions {
                     if matches!(sub_type, SubscriptionType::NewModels) {
@@ -205,7 +205,7 @@ impl WebSocketServer {
                             subscription_id: sub_id.clone(),
                             data: model_data.clone(),
                         };
-                        
+
                         if let Ok(msg_json) = serde_json::to_string(&message) {
                             let _ = conn.sink.send(Message::Text(msg_json)).await;
                         }
@@ -214,28 +214,31 @@ impl WebSocketServer {
             });
         }
     }
-    
+
     /// Stream chat completion chunks (OpenAI-compatible)
     pub async fn stream_chat_completion(&self, request_id: String, chunk: serde_json::Value) {
         let connections = self.connections.read().await;
-        
+
         for (_conn_id, connection) in connections.iter() {
             let connection = connection.clone();
             let chunk = chunk.clone();
             let request_id = request_id.clone();
-            
+
             tokio::spawn(async move {
                 let mut conn = connection.lock().await;
-                
+
                 let subscriptions = conn.subscriptions.clone();
                 for (sub_id, sub_type) in &subscriptions {
-                    if let SubscriptionType::ChatStream { request_id: filter_request_id } = sub_type {
+                    if let SubscriptionType::ChatStream {
+                        request_id: filter_request_id,
+                    } = sub_type
+                    {
                         if filter_request_id == &request_id {
                             let message = WsMessage::SubscriptionData {
                                 subscription_id: sub_id.clone(),
                                 data: chunk.clone(),
                             };
-                            
+
                             if let Ok(msg_json) = serde_json::to_string(&message) {
                                 let _ = conn.sink.send(Message::Text(msg_json)).await;
                             }
@@ -251,36 +254,38 @@ impl WebSocketServer {
 async fn handle_connection(
     stream: TcpStream,
     peer_addr: SocketAddr,
-    connections: Arc<tokio::sync::RwLock<HashMap<String, Arc<tokio::sync::Mutex<WebSocketConnection>>>>>,
+    connections: Arc<
+        tokio::sync::RwLock<HashMap<String, Arc<tokio::sync::Mutex<WebSocketConnection>>>>,
+    >,
 ) -> anyhow::Result<()> {
     debug!("New WebSocket connection from {}", peer_addr);
-    
+
     let ws_stream = accept_async(stream).await?;
     let connection_id = format!("{}-{}", peer_addr, chrono::Utc::now().timestamp_millis());
-    
+
     let connection = Arc::new(tokio::sync::Mutex::new(WebSocketConnection {
         id: connection_id.clone(),
         subscriptions: HashMap::new(),
         sink: ws_stream,
     }));
-    
+
     // Add to connections map
     {
         let mut connections_map = connections.write().await;
         connections_map.insert(connection_id.clone(), connection.clone());
     }
-    
+
     // Handle messages from this connection
     let result = handle_connection_messages(connection.clone()).await;
-    
+
     // Remove from connections map when done
     {
         let mut connections_map = connections.write().await;
         connections_map.remove(&connection_id);
     }
-    
+
     debug!("WebSocket connection {} closed", connection_id);
-    
+
     result
 }
 
@@ -293,7 +298,7 @@ async fn handle_connection_messages(
             let mut conn = connection.lock().await;
             conn.sink.next().await
         };
-        
+
         match message {
             Some(Ok(Message::Text(text))) => {
                 if let Err(e) = handle_text_message(connection.clone(), text).await {
@@ -328,7 +333,7 @@ async fn handle_connection_messages(
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -338,83 +343,90 @@ async fn handle_text_message(
     text: String,
 ) -> anyhow::Result<()> {
     let message: WsMessage = serde_json::from_str(&text)?;
-    
+
     match message {
         WsMessage::Subscribe { id, subscription } => {
             let subscription_id = uuid::Uuid::new_v4().to_string();
-            
+
             {
                 let mut conn = connection.lock().await;
-                conn.subscriptions.insert(subscription_id.clone(), subscription.clone());
+                conn.subscriptions
+                    .insert(subscription_id.clone(), subscription.clone());
             }
-            
+
             let response = WsMessage::SubscriptionConfirm {
                 id,
                 subscription_id: subscription_id.clone(),
             };
-            
+
             let response_json = serde_json::to_string(&response)?;
-            
+
             {
                 let mut conn = connection.lock().await;
                 conn.sink.send(Message::Text(response_json)).await?;
             }
-            
+
             debug!("WebSocket subscription created: {}", subscription_id);
         }
-        
-        WsMessage::Unsubscribe { id: _, subscription_id } => {
+
+        WsMessage::Unsubscribe {
+            id: _,
+            subscription_id,
+        } => {
             {
                 let mut conn = connection.lock().await;
                 conn.subscriptions.remove(&subscription_id);
             }
-            
+
             debug!("WebSocket subscription removed: {}", subscription_id);
         }
-        
+
         WsMessage::Ping => {
             let response = WsMessage::Pong;
             let response_json = serde_json::to_string(&response)?;
-            
+
             {
                 let mut conn = connection.lock().await;
                 conn.sink.send(Message::Text(response_json)).await?;
             }
         }
-        
+
         _ => {
             warn!("Unsupported WebSocket message type");
         }
     }
-    
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_websocket_server_creation() {
         let addr = "127.0.0.1:8546".parse().unwrap();
         let server = WebSocketServer::new(addr);
         assert_eq!(server.addr, addr);
     }
-    
+
     #[test]
     fn test_message_serialization() {
         let msg = WsMessage::Subscribe {
             id: "test-1".to_string(),
             subscription: SubscriptionType::InferenceResults { model_id: None },
         };
-        
+
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: WsMessage = serde_json::from_str(&json).unwrap();
-        
+
         match parsed {
             WsMessage::Subscribe { id, subscription } => {
                 assert_eq!(id, "test-1");
-                assert!(matches!(subscription, SubscriptionType::InferenceResults { model_id: None }));
+                assert!(matches!(
+                    subscription,
+                    SubscriptionType::InferenceResults { model_id: None }
+                ));
             }
             _ => panic!("Wrong message type"),
         }

@@ -1,39 +1,39 @@
 use lattice_consensus::{Hash, PublicKey, Transaction};
 use std::collections::HashMap;
 use std::sync::Arc;
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ValidationError {
     #[error("Invalid signature")]
     InvalidSignature,
-    
+
     #[error("Insufficient balance: required {required}, available {available}")]
     InsufficientBalance { required: u128, available: u128 },
-    
+
     #[error("Invalid nonce: expected {expected}, got {got}")]
     InvalidNonce { expected: u64, got: u64 },
-    
+
     #[error("Gas limit too high: max {max}, got {got}")]
     GasLimitTooHigh { max: u64, got: u64 },
-    
+
     #[error("Gas price too low: min {min}, got {got}")]
     GasPriceTooLow { min: u64, got: u64 },
-    
+
     #[error("Transaction expired")]
     Expired,
-    
+
     #[error("Invalid recipient")]
     InvalidRecipient,
-    
+
     #[error("Data too large: max {max} bytes, got {got}")]
     DataTooLarge { max: usize, got: usize },
-    
+
     #[error("Blacklisted address: {0:?}")]
     BlacklistedAddress(PublicKey),
-    
+
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
 }
@@ -43,25 +43,25 @@ pub enum ValidationError {
 pub struct ValidationRules {
     /// Minimum gas price
     pub min_gas_price: u64,
-    
+
     /// Maximum gas limit per transaction
     pub max_gas_limit: u64,
-    
+
     /// Maximum transaction data size
     pub max_data_size: usize,
-    
+
     /// Transaction expiry time in seconds
     pub tx_expiry_secs: u64,
-    
+
     /// Enable signature verification
     pub verify_signatures: bool,
-    
+
     /// Enable balance checks
     pub check_balance: bool,
-    
+
     /// Enable nonce validation
     pub check_nonce: bool,
-    
+
     /// Rate limit per sender (txs per minute)
     pub rate_limit: u32,
     /// Rate limit window length in seconds
@@ -72,9 +72,9 @@ impl Default for ValidationRules {
     fn default() -> Self {
         Self {
             min_gas_price: 1_000_000_000, // 1 gwei
-            max_gas_limit: 10_000_000, // 10M gas
-            max_data_size: 128 * 1024, // 128 KB
-            tx_expiry_secs: 3600, // 1 hour
+            max_gas_limit: 10_000_000,    // 10M gas
+            max_data_size: 128 * 1024,    // 128 KB
+            tx_expiry_secs: 3600,         // 1 hour
             verify_signatures: true,
             check_balance: true,
             check_nonce: true,
@@ -121,14 +121,16 @@ impl MockStateProvider {
             accounts: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     pub async fn set_account(&self, address: PublicKey, state: AccountState) {
         self.accounts.write().await.insert(address, state);
     }
 }
 
 impl Default for MockStateProvider {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait::async_trait]
@@ -136,7 +138,7 @@ impl StateProvider for MockStateProvider {
     async fn get_account(&self, address: &PublicKey) -> Option<AccountState> {
         self.accounts.read().await.get(address).cloned()
     }
-    
+
     async fn get_balance(&self, address: &PublicKey) -> u128 {
         self.accounts
             .read()
@@ -145,7 +147,7 @@ impl StateProvider for MockStateProvider {
             .map(|a| a.balance)
             .unwrap_or(0)
     }
-    
+
     async fn get_nonce(&self, address: &PublicKey) -> u64 {
         self.accounts
             .read()
@@ -179,33 +181,33 @@ impl<S: StateProvider> TxValidator<S> {
             rate_limiter: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     /// Validate a transaction
     pub async fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         // Check blacklist
         if self.is_blacklisted(&tx.from).await {
             return Err(ValidationError::BlacklistedAddress(tx.from));
         }
-        
+
         // Check rate limit
         self.check_rate_limit(&tx.from).await?;
-        
+
         // Basic validation
         self.validate_basic(tx)?;
-        
+
         // Signature validation
         if self.rules.verify_signatures {
             self.validate_signature(tx)?;
         }
-        
+
         // State validation
         if self.rules.check_balance || self.rules.check_nonce {
             self.validate_state(tx).await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// Basic validation without state lookups
     fn validate_basic(&self, tx: &Transaction) -> Result<(), ValidationError> {
         // Check gas price
@@ -215,7 +217,7 @@ impl<S: StateProvider> TxValidator<S> {
                 got: tx.gas_price,
             });
         }
-        
+
         // Check gas limit
         if tx.gas_limit > self.rules.max_gas_limit {
             return Err(ValidationError::GasLimitTooHigh {
@@ -223,7 +225,7 @@ impl<S: StateProvider> TxValidator<S> {
                 got: tx.gas_limit,
             });
         }
-        
+
         // Check data size
         if tx.data.len() > self.rules.max_data_size {
             return Err(ValidationError::DataTooLarge {
@@ -231,13 +233,13 @@ impl<S: StateProvider> TxValidator<S> {
                 got: tx.data.len(),
             });
         }
-        
+
         // Check recipient (optional field validation)
         // Contract creation has no recipient
-        
+
         Ok(())
     }
-    
+
     /// Validate transaction signature
     fn validate_signature(&self, tx: &Transaction) -> Result<(), ValidationError> {
         // Use real cryptographic signature verification
@@ -250,12 +252,15 @@ impl<S: StateProvider> TxValidator<S> {
             }
         }
     }
-    
+
     /// Validate against current state
     async fn validate_state(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let account = self.state_provider.get_account(&tx.from).await
+        let account = self
+            .state_provider
+            .get_account(&tx.from)
+            .await
             .unwrap_or_else(|| AccountState::new(0, 0));
-        
+
         // Check nonce
         if self.rules.check_nonce && tx.nonce != account.nonce {
             return Err(ValidationError::InvalidNonce {
@@ -263,7 +268,7 @@ impl<S: StateProvider> TxValidator<S> {
                 got: tx.nonce,
             });
         }
-        
+
         // Check balance
         if self.rules.check_balance {
             let required = tx.value + (tx.gas_limit * tx.gas_price) as u128;
@@ -274,62 +279,70 @@ impl<S: StateProvider> TxValidator<S> {
                 });
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if address is blacklisted
     async fn is_blacklisted(&self, address: &PublicKey) -> bool {
-        self.blacklist.read().await.get(address).copied().unwrap_or(false)
+        self.blacklist
+            .read()
+            .await
+            .get(address)
+            .copied()
+            .unwrap_or(false)
     }
-    
+
     /// Add address to blacklist
     pub async fn blacklist_address(&self, address: PublicKey) {
         self.blacklist.write().await.insert(address, true);
         warn!("Blacklisted address: {:?}", address);
     }
-    
+
     /// Remove address from blacklist
     pub async fn unblacklist_address(&self, address: &PublicKey) {
         self.blacklist.write().await.remove(address);
         info!("Unblacklisted address: {:?}", address);
     }
-    
+
     /// Check rate limit for sender
     async fn check_rate_limit(&self, sender: &PublicKey) -> Result<(), ValidationError> {
         let current_time = chrono::Utc::now().timestamp() as u64;
         let window_size = self.rules.rate_limit_window_secs;
-        
+
         let mut rate_limiter = self.rate_limiter.write().await;
-        
+
         let entry = rate_limiter.entry(*sender).or_insert(RateLimitEntry {
             count: 0,
             window_start: current_time,
         });
-        
+
         // Reset window if expired
         if current_time - entry.window_start >= window_size {
             entry.count = 0;
             entry.window_start = current_time;
         }
-        
+
         // Check limit
         if entry.count >= self.rules.rate_limit {
             return Err(ValidationError::RateLimitExceeded);
         }
-        
+
         entry.count += 1;
         Ok(())
     }
-    
+
     /// Batch validate multiple transactions
-    pub async fn validate_batch(&self, transactions: &[Transaction]) -> Vec<Result<(), ValidationError>> {
+    pub async fn validate_batch(
+        &self,
+        transactions: &[Transaction],
+    ) -> Vec<Result<(), ValidationError>> {
         let mut results = Vec::new();
-        
+
         for tx in transactions {
             results.push(self.validate(tx).await);
         }
-        
+
         results
     }
 }
@@ -350,12 +363,15 @@ impl<S: StateProvider> ValidationPipeline<S> {
             batch_size: 100,
         }
     }
-    
+
     /// Process a batch of transactions
-    pub async fn process(&self, transactions: Vec<Transaction>) -> (Vec<Transaction>, Vec<(Transaction, ValidationError)>) {
+    pub async fn process(
+        &self,
+        transactions: Vec<Transaction>,
+    ) -> (Vec<Transaction>, Vec<(Transaction, ValidationError)>) {
         let mut valid = Vec::new();
         let mut invalid = Vec::new();
-        
+
         if self.parallel_validation {
             // Parallel validation for independent checks
             let futures: Vec<_> = transactions
@@ -370,9 +386,9 @@ impl<S: StateProvider> ValidationPipeline<S> {
                     }
                 })
                 .collect();
-            
+
             let results = futures::future::join_all(futures).await;
-            
+
             for (valid_tx, invalid_tx) in results {
                 if let Some(tx) = valid_tx {
                     valid.push(tx);
@@ -390,9 +406,13 @@ impl<S: StateProvider> ValidationPipeline<S> {
                 }
             }
         }
-        
-        debug!("Validation complete: {} valid, {} invalid", valid.len(), invalid.len());
-        
+
+        debug!(
+            "Validation complete: {} valid, {} invalid",
+            valid.len(),
+            invalid.len()
+        );
+
         (valid, invalid)
     }
 }
@@ -401,7 +421,7 @@ impl<S: StateProvider> ValidationPipeline<S> {
 mod tests {
     use super::*;
     use lattice_consensus::types::Signature;
-    
+
     fn create_test_tx(nonce: u64, gas_price: u64, value: u128) -> Transaction {
         Transaction {
             hash: Hash::new([nonce as u8; 32]),
@@ -416,21 +436,21 @@ mod tests {
             tx_type: None,
         }
     }
-    
+
     #[tokio::test]
     async fn test_basic_validation() {
         let rules = ValidationRules {
-            check_balance: false,  // Disable balance check for basic test
+            check_balance: false,     // Disable balance check for basic test
             verify_signatures: false, // Disable signature verification
             ..Default::default()
         };
         let state_provider = Arc::new(MockStateProvider::new());
         let validator = TxValidator::new(rules, state_provider);
-        
+
         let tx = create_test_tx(0, 2_000_000_000, 1000);
         assert!(validator.validate(&tx).await.is_ok());
     }
-    
+
     #[tokio::test]
     async fn test_gas_price_validation() {
         let rules = ValidationRules {
@@ -442,14 +462,14 @@ mod tests {
         };
         let state_provider = Arc::new(MockStateProvider::new());
         let validator = TxValidator::new(rules, state_provider);
-        
+
         let tx = create_test_tx(0, 500_000_000, 1000); // Too low gas price
         assert!(matches!(
             validator.validate(&tx).await,
             Err(ValidationError::GasPriceTooLow { .. })
         ));
     }
-    
+
     #[tokio::test]
     async fn test_balance_validation() {
         let rules = ValidationRules {
@@ -459,22 +479,21 @@ mod tests {
             ..Default::default()
         };
         let state_provider = Arc::new(MockStateProvider::new());
-        
+
         // Set account with insufficient balance
-        state_provider.set_account(
-            PublicKey::new([1; 32]),
-            AccountState::new(1000, 0),
-        ).await;
-        
+        state_provider
+            .set_account(PublicKey::new([1; 32]), AccountState::new(1000, 0))
+            .await;
+
         let validator = TxValidator::new(rules, state_provider);
-        
+
         let tx = create_test_tx(0, 2_000_000_000, 100000); // Requires more than available
         assert!(matches!(
             validator.validate(&tx).await,
             Err(ValidationError::InsufficientBalance { .. })
         ));
     }
-    
+
     #[tokio::test]
     async fn test_nonce_validation() {
         let rules = ValidationRules {
@@ -484,27 +503,26 @@ mod tests {
             ..Default::default()
         };
         let state_provider = Arc::new(MockStateProvider::new());
-        
+
         // Set account with nonce 5
-        state_provider.set_account(
-            PublicKey::new([1; 32]),
-            AccountState::new(1000000, 5),
-        ).await;
-        
+        state_provider
+            .set_account(PublicKey::new([1; 32]), AccountState::new(1000000, 5))
+            .await;
+
         let validator = TxValidator::new(rules, state_provider);
-        
+
         // Wrong nonce
         let tx = create_test_tx(3, 2_000_000_000, 1000);
         assert!(matches!(
             validator.validate(&tx).await,
             Err(ValidationError::InvalidNonce { .. })
         ));
-        
+
         // Correct nonce
         let tx = create_test_tx(5, 2_000_000_000, 1000);
         assert!(validator.validate(&tx).await.is_ok());
     }
-    
+
     #[tokio::test]
     async fn test_blacklist() {
         let rules = ValidationRules {
@@ -515,17 +533,17 @@ mod tests {
         };
         let state_provider = Arc::new(MockStateProvider::new());
         let validator = TxValidator::new(rules, state_provider);
-        
+
         let sender = PublicKey::new([1; 32]);
         validator.blacklist_address(sender).await;
-        
+
         let tx = create_test_tx(0, 2_000_000_000, 1000);
         assert!(matches!(
             validator.validate(&tx).await,
             Err(ValidationError::BlacklistedAddress(_))
         ));
     }
-    
+
     #[tokio::test]
     async fn test_rate_limiting() {
         let rules = ValidationRules {
@@ -538,11 +556,11 @@ mod tests {
         };
         let state_provider = Arc::new(MockStateProvider::new());
         let validator = TxValidator::new(rules, state_provider);
-        
+
         let tx1 = create_test_tx(0, 2_000_000_000, 1000);
         let tx2 = create_test_tx(1, 2_000_000_000, 1000);
         let tx3 = create_test_tx(2, 2_000_000_000, 1000);
-        
+
         assert!(validator.validate(&tx1).await.is_ok());
         assert!(validator.validate(&tx2).await.is_ok());
         assert!(matches!(

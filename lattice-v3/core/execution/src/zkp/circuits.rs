@@ -1,25 +1,31 @@
-use ark_ff::Zero;
-use ark_r1cs_std::prelude::*;
-use ark_r1cs_std::fields::fp::FpVar;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use super::types::{GradientProofCircuit, ModelExecutionCircuit};
 use ark_bls12_381::Fr;
-use super::types::{ModelExecutionCircuit, GradientProofCircuit};
+use ark_ff::Zero;
+use ark_r1cs_std::fields::fp::FpVar;
+use ark_r1cs_std::prelude::*;
+use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 
 /// Implementation of model execution circuit
 impl ConstraintSynthesizer<Fr> for ModelExecutionCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
         // Allocate variables for model hash
-        let _model_hash_vars: Vec<_> = self.model_hash.iter()
+        let _model_hash_vars: Vec<_> = self
+            .model_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for input hash
-        let _input_hash_vars: Vec<_> = self.input_hash.iter()
+        let _input_hash_vars: Vec<_> = self
+            .input_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for output hash
-        let _output_hash_vars: Vec<_> = self.output_hash.iter()
+        let _output_hash_vars: Vec<_> = self
+            .output_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
@@ -27,7 +33,7 @@ impl ConstraintSynthesizer<Fr> for ModelExecutionCircuit {
         for step in self.computation_trace.iter() {
             // For each computation step, verify the operation
             let input_sum = step.input_values.iter().sum::<f64>();
-            
+
             // Simple constraint: output should match some function of inputs
             // In real implementation, this would be more sophisticated
             let expected_output = match step.operation.as_str() {
@@ -37,13 +43,11 @@ impl ConstraintSynthesizer<Fr> for ModelExecutionCircuit {
             };
 
             // Create constraint that output matches expected
-            let output_var = FpVar::new_witness(cs.clone(), || {
-                Ok(Fr::from(expected_output as u64))
-            })?;
+            let output_var =
+                FpVar::new_witness(cs.clone(), || Ok(Fr::from(expected_output as u64)))?;
 
-            let expected_var = FpVar::new_witness(cs.clone(), || {
-                Ok(Fr::from(step.output_value as u64))
-            })?;
+            let expected_var =
+                FpVar::new_witness(cs.clone(), || Ok(Fr::from(step.output_value as u64)))?;
 
             output_var.enforce_equal(&expected_var)?;
         }
@@ -56,29 +60,31 @@ impl ConstraintSynthesizer<Fr> for ModelExecutionCircuit {
 impl ConstraintSynthesizer<Fr> for GradientProofCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
         // Allocate variables for model hash
-        let _model_hash_vars: Vec<_> = self.model_hash.iter()
+        let _model_hash_vars: Vec<_> = self
+            .model_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for dataset hash
-        let _dataset_hash_vars: Vec<_> = self.dataset_hash.iter()
+        let _dataset_hash_vars: Vec<_> = self
+            .dataset_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for gradient hash
-        let _gradient_hash_vars: Vec<_> = self.gradient_hash.iter()
+        let _gradient_hash_vars: Vec<_> = self
+            .gradient_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate loss value
-        let _loss_var = FpVar::new_witness(cs.clone(), || {
-            Ok(Fr::from(self.loss_value as u64))
-        })?;
+        let _loss_var = FpVar::new_witness(cs.clone(), || Ok(Fr::from(self.loss_value as u64)))?;
 
         // Allocate number of samples
-        let _num_samples_var = FpVar::new_witness(cs.clone(), || {
-            Ok(Fr::from(self.num_samples))
-        })?;
+        let _num_samples_var = FpVar::new_witness(cs.clone(), || Ok(Fr::from(self.num_samples)))?;
 
         // Add constraint that loss is positive
         // Simplified constraint - in production would use proper comparison
@@ -105,23 +111,29 @@ pub struct StateTransitionCircuit {
 impl ConstraintSynthesizer<Fr> for StateTransitionCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
         // Allocate variables for old state root
-        let _old_state_vars: Vec<_> = self.old_state_root.iter()
+        let _old_state_vars: Vec<_> = self
+            .old_state_root
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for new state root
-        let _new_state_vars: Vec<_> = self.new_state_root.iter()
+        let _new_state_vars: Vec<_> = self
+            .new_state_root
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for transaction hash
-        let _tx_hash_vars: Vec<_> = self.transaction_hash.iter()
+        let _tx_hash_vars: Vec<_> = self
+            .transaction_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // In a real implementation, we would verify the state transition
         // by checking merkle proofs and transaction validity
-        
+
         Ok(())
     }
 }
@@ -138,12 +150,16 @@ pub struct DataIntegrityCircuit {
 impl ConstraintSynthesizer<Fr> for DataIntegrityCircuit {
     fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
         // Allocate variables for data hash
-        let data_hash_vars: Vec<_> = self.data_hash.iter()
+        let data_hash_vars: Vec<_> = self
+            .data_hash
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
         // Allocate variables for merkle root
-        let root_vars: Vec<_> = self.merkle_root.iter()
+        let root_vars: Vec<_> = self
+            .merkle_root
+            .iter()
             .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
             .collect::<Result<_, _>>()?;
 
@@ -152,7 +168,8 @@ impl ConstraintSynthesizer<Fr> for DataIntegrityCircuit {
         let mut index = self.leaf_index;
 
         for sibling in self.merkle_path.iter() {
-            let sibling_vars: Vec<_> = sibling.iter()
+            let sibling_vars: Vec<_> = sibling
+                .iter()
                 .map(|byte| UInt8::new_witness(cs.clone(), || Ok(*byte)))
                 .collect::<Result<_, _>>()?;
 
@@ -164,7 +181,7 @@ impl ConstraintSynthesizer<Fr> for DataIntegrityCircuit {
                 // Current hash is right child
                 current_hash = hash_pair(&sibling_vars, &current_hash, cs.clone())?;
             }
-            
+
             index >>= 1;
         }
 
@@ -187,12 +204,12 @@ fn hash_pair(
     // For now, we just concatenate and return
     let mut result = left.to_vec();
     result.extend_from_slice(right);
-    
+
     // Truncate to 32 bytes (256 bits) for consistency
     result.truncate(32);
     while result.len() < 32 {
         result.push(UInt8::constant(0));
     }
-    
+
     Ok(result)
 }

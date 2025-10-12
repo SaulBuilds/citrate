@@ -1,3 +1,5 @@
+// lattice-v3/core/api/src/websocket.rs
+
 use crate::methods::ai::InferenceResult;
 use futures::{SinkExt, StreamExt};
 use lattice_execution::types::{Address, JobId, ModelId};

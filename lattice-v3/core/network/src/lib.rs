@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/lib.rs
+
+// Network module for peer-to-peer communication
 pub mod ai_handler;
 pub mod block_propagation;
 pub mod discovery;

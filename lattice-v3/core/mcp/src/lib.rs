@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/lib.rs
+
+// MCP Service coordinator
 pub mod cache;
 pub mod execution;
 pub mod provider;

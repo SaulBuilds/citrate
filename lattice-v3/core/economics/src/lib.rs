@@ -1,3 +1,5 @@
+// lattice-v3/core/economics/src/lib.rs
+
 pub mod genesis;
 pub mod rewards;
 pub mod token;

@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/types.rs
+
+// Types for representing models, providers, and requests
 use lattice_execution::{Address, Hash};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};

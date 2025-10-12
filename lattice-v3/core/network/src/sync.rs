@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/sync.rs
+
+// Synchronization manager for block and header downloads
 use crate::{
     peer::{Peer, PeerId},
     NetworkError, NetworkMessage,

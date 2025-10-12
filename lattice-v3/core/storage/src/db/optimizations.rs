@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/db/optimizations.rs
+
 use rocksdb::{BlockBasedOptions, Cache, Options, SliceTransform};
 
 /// RocksDB optimization configurations

@@ -1,3 +1,5 @@
+//lattice-v3/cli/src/main.rs
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;

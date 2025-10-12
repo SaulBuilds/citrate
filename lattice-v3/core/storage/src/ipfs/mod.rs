@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/ipfs/mod.rs
+
 //! IPFS integration for distributed model storage
 //!
 //! This module provides functionality to store and retrieve AI models

@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/db/column_families.rs
+
 /// Column family definitions for RocksDB
 pub const CF_DEFAULT: &str = "default";
 pub const CF_BLOCKS: &str = "blocks";

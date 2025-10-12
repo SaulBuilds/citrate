@@ -1,3 +1,6 @@
+// lattice-v3/core/storage/src/chain/mod.rs
+
+// Chain storage module
 pub mod block_store;
 pub mod transaction_store;
 

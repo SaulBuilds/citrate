@@ -1,8 +1,10 @@
+// lattice-v3/core/execution/src/inference/coreml_bridge.rs
+
 // CoreML Bridge - FFI bindings for CoreML framework
 // Provides Rust interface to Apple's CoreML for model execution
 
 use std::ffi::{c_void, CStr, CString};
-use std::os::raw::{c_char, c_float, c_int};
+use std::os::raw::{c_char, c_double, c_float, c_int};
 use std::path::Path;
 use std::ptr;
 
@@ -40,7 +42,10 @@ struct NSError {
 #[link(name = "Foundation", kind = "framework")]
 extern "C" {
     // Model loading
-    fn MLModelLoad(path: *const c_char, error: *mut *mut NSError) -> *mut c_void;
+    fn MLModelLoad(
+        path: *const c_char,
+        error: *mut *mut NSError,
+    ) -> *mut c_void;
 
     // Model compilation
     fn MLModelCompileModelAtURL(
@@ -99,12 +104,17 @@ pub struct CoreMLModel {
 impl CoreMLModel {
     /// Load a compiled CoreML model from disk
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path_str = path.as_ref().to_str().context("Invalid path encoding")?;
+        let path_str = path
+            .as_ref()
+            .to_str()
+            .context("Invalid path encoding")?;
 
         let c_path = CString::new(path_str)?;
         let mut error: *mut NSError = ptr::null_mut();
 
-        let model = unsafe { MLModelLoad(c_path.as_ptr(), &mut error) };
+        let model = unsafe {
+            MLModelLoad(c_path.as_ptr(), &mut error)
+        };
 
         if model.is_null() {
             let error_msg = Self::get_error_message(error);
@@ -134,7 +144,9 @@ impl CoreMLModel {
         let c_path = CString::new(path_str)?;
         let mut error: *mut NSError = ptr::null_mut();
 
-        let compiled_path = unsafe { MLModelCompileModelAtURL(c_path.as_ptr(), &mut error) };
+        let compiled_path = unsafe {
+            MLModelCompileModelAtURL(c_path.as_ptr(), &mut error)
+        };
 
         if compiled_path.is_null() {
             let error_msg = Self::get_error_message(error);
@@ -146,7 +158,11 @@ impl CoreMLModel {
             anyhow::bail!("Failed to compile CoreML model: {}", error_msg);
         }
 
-        let result = unsafe { CStr::from_ptr(compiled_path).to_string_lossy().into_owned() };
+        let result = unsafe {
+            CStr::from_ptr(compiled_path)
+                .to_string_lossy()
+                .into_owned()
+        };
 
         Ok(result)
     }
@@ -179,23 +195,29 @@ impl CoreMLModel {
         unsafe {
             let data_ptr = MLMultiArrayGetDataPointer(input_array);
             if !data_ptr.is_null() {
-                ptr::copy_nonoverlapping(input.as_ptr(), data_ptr, input.len());
+                ptr::copy_nonoverlapping(
+                    input.as_ptr(),
+                    data_ptr,
+                    input.len(),
+                );
             }
         }
 
         // Create feature provider
         let provider = unsafe { MLFeatureProviderCreate() };
         if provider.is_null() {
-            unsafe {
-                MLMultiArrayRelease(input_array);
-            }
+            unsafe { MLMultiArrayRelease(input_array); }
             anyhow::bail!("Failed to create feature provider");
         }
 
         // Set input
         let input_name = CString::new(self.input_names[0].as_str())?;
         unsafe {
-            MLFeatureProviderSetMultiArray(provider, input_name.as_ptr(), input_array);
+            MLFeatureProviderSetMultiArray(
+                provider,
+                input_name.as_ptr(),
+                input_array,
+            );
         }
 
         // Run prediction
@@ -227,13 +249,12 @@ impl CoreMLModel {
 
         // Extract output
         let output_name = CString::new(self.output_names[0].as_str())?;
-        let output_array =
-            unsafe { MLFeatureProviderGetMultiArray(output_provider, output_name.as_ptr()) };
+        let output_array = unsafe {
+            MLFeatureProviderGetMultiArray(output_provider, output_name.as_ptr())
+        };
 
         if output_array.is_null() {
-            unsafe {
-                MLFeatureProviderRelease(output_provider as *mut _);
-            }
+            unsafe { MLFeatureProviderRelease(output_provider as *mut _); }
             anyhow::bail!("Failed to get output array");
         }
 
@@ -244,7 +265,11 @@ impl CoreMLModel {
         unsafe {
             let data_ptr = MLMultiArrayGetDataPointer(output_array);
             if !data_ptr.is_null() {
-                ptr::copy_nonoverlapping(data_ptr, output.as_mut_ptr(), output_count as usize);
+                ptr::copy_nonoverlapping(
+                    data_ptr,
+                    output.as_mut_ptr(),
+                    output_count as usize,
+                );
             }
         }
 
@@ -267,7 +292,9 @@ impl CoreMLModel {
             if desc.is_null() {
                 "Unknown error".to_string()
             } else {
-                CStr::from_ptr(desc).to_string_lossy().into_owned()
+                CStr::from_ptr(desc)
+                    .to_string_lossy()
+                    .into_owned()
             }
         }
     }

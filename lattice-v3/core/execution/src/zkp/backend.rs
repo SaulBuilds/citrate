@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/zkp/backend.rs
+
+// ZKP backend for managing proof generation and verification
 use super::prover::Prover;
 use super::types::{ProofRequest, ProofResponse, ProofType, SerializableProof, ZKPError};
 use super::verifier::Verifier;

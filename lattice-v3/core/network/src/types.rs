@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/types.rs
+
+// Network types and constants
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;

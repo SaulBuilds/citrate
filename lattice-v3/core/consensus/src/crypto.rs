@@ -1,3 +1,5 @@
+// lattice-v3/core/consensus/src/crypto.rs
+
 use crate::types::{PublicKey, Signature, Transaction};
 use ed25519_dalek::{Signature as DalekSignature, Signer, SigningKey, Verifier, VerifyingKey};
 use thiserror::Error;

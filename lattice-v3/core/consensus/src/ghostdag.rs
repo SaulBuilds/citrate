@@ -1,3 +1,5 @@
+// lattice-v3/core/consensus/src/ghostdag.rs
+
 use crate::dag_store::DagStore;
 use crate::types::{Block, BlueSet, DagRelation, GhostDagParams, Hash};
 use std::collections::{HashMap, HashSet, VecDeque};

@@ -1,3 +1,5 @@
+// lattice-v3/core/consensus/src/chain_selection.rs
+
 use crate::dag_store::DagStore;
 use crate::ghostdag::GhostDag;
 use crate::tip_selection::TipSelector;

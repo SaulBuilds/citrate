@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/transaction_gossip.rs
+
+// Transaction gossip handler for efficient mempool synchronization
 use crate::{NetworkMessage, PeerId, PeerManager};
 use anyhow::Result;
 use lattice_consensus::types::{Hash, Transaction, TransactionType};

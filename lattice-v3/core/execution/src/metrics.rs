@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/metrics.rs
+
+// Metrics for tracking execution and precompile calls
 use once_cell::sync::Lazy;
 use prometheus::{register_counter_vec, register_histogram, CounterVec, Histogram};
 

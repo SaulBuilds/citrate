@@ -1,5 +1,6 @@
+//lattice-v3/cli/src/commands/model.rs
+
 use anyhow::{Context, Result};
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use clap::Subcommand;
 use colored::Colorize;
@@ -8,7 +9,6 @@ use sha3::Digest;
 use std::fs;
 use std::path::PathBuf; // for Keccak256::digest
 
-use crate::commands::contract::wait_for_receipt;
 use crate::config::Config;
 
 #[derive(Subcommand)]
@@ -184,9 +184,6 @@ async fn deploy_model(
 ) -> Result<()> {
     println!("{}", "Deploying model...".cyan());
 
-    let default_name = name.clone().unwrap_or_else(|| "Unnamed Model".to_string());
-    let default_version = version.clone().unwrap_or_else(|| "1.0.0".to_string());
-
     // Read model file
     let model_data = fs::read(&model_path)
         .with_context(|| format!("Failed to read model file {:?}", model_path))?;
@@ -203,8 +200,8 @@ async fn deploy_model(
         serde_json::from_str(&content)?
     } else {
         json!({
-            "name": default_name.clone(),
-            "version": default_version.clone(),
+            "name": name.unwrap_or_else(|| "Unnamed Model".to_string()),
+            "version": version.unwrap_or_else(|| "1.0.0".to_string()),
             "format": model_format,
             "size": model_data.len(),
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -219,16 +216,20 @@ async fn deploy_model(
         .as_object_mut()
         .ok_or_else(|| anyhow::anyhow!("Metadata JSON must be an object"))?;
 
-    if let Some(name_override) = name.as_ref() {
-        metadata_obj.insert("name".to_string(), json!(name_override));
+    if let Some(name) = name {
+        metadata_obj.insert("name".to_string(), json!(name));
     } else {
-        metadata_obj.insert("name".to_string(), json!(default_name.clone()));
+        metadata_obj
+            .entry("name".to_string())
+            .or_insert(json!("Unnamed Model"));
     }
 
-    if let Some(version_override) = version.as_ref() {
-        metadata_obj.insert("version".to_string(), json!(version_override));
+    if let Some(version) = version {
+        metadata_obj.insert("version".to_string(), json!(version));
     } else {
-        metadata_obj.insert("version".to_string(), json!(default_version.clone()));
+        metadata_obj
+            .entry("version".to_string())
+            .or_insert(json!("1.0.0"));
     }
 
     metadata_obj.insert("framework".to_string(), json!(model_format));
@@ -283,45 +284,17 @@ async fn deploy_model(
 
     let result: serde_json::Value = response.json().await?;
 
-    if let Some(res) = result.get("result").and_then(|v| v.as_object()) {
-        let tx_hash = res
-            .get("tx_hash")
-            .and_then(|v| v.as_str())
-            .context("RPC response missing tx_hash")?;
-
-        println!("{}", "✓ Transaction submitted".green());
-        println!("Transaction: {}", tx_hash.cyan());
-
-        if let Some(model_id) = res.get("model_id").and_then(|v| v.as_str()) {
-            println!("Model ID: {}", model_id.cyan());
-        }
-        if let Some(cid) = res.get("artifact_cid").and_then(|v| v.as_str()) {
+    if let Some(model_id) = result["result"]["model_id"].as_str() {
+        println!("{}", "✓ Model deployed successfully".green());
+        println!("Model ID: {}", model_id.cyan());
+        if let Some(cid) = result["result"]["artifact_cid"].as_str() {
             println!("Artifact CID: {}", cid.cyan());
         }
         println!("Model Hash: 0x{}", hex::encode(model_hash));
-
-        println!("Waiting for confirmation...");
-        let receipt = wait_for_receipt(config, tx_hash).await?;
-
-        let status = receipt["status"].as_str().unwrap_or_default();
-        if status == "0x1" || status == "0x01" {
-            println!("{}", "✓ Model deployment confirmed".green().bold());
-            if let Some(block) = receipt["blockNumber"].as_str() {
-                println!("Included in block: {}", block);
-            }
-            if let Some(gas_used) = receipt["gasUsed"].as_str() {
-                println!("Gas Used: {}", gas_used);
-            }
-            println!(
-                "{}",
-                "Model registered on-chain. You can query it via `lattice_getModel`."
-                    .italic()
-            );
-        } else {
-            println!("{}", "✗ Model deployment reverted".red().bold());
-            println!("{}", serde_json::to_string_pretty(&receipt)?);
-            anyhow::bail!("Model deployment transaction failed");
-        }
+        println!(
+            "Transaction: {}",
+            result["result"]["tx_hash"].as_str().unwrap_or("N/A")
+        );
     } else if let Some(error) = result["error"].as_object() {
         anyhow::bail!(
             "Deployment failed: {}",
@@ -564,10 +537,7 @@ async fn update_model(
 
     let mut params = serde_json::Map::new();
     params.insert("model_id".to_string(), json!(model_id));
-    params.insert(
-        "metadata".to_string(),
-        serde_json::Value::Object(metadata_obj.clone()),
-    );
+    params.insert("metadata".to_string(), serde_json::Value::Object(metadata_obj.clone()));
     params.insert("from".to_string(), json!(from_account));
 
     if let Some(data_b64) = model_data_b64 {

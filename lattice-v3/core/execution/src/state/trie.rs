@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/state/trie.rs
+
+// Merkle Patricia Trie implementation
 use lattice_consensus::types::Hash;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};

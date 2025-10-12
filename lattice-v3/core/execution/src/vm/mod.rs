@@ -1,5 +1,6 @@
-pub mod ai_opcodes;
+// lattice-v3/core/execution/src/vm/mod.rs
 
+// Virtual Machine for executing smart contracts and AI models
 use crate::types::{ExecutionError, GasSchedule};
 use primitive_types::U256;
 use std::collections::HashMap;

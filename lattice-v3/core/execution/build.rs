@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/build.rs
+
+// Build script for CoreML bridge
 use std::env;
 
 fn main() {

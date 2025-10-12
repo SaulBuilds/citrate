@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+
+// lattice-v3/contracts/src/InferenceRouter.sol
 pragma solidity ^0.8.24;
 
 import "./interfaces/IModelRegistry.sol";

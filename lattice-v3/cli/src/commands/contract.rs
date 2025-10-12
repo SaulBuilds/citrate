@@ -1,3 +1,5 @@
+//lattice-v3/cli/src/commands/account.rs
+
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
@@ -623,7 +625,7 @@ async fn list_verifications(config: &Config) -> Result<()> {
     Ok(())
 }
 
-pub async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::Value> {
+async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::Value> {
     let client = reqwest::Client::new();
 
     for _ in 0..30 {

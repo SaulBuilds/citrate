@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/state/state_db.rs
+
+// State database managing all state
 use crate::state::{AccountManager, Trie};
 use crate::types::{Address, ExecutionError, JobId, ModelId, ModelState, TrainingJob};
 use dashmap::DashMap;

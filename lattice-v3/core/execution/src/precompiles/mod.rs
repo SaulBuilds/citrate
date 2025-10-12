@@ -1,41 +1,64 @@
+// lattice-v3/core/execution/src/precompiles/mod.rs
+
 // EVM Precompiles Module
 // Standard Ethereum precompiles + Lattice AI extensions
 
 pub mod inference;
 
+use ethereum_types::{Address, U256};
 use anyhow::Result;
-use ethereum_types::Address;
+use std::collections::HashMap;
 
 use inference::InferencePrecompile;
 
 /// Standard Ethereum precompile addresses
 pub mod standard {
+    use ethereum_types::Address;
+
     /// ECRECOVER
-    pub const ECRECOVER: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    pub const ECRECOVER: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+    ]);
 
     /// SHA256
-    pub const SHA256: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+    pub const SHA256: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2
+    ]);
 
     /// RIPEMD160
-    pub const RIPEMD160: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3];
+    pub const RIPEMD160: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3
+    ]);
 
     /// IDENTITY
-    pub const IDENTITY: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4];
+    pub const IDENTITY: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4
+    ]);
 
     /// MODEXP
-    pub const MODEXP: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5];
+    pub const MODEXP: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5
+    ]);
 
     /// ECADD
-    pub const ECADD: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6];
+    pub const ECADD: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6
+    ]);
 
     /// ECMUL
-    pub const ECMUL: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7];
+    pub const ECMUL: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7
+    ]);
 
     /// ECPAIRING
-    pub const ECPAIRING: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8];
+    pub const ECPAIRING: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8
+    ]);
 
     /// BLAKE2F
-    pub const BLAKE2F: [u8; 20] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9];
+    pub const BLAKE2F: Address = Address([
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9
+    ]);
 }
 
 /// Precompile executor
@@ -45,7 +68,9 @@ pub struct PrecompileExecutor {
 
 impl PrecompileExecutor {
     pub fn new() -> Self {
-        Self { inference: None }
+        Self {
+            inference: None,
+        }
     }
 
     /// Initialize with AI runtime
@@ -58,12 +83,14 @@ impl PrecompileExecutor {
     pub fn is_precompile(&self, address: &Address) -> bool {
         // Standard Ethereum precompiles (0x01 - 0x09)
         let addr_bytes = address.as_bytes();
-        let is_standard =
-            addr_bytes[..19].iter().all(|&b| b == 0) && addr_bytes[19] >= 1 && addr_bytes[19] <= 9;
+        let is_standard = addr_bytes[..19].iter().all(|&b| b == 0)
+            && addr_bytes[19] >= 1
+            && addr_bytes[19] <= 9;
 
         // Lattice AI precompiles (0x0100 - 0x0105)
-        let is_ai =
-            addr_bytes[..18].iter().all(|&b| b == 0) && addr_bytes[18] == 1 && addr_bytes[19] <= 5;
+        let is_ai = addr_bytes[..18].iter().all(|&b| b == 0)
+            && addr_bytes[18] == 1
+            && addr_bytes[19] <= 5;
 
         is_standard || is_ai
     }
@@ -92,33 +119,23 @@ impl PrecompileExecutor {
         }
 
         // Standard Ethereum precompiles
-        let addr = address.as_bytes();
-        if addr == &standard::ECRECOVER {
-            self.ecrecover(input, gas_limit)
-        } else if addr == &standard::SHA256 {
-            self.sha256(input, gas_limit)
-        } else if addr == &standard::RIPEMD160 {
-            self.ripemd160(input, gas_limit)
-        } else if addr == &standard::IDENTITY {
-            self.identity(input, gas_limit)
-        } else if addr == &standard::MODEXP {
-            self.modexp(input, gas_limit)
-        } else if addr == &standard::ECADD {
-            self.ecadd(input, gas_limit)
-        } else if addr == &standard::ECMUL {
-            self.ecmul(input, gas_limit)
-        } else if addr == &standard::ECPAIRING {
-            self.ecpairing(input, gas_limit)
-        } else if addr == &standard::BLAKE2F {
-            self.blake2f(input, gas_limit)
-        } else {
-            Err(anyhow::anyhow!("Unknown precompile address"))
+        match *address {
+            standard::ECRECOVER => self.ecrecover(input, gas_limit),
+            standard::SHA256 => self.sha256(input, gas_limit),
+            standard::RIPEMD160 => self.ripemd160(input, gas_limit),
+            standard::IDENTITY => self.identity(input, gas_limit),
+            standard::MODEXP => self.modexp(input, gas_limit),
+            standard::ECADD => self.ecadd(input, gas_limit),
+            standard::ECMUL => self.ecmul(input, gas_limit),
+            standard::ECPAIRING => self.ecpairing(input, gas_limit),
+            standard::BLAKE2F => self.blake2f(input, gas_limit),
+            _ => Err(anyhow::anyhow!("Unknown precompile address")),
         }
     }
 
     // Standard precompile implementations (simplified)
 
-    fn ecrecover(&self, _input: &[u8], gas_limit: u64) -> Result<PrecompileResult> {
+    fn ecrecover(&self, input: &[u8], gas_limit: u64) -> Result<PrecompileResult> {
         const GAS_COST: u64 = 3000;
         if gas_limit < GAS_COST {
             return Err(anyhow::anyhow!("Insufficient gas"));
@@ -139,7 +156,7 @@ impl PrecompileExecutor {
             return Err(anyhow::anyhow!("Insufficient gas"));
         }
 
-        use sha2::{Digest, Sha256};
+        use sha2::{Sha256, Digest};
         let mut hasher = Sha256::new();
         hasher.update(input);
         let result = hasher.finalize();
@@ -265,18 +282,13 @@ mod tests {
         let executor = PrecompileExecutor::new();
 
         // Test standard precompiles
-        let ecrecover = Address::from_slice(&standard::ECRECOVER);
-        let sha256 = Address::from_slice(&standard::SHA256);
-        let blake2f = Address::from_slice(&standard::BLAKE2F);
-        assert!(executor.is_precompile(&ecrecover));
-        assert!(executor.is_precompile(&sha256));
-        assert!(executor.is_precompile(&blake2f));
+        assert!(executor.is_precompile(&standard::ECRECOVER));
+        assert!(executor.is_precompile(&standard::SHA256));
+        assert!(executor.is_precompile(&standard::BLAKE2F));
 
         // Test AI precompiles
-        let deploy = Address::from_slice(&inference::addresses::MODEL_DEPLOY);
-        let inference_addr = Address::from_slice(&inference::addresses::MODEL_INFERENCE);
-        assert!(executor.is_precompile(&deploy));
-        assert!(executor.is_precompile(&inference_addr));
+        assert!(executor.is_precompile(&inference::addresses::MODEL_DEPLOY));
+        assert!(executor.is_precompile(&inference::addresses::MODEL_INFERENCE));
 
         // Test non-precompile
         let regular_addr = Address::from([1u8; 20]);

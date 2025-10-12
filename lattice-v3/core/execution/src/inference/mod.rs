@@ -1,3 +1,5 @@
+// lattice-v3/core/execution/src/inference/mod.rs
+
 // Inference module - AI model execution infrastructure
 
 pub mod metal_runtime;
@@ -6,9 +8,16 @@ pub mod metal_runtime;
 pub mod coreml_bridge;
 
 pub use metal_runtime::{
-    AppleSiliconChip, MetalCapabilities, MetalModel, MetalModelFormat, MetalRuntime,
-    ModelConfig, QuantizationType,
+    MetalRuntime,
+    MetalCapabilities,
+    MetalModel,
+    MetalModelFormat,
+    AppleSiliconChip,
 };
 
 #[cfg(target_os = "macos")]
-pub use coreml_bridge::{CoreMLInference, CoreMLModel, ModelMetadata};
+pub use coreml_bridge::{
+    CoreMLModel,
+    CoreMLInference,
+    ModelMetadata,
+};

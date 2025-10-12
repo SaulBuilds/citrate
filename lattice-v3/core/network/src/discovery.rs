@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/discovery.rs
+
+// Peer discovery service
 use crate::{
     peer::{PeerId, PeerManager},
     protocol::PeerAddress,

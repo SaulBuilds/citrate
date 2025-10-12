@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/types.rs
+
+// Types for representing addresses, models, and transactions
 use lattice_consensus::types::{Hash, PublicKey};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};

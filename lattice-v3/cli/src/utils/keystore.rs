@@ -1,3 +1,5 @@
+//lattice-v3/cli/src/utils/keystore.rs
+
 use anyhow::{Context, Result};
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};

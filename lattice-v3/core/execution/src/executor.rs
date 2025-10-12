@@ -1,6 +1,8 @@
-use crate::inference::metal_runtime::MetalRuntime;
+// lattice-v3/core/execution/src/executor.rs
+
 use crate::metrics::{PRECOMPILE_CALLS_TOTAL, VM_EXECUTIONS_TOTAL, VM_GAS_USED};
-use crate::precompiles::{inference::InferencePrecompile, PrecompileExecutor};
+use crate::precompiles::{PrecompileExecutor, inference::InferencePrecompile};
+use crate::inference::metal_runtime::MetalRuntime;
 use crate::state::StateDB;
 use crate::types::{
     AccessPolicy, Address, ExecutionError, GasSchedule, JobId, JobStatus, Log, ModelId,
@@ -11,9 +13,9 @@ use async_trait::async_trait;
 use hex;
 use lattice_consensus::types::{Block, Hash, Transaction};
 use primitive_types::U256;
+use std::time::Instant;
 use serde_json;
 use std::sync::Arc;
-use std::time::Instant;
 use tracing::{debug, error, info, warn};
 
 /// Execution context for a transaction
@@ -155,9 +157,10 @@ impl Executor {
             match MetalRuntime::new() {
                 Ok(runtime) => {
                     let inference_precompile = InferencePrecompile::new(Arc::new(runtime));
-                    let executor = PrecompileExecutor::new().with_inference(inference_precompile);
+                    let executor = PrecompileExecutor::new()
+                        .with_inference(inference_precompile);
                     Some(Arc::new(tokio::sync::RwLock::new(executor)))
-                }
+                },
                 Err(e) => {
                     warn!("Failed to initialize Metal runtime: {}", e);
                     None
@@ -188,9 +191,10 @@ impl Executor {
             match MetalRuntime::new() {
                 Ok(runtime) => {
                     let inference_precompile = InferencePrecompile::new(Arc::new(runtime));
-                    let executor = PrecompileExecutor::new().with_inference(inference_precompile);
+                    let executor = PrecompileExecutor::new()
+                        .with_inference(inference_precompile);
                     Some(Arc::new(tokio::sync::RwLock::new(executor)))
-                }
+                },
                 Err(e) => {
                     warn!("Failed to initialize Metal runtime: {}", e);
                     None
@@ -581,8 +585,8 @@ impl Executor {
         let metadata_bytes = &data[offset..offset + meta_len];
         offset += meta_len;
 
-        let mut metadata: ModelMetadata =
-            serde_json::from_slice(metadata_bytes).map_err(|_| ExecutionError::InvalidInput)?;
+        let mut metadata: ModelMetadata = serde_json::from_slice(metadata_bytes)
+            .map_err(|_| ExecutionError::InvalidInput)?;
 
         if metadata.name.is_empty() {
             metadata.name = format!("Model-{}", hex::encode(&model_id.0.as_bytes()[..4]));
@@ -1742,8 +1746,7 @@ impl Executor {
                 }
             }
             if let Some(storage) = &self.ai_storage {
-                if let Err(err) =
-                    storage.update_model_weights(model_id, &cid, updated_model.version)
+                if let Err(err) = storage.update_model_weights(model_id, &cid, updated_model.version)
                 {
                     warn!(
                         "AI storage weight update failed for {:?}: {}",

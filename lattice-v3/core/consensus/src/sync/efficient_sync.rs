@@ -1,3 +1,5 @@
+// lattice-v3/core/consensus/src/sync/efficient_sync.rs
+
 // Efficient, non-recursive sync implementation for GhostDAG
 // Avoids stack overflow by using iterative processing and bounded queues
 

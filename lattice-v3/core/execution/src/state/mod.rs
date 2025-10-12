@@ -1,3 +1,8 @@
+// lattice-v3/core/execution/src/state/mod.rs
+
+// State management module
+// Handles account states, caching, and trie operations
+
 pub mod account;
 pub mod cache;
 pub mod state_db;

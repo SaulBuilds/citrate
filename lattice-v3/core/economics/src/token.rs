@@ -1,3 +1,5 @@
+// lattice-v3/core/economics/src/token.rs
+
 use lattice_execution::types::Address;
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};

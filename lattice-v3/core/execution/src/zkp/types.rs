@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/zkp/types.rs
+
+// ZKP types
 use ark_bls12_381::Bls12_381;
 use ark_groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -67,6 +70,7 @@ impl PublicInputsProducer for GradientProofCircuit {
         ]
     }
 }
+
 
 /// Serializable proof wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,3 +1,5 @@
+// lattice-v3/core/api/src/dag_explorer.rs
+
 // Complete DAG Explorer API with Multi-Network Support
 // No stubs, full implementation for devnet/testnet/mainnet
 

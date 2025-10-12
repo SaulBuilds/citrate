@@ -224,7 +224,7 @@ impl EncryptedIPFSStore {
         &self,
         manifest_cid: &Cid,
         recipient: H160,
-        _recipient_key: &[u8; 32],
+        recipient_key: &[u8; 32],
     ) -> Result<Vec<u8>> {
         // Fetch manifest from IPFS
         let manifest_data = self.ipfs.cat(&manifest_cid.0).await?;

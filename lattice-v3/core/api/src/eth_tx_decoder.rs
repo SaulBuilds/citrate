@@ -80,8 +80,7 @@ pub fn decode_eth_transaction(tx_bytes: &[u8]) -> Result<Transaction, String> {
         return decode_eip1559_transaction(&tx_bytes[1..]);
     }
     if tx_bytes[0] == 0x01 {
-        // For now, treat as legacy-style with access list ignored
-        // Fall through to generic RLP decode below; if it fails, we can extend later
+        return decode_eip2930_transaction(&tx_bytes[1..]);
     }
 
     // Try to decode as legacy RLP
@@ -317,7 +316,11 @@ fn decode_eip1559_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
     };
     let value_u256: EthU256 = rlp.val_at(6).map_err(|e| format!("value: {:?}", e))?;
     let data: Vec<u8> = rlp.val_at(7).map_err(|e| format!("data: {:?}", e))?;
-    // skip accessList at index 8 for now
+
+    // Parse access list at index 8
+    let access_list = parse_access_list(&rlp, 8)?;
+    eprintln!("  Access list entries: {}", access_list.len());
+
     let y_parity: u64 = rlp.val_at(9).map_err(|e| format!("yParity: {:?}", e))?;
     let r_h: H256 = rlp.val_at(10).map_err(|e| format!("r: {:?}", e))?;
     let s_h: H256 = rlp.val_at(11).map_err(|e| format!("s: {:?}", e))?;
@@ -336,7 +339,10 @@ fn decode_eip1559_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
     }
     s.append(&value_u256);
     s.append(&data.as_slice());
-    s.begin_list(0); // empty access list for now
+
+    // Encode access list properly
+    encode_access_list(&mut s, &access_list);
+
     let payload = s.out().to_vec();
 
     // Calculate typed sighash: keccak256(0x02 || rlp)
@@ -424,6 +430,202 @@ fn decode_eip1559_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
         tx_type: None,
     };
     tx.determine_type();
+    Ok(tx)
+}
+
+/// Access list entry structure
+#[derive(Debug, Clone)]
+struct AccessListEntry {
+    address: H160,
+    storage_keys: Vec<H256>,
+}
+
+/// Parse access list from RLP at given index
+fn parse_access_list(rlp: &Rlp, index: usize) -> Result<Vec<AccessListEntry>, String> {
+    let access_list_rlp = rlp.at(index).map_err(|e| format!("access_list: {:?}", e))?;
+    let mut access_list = Vec::new();
+
+    for i in 0..access_list_rlp.item_count().unwrap_or(0) {
+        let entry_rlp = access_list_rlp.at(i).map_err(|e| format!("access_entry[{}]: {:?}", i, e))?;
+
+        let address_bytes: Vec<u8> = entry_rlp.val_at(0).map_err(|e| format!("address: {:?}", e))?;
+        let address = H160::from_slice(&address_bytes);
+
+        let storage_keys_rlp = entry_rlp.at(1).map_err(|e| format!("storage_keys: {:?}", e))?;
+        let mut storage_keys = Vec::new();
+
+        for j in 0..storage_keys_rlp.item_count().unwrap_or(0) {
+            let key_bytes: Vec<u8> = storage_keys_rlp.val_at(j).map_err(|e| format!("storage_key[{}]: {:?}", j, e))?;
+            storage_keys.push(H256::from_slice(&key_bytes));
+        }
+
+        access_list.push(AccessListEntry {
+            address,
+            storage_keys,
+        });
+    }
+
+    Ok(access_list)
+}
+
+/// Encode access list into RLP stream
+fn encode_access_list(stream: &mut RlpStream, access_list: &[AccessListEntry]) {
+    stream.begin_list(access_list.len());
+    for entry in access_list {
+        stream.begin_list(2);
+        stream.append(&entry.address.as_bytes());
+        stream.begin_list(entry.storage_keys.len());
+        for key in &entry.storage_keys {
+            stream.append(&key.as_bytes());
+        }
+    }
+}
+
+/// Decode EIP-2930 (type-0x01) transaction with access lists
+fn decode_eip2930_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
+    eprintln!("Decoding EIP-2930 typed transaction (0x01)");
+    let rlp = Rlp::new(rlp_bytes);
+    if !rlp.is_list() {
+        return Err("Invalid EIP-2930 RLP payload".into());
+    }
+
+    // Per EIP-2930: [chainId, nonce, gasPrice, gasLimit, to, value, data, accessList, yParity, r, s]
+    let chain_id_u256: EthU256 = rlp.val_at(0).map_err(|e| format!("chainId: {:?}", e))?;
+    let nonce: u64 = rlp.val_at(1).map_err(|e| format!("nonce: {:?}", e))?;
+    let gas_price: EthU256 = rlp.val_at(2).map_err(|e| format!("gasPrice: {:?}", e))?;
+    let gas_limit: u64 = rlp.val_at(3).map_err(|e| format!("gasLimit: {:?}", e))?;
+
+    // to is bytes (empty for create), else 20 bytes
+    let to_opt: Option<H160> = {
+        let tb: Vec<u8> = rlp.val_at(4).map_err(|e| format!("to: {:?}", e))?;
+        if tb.is_empty() {
+            None
+        } else {
+            Some(H160::from_slice(&tb))
+        }
+    };
+    let value_u256: EthU256 = rlp.val_at(5).map_err(|e| format!("value: {:?}", e))?;
+    let data: Vec<u8> = rlp.val_at(6).map_err(|e| format!("data: {:?}", e))?;
+
+    // Parse access list at index 7
+    let access_list = parse_access_list(&rlp, 7)?;
+    eprintln!("  Access list entries: {}", access_list.len());
+
+    let y_parity: u64 = rlp.val_at(8).map_err(|e| format!("yParity: {:?}", e))?;
+    let r_h: H256 = rlp.val_at(9).map_err(|e| format!("r: {:?}", e))?;
+    let s_h: H256 = rlp.val_at(10).map_err(|e| format!("s: {:?}", e))?;
+
+    // Build the signing payload per EIP-2930 (without yParity,r,s)
+    let mut s = RlpStream::new_list(8);
+    s.append(&chain_id_u256);
+    s.append(&nonce);
+    s.append(&gas_price);
+    s.append(&gas_limit);
+    if let Some(to) = to_opt {
+        s.append(&to.as_bytes());
+    } else {
+        s.append_empty_data();
+    }
+    s.append(&value_u256);
+    s.append(&data.as_slice());
+
+    // Encode access list properly
+    encode_access_list(&mut s, &access_list);
+
+    let payload = s.out().to_vec();
+
+    // Calculate typed sighash: keccak256(0x01 || rlp)
+    let sighash = {
+        let mut k = Keccak256::new();
+        k.update([0x01]);
+        k.update(&payload);
+        let b = k.finalize();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(&b);
+        out
+    };
+
+    // Recover address using yParity as recovery id
+    let from_addr = {
+        let recid = secp256k1::ecdsa::RecoveryId::from_i32((y_parity & 0x01) as i32)
+            .map_err(|e| format!("bad recid: {}", e))?;
+        let recsig = secp256k1::ecdsa::RecoverableSignature::from_compact(
+            &{
+                let mut rs = [0u8; 64];
+                rs[..32].copy_from_slice(r_h.as_bytes());
+                rs[32..].copy_from_slice(s_h.as_bytes());
+                rs
+            },
+            recid,
+        )
+        .map_err(|e| format!("bad recsig: {}", e))?;
+        let secp = secp256k1::Secp256k1::new();
+        let msg = secp256k1::Message::from_slice(&sighash).map_err(|e| format!("msg: {}", e))?;
+        let pubkey = secp
+            .recover_ecdsa(&msg, &recsig)
+            .map_err(|e| format!("recover: {}", e))?;
+        let uncompressed = pubkey.serialize_uncompressed();
+        let mut hasher = Keccak256::new();
+        hasher.update(&uncompressed[1..]);
+        let h = hasher.finalize();
+        let mut a = [0u8; 20];
+        a.copy_from_slice(&h[12..]);
+        H160::from_slice(&a)
+    };
+
+    // Build Lattice Transaction
+    let mut from_pk_bytes = [0u8; 32];
+    from_pk_bytes[..20].copy_from_slice(from_addr.as_bytes());
+    let from_pk = PublicKey::new(from_pk_bytes);
+    let to_pk = to_opt.map(|t| {
+        let mut b = [0u8; 32];
+        b[..20].copy_from_slice(t.as_bytes());
+        PublicKey::new(b)
+    });
+
+    // Saturate types
+    let gas_price = if gas_price > EthU256::from(u64::MAX) {
+        u64::MAX
+    } else {
+        gas_price.as_u64()
+    };
+    let value = if value_u256 > EthU256::from(u128::MAX) {
+        u128::MAX
+    } else {
+        value_u256.as_u128()
+    };
+
+    // Compute tx hash from original bytes
+    let mut hasher = Keccak256::new();
+    hasher.update([0x01]);
+    hasher.update(rlp_bytes);
+    let mut hash_bytes = [0u8; 32];
+    hash_bytes.copy_from_slice(&hasher.finalize());
+
+    let mut sig_bytes = [0u8; 64];
+    sig_bytes[..32].copy_from_slice(r_h.as_bytes());
+    sig_bytes[32..].copy_from_slice(s_h.as_bytes());
+
+    let mut tx = Transaction {
+        hash: Hash::new(hash_bytes),
+        from: from_pk,
+        to: to_pk,
+        value,
+        gas_limit,
+        gas_price,
+        data,
+        nonce,
+        signature: Signature::new(sig_bytes),
+        tx_type: None,
+    };
+    tx.determine_type();
+
+    eprintln!("Successfully decoded EIP-2930 transaction");
+    eprintln!("  From: 0x{}", hex::encode(from_addr.as_bytes()));
+    eprintln!("  To: {:?}", to_opt.map(|t| format!("0x{}", hex::encode(t.as_bytes()))));
+    eprintln!("  Nonce: {}", nonce);
+    eprintln!("  Access list entries: {}", access_list.len());
+
     Ok(tx)
 }
 

@@ -366,7 +366,11 @@ impl BlockProducer {
 
         // CRITICAL FIX: Commit state changes to persist them
         // Without this, all transaction effects are lost!
-        let state_root = self.executor.state_db().commit();
+        let _executor_state_root = self.executor.state_db().commit();
+
+        // Calculate final state root including AI state (like node producer)
+        let state_root = self.ai_state_manager.calculate_state_root().await?;
+
         Ok((state_root, receipts))
     }
 

@@ -1,14 +1,12 @@
 // lattice-v3/core/execution/src/zkp/circuits.rs
 
 // ZKP circuits for different proof types
-use super::types::{GradientProofCircuit, ModelExecutionCircuit, PublicInputsProducer};
+use super::types::{GradientProofCircuit, ModelExecutionCircuit};
 use ark_bls12_381::Fr;
 use ark_ff::Zero;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::*;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use hex;
-use std::cmp;
 
 const HASH_OUTPUT_SIZE: usize = 32;
 const FIXED_POINT_SCALE: u64 = 1_000_000;

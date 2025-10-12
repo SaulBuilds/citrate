@@ -5,9 +5,7 @@
 
 pub mod inference;
 
-use ethereum_types::U256;
 use anyhow::Result;
-use std::collections::HashMap;
 
 use crate::types::Address;
 use inference::InferencePrecompile;
@@ -136,7 +134,7 @@ impl PrecompileExecutor {
 
     // Standard precompile implementations (simplified)
 
-    fn ecrecover(&self, input: &[u8], gas_limit: u64) -> Result<PrecompileResult> {
+    fn ecrecover(&self, _input: &[u8], gas_limit: u64) -> Result<PrecompileResult> {
         const GAS_COST: u64 = 3000;
         if gas_limit < GAS_COST {
             return Err(anyhow::anyhow!("Insufficient gas"));

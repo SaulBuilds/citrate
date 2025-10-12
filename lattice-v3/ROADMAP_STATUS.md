@@ -182,6 +182,11 @@ The networking code was more complete than expected! Once we exposed the CLI fla
 - HuggingFace model imports
 - Basic inference precompile
 
+**Latest progress (Week 5-6 pass):**
+- Landed in-node incentive accounting (`core/storage/src/ipfs/pinning.rs`) and surfaced pinning summaries for RPC consumption.
+- Added dedicated `IPFSIncentives` contract + Foundry coverage to pay out storage reporters.
+- Updated documentation to reflect that IPFS storage, chunking, and reward instrumentation are operational.
+
 #### Phase 3: Distributed Compute (Weeks 13-20)
 **No changes to scope**, includes:
 - GPU node registration

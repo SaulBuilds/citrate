@@ -95,6 +95,172 @@ Downloads (prebuilt)
 
 ## Architecture (Mermaid)
 
+
+mermaid```
+flowchart LR
+    subgraph Clients_&_Tools
+        CLI[CLI\ncli/]
+        Wallet[Wallet App\nwallet/]
+        GUI[GUI & Explorer\nnode-app/, gui/, explorer/]
+        SDK[SDKs & Scripts\nsdk/, scripts/, docs/]
+    end
+    subgraph Node_Runtime
+        LNode[lattice-node crate\nnode/]
+        API[lattice-api\ncore/api/]
+        Net[lattice-network\ncore/network/]
+        Seq[lattice-sequencer\ncore/sequencer/]
+        Cons[lattice-consensus\ncore/consensus/]
+        Exec[lattice-execution (EVM + AI)\ncore/execution/]
+        Store[lattice-storage\ncore/storage/]
+        Econ[lattice-economics\ncore/economics/]
+        MCP[lattice-mcp\ncore/mcp/]
+    end
+    subgraph External_Systems
+        IPFS[(IPFS Daemons)]
+        Rocks[(RocksDB)]
+        Chain[(Smart Contracts\ncontracts/)]
+        Explorer[(Indexing & Analytics\nexplorer/, data-pipelines)]
+        Peers((P2P Peers))
+    end
+    CLI --> LNode
+    Wallet --> LNode
+    GUI --> API
+    SDK --> API
+    LNode --> API
+    LNode --> Net
+    Net --> Peers
+    API --> Exec
+    Exec --> Store
+    LNode --> Seq --> Cons --> Exec
+    Store --> Rocks
+    Store --> IPFS
+    Exec --> MCP
+    MCP --> IPFS
+    Exec --> Chain
+    Econ --> LNode
+    Chain --> Explorer
+    API --> Explorer
+```
+
+```mermaid
+
+graph TD
+    LC[lattice-consensus]
+    LE[lattice-execution]
+    LS[lattice-storage]
+    LNw[lattice-network]
+    LSeq[lattice-sequencer]
+    LMCP[lattice-mcp]
+    LEcon[lattice-economics]
+    LApi[lattice-api]
+    LNode[lattice-node]
+    CLI[lattice-cli]
+    NodeApp[node-app]
+    LWallet[lattice-wallet]
+    LFaucet[lattice-faucet]
+    LCore[lattice-core]
+    LMCP --> LE
+    LMCP --> LS
+    LE --> LC
+    LS --> LC
+    LS --> LE
+    LSeq --> LC
+    LSeq --> LE
+    LNw --> LC
+    LNw --> LE
+    LNw --> LSeq
+    LNw --> LS
+    LApi --> LC
+    LApi --> LE
+    LApi --> LNw
+    LApi --> LSeq
+    LApi --> LS
+    LEcon --> LC
+    LEcon --> LE
+    LEcon --> LS
+    LNode --> LApi
+    LNode --> LC
+    LNode --> LE
+    LNode --> LMCP
+    LNode --> LNw
+    LNode --> LSeq
+    LNode --> LS
+    LNode --> LEcon
+    CLI --> LApi
+    CLI --> LC
+    CLI --> LE
+    NodeApp --> LApi
+    NodeApp --> LE
+    NodeApp --> LNw
+    NodeApp --> LSeq
+    NodeApp --> LS
+    LWallet --> LC
+    LWallet --> LE
+    LFaucet --> LC
+    LFaucet --> LE
+    LCore --> LC
+    LCore --> LEcon
+    LCore --> LE
+    LCore --> LMCP
+    LCore --> LNw
+    LCore --> LSeq
+    LCore --> LS
+    LCore --> LWallet
+```
+
+
+```mermaid
+flowchart TD
+    subgraph Storage_and_IPFS [core/storage/src/ipfs]
+        IPFSService["IPFSService\nmod.rs"] --> PinMgr["PinningManager\npinning.rs"]
+        IPFSService --> Chunking["Chunking helpers\nchunking.rs"]
+        IPFSService --> ArtifactSvc["NodeArtifactService\nnode/src/artifact.rs"]
+        PinMgr -->|Rewards| IPFSIncentivesC["IPFSIncentives.sol\ncontracts/src"]
+        IPFSService -->|Persists| RocksDB[(RocksDB CFs)]
+        ArtifactSvc -->|REST| IPFSEndpoints[(LATTICE_IPFS_API, providers)]
+    end
+    subgraph Execution_and_MCP
+        Executor["Executor\ncore/execution/src/executor.rs"] --> IPFSService
+        Executor --> InferenceSvc["NodeInferenceService\nnode/src/inference.rs"]
+        InferenceSvc --> MCPService["MCPService\ncore/mcp/src/lib.rs"]
+        MCPService --> ModelRegistry["ModelRegistry\ncore/mcp/src/registry.rs"]
+        MCPService --> ModelCache["ModelCache\ncore/mcp/src/cache.rs"]
+    end
+    subgraph On-chain
+        ModelRegistrySol["ModelRegistry.sol"] -->|Precompile| Executor
+        IPFSIncentivesC -->|Claims| Wallets
+    end
+    ModelRegistry -->|Weight CID| IPFSService
+    MCPService --> IPFSEndpoints
+```
+
+```mermaid
+
+flowchart LR
+    subgraph Configs_and_Env
+        Devnet[devnet-config.toml\nroot]
+        Testnet[testnet-config.toml]
+        Genesis[genesis.json]
+        EnvFile[.env.local]
+        GUIConf[gui/lattice-core/config/*.json]
+        DockerCfg[docker-compose.yml, Dockerfile]
+        Scripts[start_fresh_testnet.sh, scripts/]
+    end
+    Devnet --> NodeCfg["Node runtime\nnode/config.rs"]
+    Testnet --> NodeCfg
+    Genesis --> NodeCfg
+    EnvFile --> NodeCfg
+    DockerCfg --> NodeDeployment[(Docker / Compose)]
+    Scripts --> NodeDeployment
+    GUIConf --> GUIRuntime["GUI (node-app/, gui/)"]
+    NodeCfg --> CoreCrates["Core crates\n(core/*)"]
+    NodeDeployment --> CoreCrates
+    CoreCrates --> ContractsBuild["Foundry & Solidity\ncontracts/"]
+    ContractsBuild --> DeployScripts["contracts/script/"]
+    CoreCrates --> MonitoringDocs["docs/, TEST_AUDIT_REPORT.md, ROADMAP_STATUS.md"]
+    GUIRuntime --> Users
+    NodeDeployment --> Observability["monitoring/, test results/"]
+
 ```mermaid
 flowchart LR
   subgraph Clients

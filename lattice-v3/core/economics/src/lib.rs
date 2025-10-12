@@ -3,10 +3,35 @@
 pub mod genesis;
 pub mod rewards;
 pub mod token;
+pub mod governance;
+pub mod dynamic_pricing;
+pub mod enhanced_rewards;
+pub mod revenue_sharing;
+pub mod unified_economics;
 
 pub use genesis::{GenesisAccount, GenesisConfig};
 pub use rewards::{BlockReward, RewardCalculator, RewardConfig};
 pub use token::{Token, TokenConfig, DECIMALS};
+pub use governance::{
+    GovernanceConfig, GovernanceManager, Proposal, ProposalType, Vote, VoteType,
+    VotingDelegation, ProposalStatus, ProposalUpdate, MarketplaceAction,
+};
+pub use dynamic_pricing::{
+    DynamicPricingConfig, DynamicPricingManager, UtilizationMetrics, PricingUpdate,
+    PriceChange, OperationType, PriceTrend,
+};
+pub use enhanced_rewards::{
+    EnhancedRewardConfig, ValidatorPerformance, AIContribution,
+    NetworkHealth,
+};
+pub use revenue_sharing::{
+    RevenueShareConfig, RevenueShareManager, RevenuePool, StakeholderType,
+    RevenueDistribution, StakeholderContribution, PerformanceMetrics, RevenueEvent,
+};
+pub use unified_economics::{
+    UnifiedEconomicsConfig, UnifiedEconomicsManager, VotingPower, EconomicState,
+    BlockEconomicUpdate,
+};
 
 use primitive_types::U256;
 

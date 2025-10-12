@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/tensor/engine.rs
+
+// Tensor execution engine for the VM
 use super::ops::TensorOps;
 use super::types::{Tensor, TensorError};
 use primitive_types::U256;

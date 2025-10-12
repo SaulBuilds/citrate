@@ -1,3 +1,5 @@
+// lattice-v3/core/api/src/server.rs
+
 use crate::eth_rpc;
 use crate::methods::{AiApi, ChainApi, MempoolApi, NetworkApi, StateApi, TransactionApi};
 use crate::metrics::rpc_request;
@@ -297,8 +299,11 @@ impl RpcServer {
 
         // lattice_updateModel
         let executor_ai_update = executor.clone();
+        let mempool_ai_update = mempool.clone();
         io_handler.add_sync_method("lattice_updateModel", move |params: Params| {
             rpc_request("lattice_updateModel");
+            let tx_api =
+                TransactionApi::new(mempool_ai_update.clone(), executor_ai_update.clone());
             let value: serde_json::Value = match params.parse() {
                 Ok(v) => v,
                 Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
@@ -356,17 +361,11 @@ impl RpcServer {
                 metadata_obj.insert("size_bytes".to_string(), json!(0));
             }
 
-            let metadata_bytes = serde_json::to_vec(&metadata_value)
-                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid metadata"))?;
-
             let from_bytes = hex::decode(from_hex.trim().trim_start_matches("0x"))
                 .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from'"))?;
             if from_bytes.len() != 20 {
                 return Err(jsonrpc_core::Error::invalid_params("Invalid 'from' length"));
             }
-            let mut from_pkb = [0u8; 32];
-            from_pkb[..20].copy_from_slice(&from_bytes);
-            let from_pk = lattice_consensus::types::PublicKey::new(from_pkb);
             let from_addr = lattice_execution::types::Address({
                 let mut a = [0u8; 20];
                 a.copy_from_slice(&from_bytes);
@@ -404,14 +403,13 @@ impl RpcServer {
 
             metadata_obj.insert("artifact_cid".to_string(), json!(artifact_cid.clone()));
 
-            let gas_price = map
-                .get("gas_price")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1_000_000_000);
-            let gas_limit = map
-                .get("gas_limit")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(200_000);
+            let metadata_bytes = serde_json::to_vec(&metadata_value)
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid metadata"))?;
+
+            let gas_limit = parse_optional_u64_field(map.get("gas_limit"), "gas_limit")?
+                .unwrap_or(250_000);
+            let gas_price = parse_optional_u64_field(map.get("gas_price"), "gas_price")?;
+            let nonce = parse_optional_u64_field(map.get("nonce"), "nonce")?;
 
             let to_addr = {
                 let mut a = [0u8; 20];
@@ -419,10 +417,6 @@ impl RpcServer {
                 a[19] = 0x00;
                 a
             };
-            let mut to_pkb = [0u8; 32];
-            to_pkb[..20].copy_from_slice(&to_addr);
-            let to_pk = lattice_consensus::types::PublicKey::new(to_pkb);
-
             let mut data = Vec::new();
             data.extend_from_slice(&[0x03, 0x00, 0x00, 0x00]);
             data.extend_from_slice(&model_id_array);
@@ -432,67 +426,35 @@ impl RpcServer {
             data.extend_from_slice(&(cid_bytes.len() as u32).to_be_bytes());
             data.extend_from_slice(cid_bytes);
 
-            let exec = executor_ai_update.clone();
-            exec.state_db()
+            executor_ai_update
+                .state_db()
                 .accounts
                 .set_balance(from_addr, primitive_types::U256::from(1_000_000_000_000_000_000u128));
-
-            let blk = lattice_consensus::types::Block {
-                header: lattice_consensus::types::BlockHeader {
-                    version: 1,
-                    block_hash: lattice_consensus::types::Hash::default(),
-                    selected_parent_hash: lattice_consensus::types::Hash::default(),
-                    merge_parent_hashes: vec![],
-                    timestamp: 0,
-                    height: 0,
-                    blue_score: 0,
-                    blue_work: 0,
-                    pruning_point: lattice_consensus::types::Hash::default(),
-                    proposer_pubkey: from_pk,
-                    vrf_reveal: lattice_consensus::types::VrfProof {
-                        proof: vec![],
-                        output: lattice_consensus::types::Hash::default(),
-                    },
-                },
-                state_root: lattice_consensus::types::Hash::default(),
-                tx_root: lattice_consensus::types::Hash::default(),
-                receipt_root: lattice_consensus::types::Hash::default(),
-                artifact_root: lattice_consensus::types::Hash::default(),
-                ghostdag_params: Default::default(),
-                transactions: vec![],
-                signature: lattice_consensus::types::Signature::new([0; 64]),
-            };
-
-            let tx = lattice_consensus::types::Transaction {
-                hash: lattice_consensus::types::Hash::default(),
-                nonce: 0,
-                from: from_pk,
-                to: Some(to_pk),
-                value: 0,
-                gas_limit,
+            let tx_request = TransactionRequest {
+                from: from_addr,
+                to: Some(Address(to_addr)),
+                value: None,
+                gas: Some(gas_limit),
                 gas_price,
-                data,
-                signature: lattice_consensus::types::Signature::new([0; 64]),
-                tx_type: None,
+                nonce,
+                data: Some(data),
             };
 
-            match block_on(exec.execute_transaction(&blk, &tx)) {
-                Ok(rcpt) => {
-                    if rcpt.status {
-                        Ok(json!({
-                            "success": true,
-                            "tx_hash": format!("0x{}", hex::encode(rcpt.tx_hash.as_bytes())),
-                            "artifact_cid": artifact_cid
-                        }))
-                    } else {
-                        Ok(json!({ "success": false, "gas_used": rcpt.gas_used }))
-                    }
+            let tx_hash = match block_on(tx_api.send_transaction(tx_request)) {
+                Ok(hash) => hash,
+                Err(e) => {
+                    return Err(jsonrpc_core::Error::invalid_params(format!(
+                        "Failed to submit transaction: {e}"
+                    )))
                 }
-                Err(e) => Err(jsonrpc_core::Error::invalid_params(format!(
-                    "update failed: {}",
-                    e
-                ))),
-            }
+            };
+
+            Ok(json!({
+                "status": "submitted",
+                "tx_hash": format!("0x{}", hex::encode(tx_hash.as_bytes())),
+                "artifact_cid": artifact_cid,
+                "model_id": format!("0x{}", hex::encode(model_id_array))
+            }))
         });
 
         // chain_getTips

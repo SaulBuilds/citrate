@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/registry.rs
+
+// Model registry for tracking AI models
 use crate::types::{ExecutionRequest, ModelId, ModelMetadata, RequestId, RequestStatus};
 use anyhow::Result;
 use lattice_execution::{Address, Hash};

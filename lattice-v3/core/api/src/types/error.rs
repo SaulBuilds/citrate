@@ -1,3 +1,5 @@
+
+// lattice-v3/core/api/src/types/error.rs
 use jsonrpc_core::{Error, ErrorCode};
 use thiserror::Error;
 

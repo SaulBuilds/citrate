@@ -1,3 +1,5 @@
+// lattice-v3/core/economics/src/rewards.rs
+
 use crate::token::DECIMALS;
 use lattice_consensus::types::Block;
 use lattice_execution::types::Address;

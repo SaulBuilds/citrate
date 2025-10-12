@@ -1,3 +1,5 @@
+// lattice-v3/core/execution/src/address_utils.rs
+
 /// Address utilities for handling both Ethereum-style addresses and public keys
 use crate::types::Address;
 use lattice_consensus::types::PublicKey;

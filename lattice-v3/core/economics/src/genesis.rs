@@ -1,3 +1,5 @@
+// lattice-v3/core/economics/src/genesis.rs
+
 use crate::latt_to_wei;
 use crate::token::DECIMALS;
 use lattice_execution::types::Address;

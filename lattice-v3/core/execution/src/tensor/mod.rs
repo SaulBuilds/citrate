@@ -1,3 +1,9 @@
+
+// lattice-v3/core/execution/src/tensor/mod.rs
+
+// Tensor module
+// Handles tensor operations and engine management
+
 pub mod engine;
 pub mod ops;
 pub mod types;

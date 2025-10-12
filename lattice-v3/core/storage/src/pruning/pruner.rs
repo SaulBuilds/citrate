@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/pruning/pruner.rs
+
 use crate::chain::BlockStore;
 use crate::db::column_families::*;
 use crate::db::RocksDB;

@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/protocol.rs
+
+// Network protocol definitions
 use lattice_consensus::types::{Block, BlockHeader, Hash, Transaction};
 use serde::{Deserialize, Serialize};
 use std::fmt;

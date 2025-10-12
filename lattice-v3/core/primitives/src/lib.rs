@@ -1,3 +1,6 @@
+// lattice-v3/core/primitives/src/lib.rs
+
+// Primitive math operations
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }

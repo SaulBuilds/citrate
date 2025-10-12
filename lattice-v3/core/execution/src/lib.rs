@@ -1,7 +1,12 @@
+// lattice-v3/core/execution/src/lib.rs
+
+// Re-export modules
 pub mod address_utils;
 pub mod executor;
+pub mod inference;
 pub mod metrics;
 pub mod parallel;
+pub mod precompiles;
 pub mod state;
 pub mod tensor;
 pub mod types;
@@ -21,3 +26,5 @@ pub use state::{AccountManager, StateDB, StateRoot, Trie};
 
 pub use executor::{ExecutionContext, Executor, InferenceService};
 pub use parallel::ParallelExecutor;
+pub use precompiles::{PrecompileExecutor, PrecompileResult};
+pub use inference::metal_runtime::{MetalRuntime, MetalCapabilities};

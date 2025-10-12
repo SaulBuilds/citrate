@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/provider.rs
+
+// Provider registry for compute providers
 use crate::types::{ComputeCapacity, HardwareType, ModelId, ProviderInfo};
 use anyhow::Result;
 use lattice_execution::Address;

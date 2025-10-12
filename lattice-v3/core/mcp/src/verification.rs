@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/verification.rs
+
+// Execution verifier for validating model execution proofs
 use crate::execution::Model;
 use crate::types::ExecutionProof;
 use anyhow::Result;

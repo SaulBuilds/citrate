@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/ipfs/mod.rs
+
 //! IPFS integration for distributed model storage
 //!
 //! This module provides functionality to store and retrieve AI models
@@ -11,6 +13,7 @@ use std::collections::HashMap;
 
 pub mod chunking;
 pub mod pinning;
+pub mod encrypted_store;
 
 /// IPFS Content Identifier
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]

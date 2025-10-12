@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/execution.rs
+
+// Model executor for running AI models
 use crate::cache::ModelCache;
 use crate::registry::ModelRegistry;
 use crate::types::{ExecutionProof, ModelId};

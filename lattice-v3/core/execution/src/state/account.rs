@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/state/account.rs
+
+// Account manager for handling account states
 use crate::types::{AccountState, Address, ExecutionError, ModelId};
 use dashmap::DashMap;
 use lattice_consensus::types::Hash;

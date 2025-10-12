@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/zkp/prover.rs
+
+// Proof generator for ZKP operations
 use super::circuits::{DataIntegrityCircuit, StateTransitionCircuit};
 use super::types::{ProofType, ProvingKey, SerializableProof, ZKPError};
 use ark_bls12_381::{Bls12_381, Fr};

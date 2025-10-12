@@ -1,3 +1,6 @@
+// lattice-v3/core/mcp/src/cache.rs
+
+// LRU cache for models
 use crate::execution::Model;
 use crate::types::ModelId;
 use anyhow::Result;

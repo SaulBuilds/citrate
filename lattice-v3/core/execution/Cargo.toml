@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 bincode = { workspace = true }
 sha3 = { workspace = true }
+sha2 = "0.10"
 tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -48,6 +49,9 @@ ark-relations = "0.4"
 ark-bls12-381 = "0.4"
 ark-snark = "0.4"
 
+[build-dependencies]
+cc = "1.0"
+
 [dev-dependencies]
 tokio-test = "0.4"
 proptest = { workspace = true }
@@ -61,3 +65,4 @@ harness = false
 [features]
 metrics = []
 ai_zkp = []
+coreml = []  # Enable CoreML support on macOS

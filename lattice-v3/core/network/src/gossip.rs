@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/gossip.rs
+
+// Gossip protocol implementation
 use crate::{
     peer::{Peer, PeerId, PeerManager},
     NetworkError, NetworkMessage,

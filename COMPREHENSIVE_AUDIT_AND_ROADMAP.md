@@ -1,500 +1,119 @@
-# Lattice V3: Comprehensive Audit & AI Compute Network Roadmap
+# Lattice V3 – Phase 3 Readiness Audit (March 2025)
+
+This report captures the current production posture of the Lattice V3 stack as we enter Phase 3 (Distributed Compute) and sets the baseline for the forthcoming sprint roadmap.
+
+---
 
 ## Executive Summary
 
-**Current State**: The Lattice V3 blockchain is **75% production-ready** with sophisticated GhostDAG consensus, EVM compatibility, and AI-native architecture. Core blockchain functionality works but needs critical fixes in transaction pipeline and scale testing.
+- **Foundation in good shape**: GhostDAG consensus, DAG storage, RocksDB-backed state, and the Rust node/CLI toolchain form a stable base. Multi-node networking remains healthy.
+- **AI/compute pipeline still synthetic**: MCP execution, inference precompiles, and Metal runtime paths return placeholder data. The RPC layer bypasses consensus for model deployment and does not orchestrate real GPU jobs.
+- **Governance & incentives wiring incomplete**: VRF-based proposer selection, provider staking/slashing, and treasury distribution hooks are defined but not wired through block production.
+- **Documentation cleanup done**: Historic phase reports, sprint logs, and test harness scripts have been moved to `archive/` to keep only production-facing assets in the workspace.
 
-**Vision Achievement Timeline**: 4-6 months to distributed AI compute network with model training/inference on shared GPUs.
-
----
-
-## Part 1: Current State Audit
-
-### ✅ What's Working (Ready for Testnet)
-
-#### 1. **Consensus Layer** - FULLY FUNCTIONAL
-- GhostDAG implementation with k=18 parameter
-- Blue set calculation and k-cluster validation
-- Tip selection based on highest blue score
-- Block finality with BFT checkpoints
-- DAG pruning and storage optimization
-- **Status**: Can handle 100+ parallel blocks
-
-#### 2. **Core Node** - OPERATIONAL
-- Multi-mode support (devnet/testnet/mainnet)
-- Block production and validation
-- State persistence with RocksDB
-- Mempool with transaction prioritization
-- Metrics collection (Prometheus)
-- **Status**: Single node runs stably
-
-#### 3. **Networking/P2P** - FUNCTIONAL
-- Peer discovery with bootstrap nodes
-- Block and transaction gossip protocol
-- Header-first synchronization
-- Peer scoring and management
-- **Status**: Can form multi-node networks
-
-#### 4. **Storage Layer** - PRODUCTION-READY
-- RocksDB backend with column families
-- State trie implementation
-- Transaction and receipt storage
-- Automated pruning policies
-- Multi-level caching
-- **Status**: Handles persistent state correctly
-
-#### 5. **API/RPC** - COMPREHENSIVE
-- EVM-compatible JSON-RPC (port 8545)
-- WebSocket support (port 8546)
-- Custom DAG query methods
-- OpenAI-compatible REST endpoints
-- **Status**: External clients can connect
-
-### ⚠️ What's Partially Working
-
-#### 1. **Execution Layer**
-- ✅ EVM execution engine works
-- ✅ Standard transaction processing
-- ❌ Address format issues (20-byte vs 32-byte)
-- ❌ GUI transaction execution broken
-- **Fix Required**: 1-2 weeks
-
-#### 2. **MCP Integration**
-- ✅ Architecture in place
-- ✅ Model registry design
-- ⚠️ IPFS integration incomplete
-- ❌ Actual model execution not tested
-- **Fix Required**: 2-3 weeks
-
-#### 3. **AI Precompiles**
-- ✅ Interface defined
-- ⚠️ ZKP verification stubbed
-- ❌ Model inference not implemented
-- ❌ Training verification missing
-- **Fix Required**: 3-4 weeks
-
-### ❌ What's Missing (Critical Gaps)
-
-#### 1. **Distributed GPU Compute**
-- No GPU node registration
-- No compute resource discovery
-- No job scheduling system
-- No proof-of-compute mechanism
-- **Build Required**: 6-8 weeks
-
-#### 2. **Model Distribution**
-- No IPFS daemon integration
-- No model weight chunking
-- No distributed storage incentives
-- No model versioning system
-- **Build Required**: 4-6 weeks
-
-#### 3. **Website/Landing Page**
-- Marketing site exists but basic
-- No download system
-- No node dashboard
-- No network statistics
-- **Build Required**: 2-3 weeks
-
-#### 4. **Testing Infrastructure**
-- Unit tests: <1% coverage
-- Integration tests: Missing
-- E2E tests: Non-existent
-- Performance benchmarks: None
-- **Build Required**: 3-4 weeks
+Phase 3 should focus on replacing the stubs in the inference pipeline with real execution flows, wiring incentives, and delivering verifiable distributed compute.
 
 ---
 
-## Part 2: Roadmap to Distributed AI Compute Network
+## Platform Readiness Snapshot
 
-### Phase 1: Foundation (Weeks 1-4)
-**Goal**: Get basic testnet running with multiple nodes
-
-#### Week 1-2: Critical Fixes
-- [ ] Fix GUI transaction execution pipeline
-- [ ] Resolve address format mismatches
-- [ ] Implement pending nonce handling
-- [ ] Complete EIP-1559 support
-- [ ] Write comprehensive tests
-
-#### Week 3-4: Multi-Node Testing
-- [ ] Deploy 10-node testnet
-- [ ] Test consensus under load
-- [ ] Verify state consistency
-- [ ] Monitor network performance
-- [ ] Document node setup process
-
-**Deliverables**:
-- Working multi-node testnet
-- Node installation guide
-- Performance baseline metrics
-
-### Phase 2: AI Infrastructure (Weeks 5-12)
-**Goal**: Enable model storage and basic inference
-
-#### Week 5-6: IPFS Integration
-```python
-# Model Storage Architecture
-1. Run IPFS daemon alongside node
-2. Pin model weights locally
-3. Store CIDs on-chain
-4. Implement retrieval protocol
-```
-
-#### Week 7-8: Model Registry
-```solidity
-contract ModelRegistry {
-    struct Model {
-        string name;
-        string ipfsCID;
-        address owner;
-        uint256 version;
-        ModelType modelType;
-    }
-
-    mapping(bytes32 => Model) models;
-    mapping(address => bytes32[]) ownerModels;
-}
-```
-
-#### Week 9-10: Inference Precompile
-```rust
-// Inference execution precompile
-impl Precompile for InferencePrecompile {
-    fn execute(
-        model_id: Hash,
-        input_data: Vec<u8>,
-        provider: Address,
-    ) -> Result<Vec<u8>, Error> {
-        // 1. Verify provider has model
-        // 2. Execute inference off-chain
-        // 3. Return cryptographic proof
-        // 4. Store result on-chain
-    }
-}
-```
-
-#### Week 11-12: HuggingFace Integration
-**Target Models for Initial Support**:
-1. **Language Models**
-   - GPT-2 (124M params) - Text generation
-   - BERT-base (110M params) - Classification
-   - T5-small (60M params) - Translation
-
-2. **Vision Models**
-   - Stable Diffusion v1.5 - Image generation
-   - CLIP - Image-text matching
-   - YOLO v8 - Object detection
-
-**Integration Steps**:
-```python
-# Model import pipeline
-from transformers import AutoModel, AutoTokenizer
-import ipfsclient
-
-def import_model(model_name: str):
-    # 1. Download from HuggingFace
-    model = AutoModel.from_pretrained(model_name)
-
-    # 2. Serialize weights
-    weights = model.state_dict()
-
-    # 3. Upload to IPFS
-    cid = ipfs.add(serialize(weights))
-
-    # 4. Register on-chain
-    registry.register_model(
-        name=model_name,
-        cid=cid,
-        model_type="transformer"
-    )
-```
-
-**Deliverables**:
-- IPFS-integrated nodes
-- On-chain model registry
-- 5+ HuggingFace models imported
-- Basic inference working
-
-### Phase 3: Distributed Compute (Weeks 13-20)
-**Goal**: Enable distributed GPU sharing and training
-
-#### Week 13-14: GPU Node Type
-```rust
-struct GPUNode {
-    node_id: PublicKey,
-    gpu_specs: GPUSpecs,
-    availability: Schedule,
-    price_per_hour: u64,
-    reputation_score: u32,
-}
-
-struct GPUSpecs {
-    model: String,      // e.g., "RTX 4090"
-    vram_gb: u32,       // e.g., 24
-    compute_capability: f32, // e.g., 8.9
-    cuda_cores: u32,    // e.g., 16384
-}
-```
-
-#### Week 15-16: Compute Marketplace
-```rust
-// Compute job scheduling
-struct ComputeJob {
-    job_id: Hash,
-    model_id: Hash,
-    job_type: JobType, // Inference or Training
-    input_data_cid: String,
-    required_vram: u32,
-    max_price: u64,
-    deadline: Timestamp,
-}
-
-enum JobType {
-    Inference { batch_size: u32 },
-    Training { epochs: u32, dataset_cid: String },
-}
-```
-
-#### Week 17-18: Proof of Compute
-```rust
-// Verification mechanism
-impl ProofOfCompute {
-    fn verify_inference(
-        job: &ComputeJob,
-        result: &InferenceResult,
-        provider: &GPUNode,
-    ) -> bool {
-        // 1. Verify execution time reasonable
-        // 2. Check result hash matches
-        // 3. Validate provider signature
-        // 4. Random spot checks with redundancy
-    }
-
-    fn verify_training(
-        job: &TrainingJob,
-        checkpoint: &ModelCheckpoint,
-        metrics: &TrainingMetrics,
-    ) -> bool {
-        // 1. Verify gradient updates
-        // 2. Check loss convergence
-        // 3. Validate checkpoint hashes
-        // 4. Compare with baseline metrics
-    }
-}
-```
-
-#### Week 19-20: Incentive Mechanism
-```rust
-// Reward distribution
-impl RewardCalculator {
-    fn calculate_inference_reward(
-        provider: &GPUNode,
-        job: &ComputeJob,
-        performance: &Metrics,
-    ) -> u64 {
-        let base_reward = job.max_price;
-        let performance_multiplier = performance.score();
-        let reputation_bonus = provider.reputation_score as f64 / 100.0;
-
-        (base_reward as f64 * performance_multiplier * (1.0 + reputation_bonus)) as u64
-    }
-}
-```
-
-**Deliverables**:
-- GPU node registration system
-- Compute job marketplace
-- Proof-of-compute verification
-- Incentive distribution working
-
-### Phase 4: Production Launch (Weeks 21-24)
-**Goal**: Public testnet with website and documentation
-
-#### Week 21-22: Website & Landing Page
-```typescript
-// Landing page components
-- Hero: "Decentralized AI Compute Network"
-- Features: DAG consensus, GPU sharing, Model marketplace
-- Downloads: Node binaries for Linux/Mac/Windows
-- Dashboard: Network stats, GPU availability, Model registry
-- Documentation: Setup guides, API reference
-```
-
-#### Week 23-24: Network Monitoring
-```rust
-// Compute threshold monitoring
-struct NetworkMetrics {
-    total_gpu_nodes: u32,
-    available_vram_gb: u64,
-    active_jobs: Vec<ComputeJob>,
-    avg_inference_time_ms: f64,
-    total_models_stored: u32,
-    network_compute_flops: f64,
-}
-
-impl NetworkMonitor {
-    fn compute_threshold(&self) -> ComputeCapacity {
-        // Calculate what models can run
-        let small_models = self.can_run_models(0, 8_000); // <8GB VRAM
-        let medium_models = self.can_run_models(8_000, 24_000); // 8-24GB
-        let large_models = self.can_run_models(24_000, 80_000); // 24-80GB
-
-        ComputeCapacity {
-            small_models,
-            medium_models,
-            large_models,
-            total_tflops: self.calculate_total_compute(),
-        }
-    }
-}
-```
-
-**Deliverables**:
-- Production website with downloads
-- Network dashboard
-- Public testnet launch
-- Documentation complete
+| Subsystem | Status | Notes |
+|-----------|--------|-------|
+| Consensus & DAG | ✅ Stable | GhostDAG/tip selection solid (`core/consensus/src/ghostdag.rs`, `tip_selection.rs`). VRF leader election exists but unused. |
+| Execution (EVM + AI) | ⚠️ Partial | Transaction pipeline functional; AI paths short-circuit via stubs. |
+| Storage & IPFS | ⚠️ Partial | RocksDB + state trie solid; IPFS client integrates chunking but lacks persistence/backpressure. |
+| Networking & Sync | ✅ Ready | Peer manager, gossip, and DAG sync exercised in multi-node scripts. |
+| API / RPC | ⚠️ Partial | ETH JSON-RPC implemented; `lattice_*` methods skip mempool/consensus, OpenAI facade returns canned data. |
+| MCP & Provider Flow | ❌ Stubbed | ModelExecutor returns placeholder output, no provider attestation, no real scheduling. |
+| Tooling (CLI/GUI) | ⚠️ Partial | CLI commands function against RPC stubs; GUI references precompute data. |
+| Solidity Contracts | ⚠️ Partial | Registry/router contracts ready, but on-chain precompile counterparts missing real execution. |
 
 ---
 
-## Part 3: Technical Implementation Details
+## Highlights by Component
 
-### Multi-Node Testnet Setup
+### Consensus & Core Node
+- GhostDAG, DAG storage, and tip selection remain production-ready with existing integration tests (`core/consensus/tests/real_tests.rs`).
+- VRF proposer logic is implemented but only exercised in unit tests; block production still uses static leader configuration (VRF structs in `core/consensus/src/vrf.rs` are not consumed by `node/src/producer.rs`).
 
-```bash
-# Node 1 (Bootstrap)
-./lattice-node \
-    --data-dir ./node1 \
-    --p2p-port 9000 \
-    --rpc-port 8545 \
-    --bootstrap
+### Execution & AI Pipeline
+- The EVM-style executor normalizes addresses and unifies VM execution (`core/execution/src/executor.rs`), but AI opcodes divert into simulated paths.
+- MCP service, inference service, and precompiles exist, yet they still simulate inference/training, returning deterministic filler data instead of calling GPU runtimes.
 
-# Node 2-N (Connect to bootstrap)
-./lattice-node \
-    --data-dir ./node2 \
-    --p2p-port 9001 \
-    --rpc-port 8546 \
-    --bootstrap-nodes /ip4/127.0.0.1/tcp/9000/p2p/BOOTSTRAP_PEER_ID
-```
+### Storage & IPFS
+- IPFS integration supports chunk manifests and pinning summaries (`core/storage/src/ipfs/{chunking.rs,pinning.rs}`), yet metadata is cached in memory only, and failure recovery/backpressure is minimal.
 
-### GPU Node Requirements
+### API & Tooling
+- JSON-RPC coverage is wide, but the bespoke `lattice_*` endpoints mint balances and execute transactions directly via the executor, bypassing mempool validation.
+- The OpenAI-compatible REST layer exposes routes but serves placeholder payloads; job orchestration is absent.
 
-**Minimum Specs**:
-- NVIDIA GPU with 8GB+ VRAM
-- CUDA 11.8+
-- 100GB SSD for model cache
-- 100 Mbps internet
-
-**Supported GPUs**:
-- Consumer: RTX 3080+, RTX 4070+
-- Professional: A100, H100, A6000
-- Mining cards: CMP 90HX, 170HX
-
-### Model Categories & Resource Requirements
-
-| Model Type | VRAM Required | Example Models | Use Cases |
-|------------|---------------|----------------|-----------|
-| Small (<1B params) | 4-8 GB | GPT-2, BERT | Text classification, Simple generation |
-| Medium (1-10B) | 8-24 GB | LLaMA-7B, Stable Diffusion | Complex generation, Image synthesis |
-| Large (10B+) | 24-80 GB | LLaMA-70B, GPT-3 scale | Advanced reasoning, Large-scale training |
-
-### Revenue Model for GPU Providers
-
-```python
-# Example earnings calculation
-def calculate_monthly_earnings(gpu_specs, utilization_rate):
-    if gpu_specs.model == "RTX 4090":
-        hourly_rate = 0.50  # $0.50/hour
-    elif gpu_specs.model == "A100":
-        hourly_rate = 2.00  # $2.00/hour
-
-    hours_per_month = 720
-    active_hours = hours_per_month * utilization_rate
-
-    gross_earnings = active_hours * hourly_rate
-    network_fee = gross_earnings * 0.10  # 10% to network
-
-    return {
-        "gross": gross_earnings,
-        "net": gross_earnings - network_fee,
-        "lattice_tokens": (gross_earnings - network_fee) * TOKEN_PRICE
-    }
-```
+### Smart Contracts & Explorer
+- Solidity contracts capture the intended compute marketplace semantics, though they assume functioning precompiles. Explorer/GUI components still rely on mocked inference data.
 
 ---
 
-## Part 4: Risk Mitigation
+## Critical Findings (Requires Phase 3 Attention)
 
-### Technical Risks
+1. **Inference runtime returns synthetic outputs**  
+   - `ModelExecutor::execute_in_vm` and `execute_training_in_vm` simply emit zeroed tensors and fixed gas usage (`core/mcp/src/execution.rs:222-250`).  
+   - The Metal runtime's backend methods return zero-filled vectors (`core/execution/src/inference/metal_runtime.rs:238-275`), so no real GPU work occurs.
 
-1. **Consensus Performance**
-   - Risk: GhostDAG unproven at scale
-   - Mitigation: Extensive testnet phase, gradual rollout
+2. **Metal runtime/precompile struct mismatch**  
+   - `MetalModel` lacks a `weights_path` field (`core/execution/src/inference/metal_runtime.rs:55-62`), yet the precompile constructs one (`core/execution/src/precompiles/inference.rs:143-156`) and the runtime dereferences it (`core/execution/src/inference/metal_runtime.rs:214-215`), which would panic once exercised.
 
-2. **Model Verification**
-   - Risk: Malicious inference results
-   - Mitigation: Redundant execution, ZKP integration
+3. **RPC-side deployment bypasses consensus economics**  
+   - `lattice_deployModel` seeds unlimited balance and executes the transaction directly in-process (`core/api/src/server.rs:1473-1513`), skipping signature validation, mempool policy, and block inclusion. This must be replaced with a proper transaction submission path.
 
-3. **Storage Costs**
-   - Risk: IPFS storage expensive
-   - Mitigation: Incentivized pinning, pruning old models
+4. **OpenAI facade and job orchestration are placeholders**  
+   - `AiApi::list_models` returns an empty vector outside of owner-filtered calls (`core/api/src/methods/ai.rs:309-330`).  
+   - `request_inference` enqueues empty transactions with no payload encoding (`core/api/src/methods/ai.rs:355-417`), and `get_inference_result` fills metadata with hard-coded markers (`core/api/src/methods/ai.rs:420-439`).
 
-### Economic Risks
-
-1. **GPU Provider Adoption**
-   - Risk: Insufficient GPU supply
-   - Mitigation: Competitive pricing, easy onboarding
-
-2. **Token Economics**
-   - Risk: Unsustainable rewards
-   - Mitigation: Dynamic pricing, fee adjustments
+5. **Leader election not wired**  
+   - VRF leader election lives entirely in the consensus crate but is unused by the node; block production in `node/src/producer.rs` still chooses proposers deterministically. This undermines incentive design and compute-market fairness.
 
 ---
 
-## Part 5: Success Metrics
+## Phase 3 Implementation Focus
 
-### Phase 1 (Testnet)
-- [ ] 10+ nodes running
-- [ ] 1000+ transactions processed
-- [ ] <5 second block time achieved
-- [ ] 99% uptime
+1. **Real inference execution path**
+   - Integrate the MCP executor with actual runtimes (Metal/CoreML on macOS, CUDA/ROCm via adapters) and persist artifacts fetched via IPFS.
+   - Populate `ModelExecutor::execute_in_vm` with real VM invocation and remove placeholder outputs.
+   - Ensure inference results carry concrete proofs or attestations that can be verified on-chain.
 
-### Phase 2 (AI Integration)
-- [ ] 10+ models registered
-- [ ] 100+ inference requests/day
-- [ ] <1 second inference latency
-- [ ] 3+ model types supported
+2. **Precompile and contract parity**
+   - Align Rust precompile structures with Solidity expectations (fix the `MetalModel` shape, persist weights/artifacts, implement benchmarking/proof opcodes).
+   - Surface the precompiles through the executor so EVM contracts (e.g., `InferenceRouter`) observe real behavior.
 
-### Phase 3 (Distributed Compute)
-- [ ] 50+ GPU nodes
-- [ ] 1000+ TFLOPS total compute
-- [ ] 10+ active training jobs
-- [ ] $10k+ monthly volume
+3. **RPC & CLI hardening**
+   - Route model deployment/inference through the mempool and consensus instead of direct executor calls.
+   - Replace placeholder REST responses with storage-backed queries and asynchronous job tracking hooked into MCP/provider services.
 
-### Phase 4 (Production)
-- [ ] 1000+ downloads
-- [ ] 100+ active nodes
-- [ ] 50+ models in registry
-- [ ] Self-sustaining economics
+4. **Distributed compute marketplace**
+   - Implement provider registration, job scheduling, fee accounting, and slashing in MCP (`core/mcp/src/provider.rs`) with accompanying storage/state updates.
+   - Wire VRF leader election and incentive mechanisms so GPU nodes compete fairly for jobs.
+
+5. **Observability & reliability**
+   - Persist pinning metadata, add retries/backoff in `IPFSService`, and emit metrics for MCP execution latency/gas usage.
+   - Extend existing Prometheus metrics to cover inference throughput and provider participation.
 
 ---
 
-## Conclusion
+## Testing & Operational Posture
 
-Lattice V3 is remarkably close to achieving its vision of a distributed AI compute network. The blockchain foundation is solid, requiring mainly integration work and scale testing. With focused execution over 4-6 months, the network can support distributed AI training and inference on shared GPUs with proper incentive alignment.
+- Consensus and state tests exist, but AI/MCP integration lacks automated coverage. Add unit tests around real runtime adapters once implemented.
+- Retain `load_test.sh`, `monitor_testnet.sh`, and production scripts in `scripts/`; all historical test harnesses now reside in `archive/scripts/`.
+- Ensure CI runs deterministic checks around new compute paths; GPU-dependent tests should be gated or mocked for portability.
 
-**Immediate Next Steps**:
-1. Fix transaction pipeline (1 week)
-2. Deploy multi-node testnet (1 week)
-3. Complete IPFS integration (2 weeks)
-4. Import first HuggingFace models (1 week)
-5. Build GPU node prototype (2 weeks)
+---
 
-**Resource Requirements**:
-- 3-4 full-time engineers
-- $50-100k for testnet infrastructure
-- GPU hardware for testing
-- Marketing/community budget
+## Archived Assets (for reference)
 
-The path forward is clear and achievable with the existing codebase as foundation.
+Following files were moved to `archive/` because they are historic planning artifacts or ad-hoc validation helpers no longer required for production operations:
+
+- Phase history: `archive/phase-history/PHASE1_COMPLETE.md`, `PHASE1_VERIFICATION.md`, `PHASE2_*`, `WEEK_1_2_*`.
+- Legacy planning docs: `archive/docs/CURRENT_STATE_ANALYSIS.md`, `GAP_ANALYSIS_AND_IMPLEMENTATION_PLAN.md`, `SYSTEM_AUDIT_AND_ROADMAP.md`, and related sprint notes.
+- Testing harnesses: `archive/scripts/test_*.sh`, `run_e2e_tests.sh`, `chaos_testing.sh`, etc.
+
+---
+
+With the above baseline, Phase 3 sprints should deliver a functional distributed compute layer, credible proofs of execution, and production-caliber APIs. The roadmap in the companion document will decompose these focus areas into sprint-sized workstreams for Phases 3 and 4.

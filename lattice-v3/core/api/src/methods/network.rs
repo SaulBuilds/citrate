@@ -1,3 +1,4 @@
+// lattice-v3/core/api/src/methods/network.rs
 use crate::types::{error::ApiError, response::NodeInfo};
 use lattice_consensus::types::Hash;
 use lattice_network::peer::PeerManager;

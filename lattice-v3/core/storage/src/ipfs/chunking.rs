@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/ipfs/chunking.rs
+
 //! Model chunking for efficient IPFS storage
 //! Optimized for Apple Silicon and Metal GPU compatibility
 

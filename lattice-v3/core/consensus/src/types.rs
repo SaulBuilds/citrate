@@ -1,3 +1,5 @@
+// lattice-v3/core/consensus/src/types.rs
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;

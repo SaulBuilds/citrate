@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/zkp/verifier.rs
+
+// Proof verifier for ZKP operations
 use super::types::{ProofType, SerializableProof, VerificationResult, VerifyingKey, ZKPError};
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_groth16::{prepare_verifying_key, Groth16, PreparedVerifyingKey};

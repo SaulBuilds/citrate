@@ -1,3 +1,5 @@
+// lattice-v3/core/execution/src/tensor/ops.rs
+
 use super::types::{Tensor, TensorError};
 use ndarray::{ArrayD, Axis, IxDyn};
 

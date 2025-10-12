@@ -1,3 +1,5 @@
+// lattice-v3/core/storage/src/ipfs/pinning.rs
+
 //! Pinning incentive accounting for IPFS-backed model storage.
 //!
 //! This module keeps lightweight, in-memory accounting of which

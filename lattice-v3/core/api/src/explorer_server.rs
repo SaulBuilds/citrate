@@ -1,3 +1,5 @@
+// lattice-v3/core/api/src/explorer_server.rs
+
 // DAG Explorer Server with WebSocket support
 // Complete implementation for multi-network explorer
 

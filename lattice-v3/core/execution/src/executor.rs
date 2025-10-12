@@ -1,4 +1,8 @@
+// lattice-v3/core/execution/src/executor.rs
+
 use crate::metrics::{PRECOMPILE_CALLS_TOTAL, VM_EXECUTIONS_TOTAL, VM_GAS_USED};
+use crate::precompiles::{PrecompileExecutor, inference::InferencePrecompile};
+use crate::inference::metal_runtime::MetalRuntime;
 use crate::state::StateDB;
 use crate::types::{
     AccessPolicy, Address, ExecutionError, GasSchedule, JobId, JobStatus, Log, ModelId,
@@ -66,6 +70,7 @@ pub struct Executor {
     artifact_service: Option<Arc<dyn ArtifactService>>,
     ai_storage: Option<Arc<dyn AIModelStorage>>,
     model_registry: Option<Arc<dyn ModelRegistryAdapter>>,
+    precompile_executor: Option<Arc<tokio::sync::RwLock<PrecompileExecutor>>>,
 }
 
 /// Trait for state storage to avoid circular dependency
@@ -147,6 +152,24 @@ pub struct InferencePreview {
 
 impl Executor {
     pub fn new(state_db: Arc<StateDB>) -> Self {
+        // Initialize Metal runtime and precompiles if available
+        let precompile_executor = if cfg!(target_os = "macos") {
+            match MetalRuntime::new() {
+                Ok(runtime) => {
+                    let inference_precompile = InferencePrecompile::new(Arc::new(runtime));
+                    let executor = PrecompileExecutor::new()
+                        .with_inference(inference_precompile);
+                    Some(Arc::new(tokio::sync::RwLock::new(executor)))
+                },
+                Err(e) => {
+                    warn!("Failed to initialize Metal runtime: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             state_db,
             state_store: None,
@@ -155,6 +178,7 @@ impl Executor {
             artifact_service: None,
             ai_storage: None,
             model_registry: None,
+            precompile_executor,
         }
     }
 
@@ -162,6 +186,24 @@ impl Executor {
         state_db: Arc<StateDB>,
         state_store: Option<Arc<S>>,
     ) -> Self {
+        // Initialize Metal runtime and precompiles if available
+        let precompile_executor = if cfg!(target_os = "macos") {
+            match MetalRuntime::new() {
+                Ok(runtime) => {
+                    let inference_precompile = InferencePrecompile::new(Arc::new(runtime));
+                    let executor = PrecompileExecutor::new()
+                        .with_inference(inference_precompile);
+                    Some(Arc::new(tokio::sync::RwLock::new(executor)))
+                },
+                Err(e) => {
+                    warn!("Failed to initialize Metal runtime: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             state_db,
             state_store: state_store.map(|s| s as Arc<dyn StateStoreTrait>),
@@ -170,6 +212,7 @@ impl Executor {
             artifact_service: None,
             ai_storage: None,
             model_registry: None,
+            precompile_executor,
         }
     }
 

@@ -1,3 +1,8 @@
+// lattice-v3/core/execution/src/zkp/mod.rs
+
+// ZKP module
+// Handles zero-knowledge proof generation and verification
+
 pub mod backend;
 pub mod circuits;
 pub mod prover;

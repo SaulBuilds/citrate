@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/peer.rs
+
+// Peer connection and management
 use crate::{NetworkError, NetworkMessage, ProtocolVersion};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};

@@ -1,3 +1,6 @@
+// lattice-v3/core/sequencer/src/lib.rs
+
+// Sequencer module for block building and mempool management
 pub mod block_builder;
 pub mod mempool;
 pub mod validator;

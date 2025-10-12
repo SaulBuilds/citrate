@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/vm/ai_opcodes.rs
+
+// AI-specific opcodes for the VM
 use crate::tensor::{TensorEngine, TensorError};
 use crate::types::ExecutionError;
 use crate::zkp::types::ProofType;

@@ -1,3 +1,8 @@
+// lattice-v3/core/execution/src/parallel/mod.rs
+
+// Parallel execution module
+// Enables concurrent transaction processing with conflict detection
+
 pub mod conflict;
 pub mod executor;
 

@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/parallel/conflict.rs
+
+// Conflict detection for parallel execution
 use lattice_consensus::types::Transaction;
 use std::collections::HashSet;
 

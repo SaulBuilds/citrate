@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/block_propagation.rs
+
+// Block propagation handler for efficient block distribution
 use crate::{NetworkMessage, PeerId, PeerManager};
 use anyhow::Result;
 use lattice_consensus::types::{Block, BlockHeader, Hash};

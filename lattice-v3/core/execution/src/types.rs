@@ -1,3 +1,6 @@
+// lattice-v3/core/execution/src/types.rs
+
+// Types for representing addresses, models, and transactions
 use lattice_consensus::types::{Hash, PublicKey};
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
@@ -32,6 +35,16 @@ impl Address {
 
     pub fn zero() -> Self {
         Address([0u8; 20])
+    }
+
+    /// Get the underlying bytes
+    pub fn as_bytes(&self) -> &[u8; 20] {
+        &self.0
+    }
+
+    /// Get the underlying bytes (for compatibility with ethereum-types)
+    pub fn as_fixed_bytes(&self) -> &[u8; 20] {
+        &self.0
     }
 }
 

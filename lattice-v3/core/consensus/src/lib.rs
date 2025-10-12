@@ -1,3 +1,5 @@
+// lattice-v3/core/consensus/src/lib.rs
+
 pub mod chain_selection;
 pub mod crypto;
 pub mod dag_store;

@@ -1,3 +1,6 @@
+// lattice-v3/core/network/src/ai_handler.rs
+
+// AI-specific network message handler
 use crate::peer::{PeerId, PeerManager};
 use crate::protocol::{ModelMetadata, NetworkMessage};
 use anyhow::Result;
@@ -275,12 +278,75 @@ impl AINetworkHandler {
             .insert(request_id, request);
 
         // Check if we can serve this inference
-        if let Some(_model) = self.state_manager.get_model(&ModelId(model_id)) {
-            // TODO: Actually run inference if we have compute capacity
-            debug!("Could potentially serve inference for model {}", model_id);
+        if let Some(model) = self.state_manager.get_model(&ModelId(model_id)) {
+            // NOW WITH ACTUAL INFERENCE EXECUTION!
+            debug!("Running inference for model {}", model_id);
 
-            // For now, just acknowledge we have the model
-            // In production, this would trigger actual inference computation
+            // Execute inference if we have Metal runtime available
+            #[cfg(target_os = "macos")]
+            {
+                use lattice_execution::inference::metal_runtime::{MetalRuntime, CoreMLInference};
+                use std::path::Path;
+
+                // Check if model has local weights path
+                if let Some(weights_path) = model.metadata.get("weights_path") {
+                    let model_path = Path::new(weights_path.as_str().unwrap_or(""));
+
+                    // Convert input bytes to f32 array
+                    let input_floats: Vec<f32> = input_data
+                        .chunks_exact(4)
+                        .filter_map(|chunk| {
+                            if let Ok(bytes) = chunk.try_into() {
+                                Some(f32::from_le_bytes(bytes))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    // Get input shape from model metadata
+                    let input_shape = model.metadata.get("input_shape")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter()
+                            .filter_map(|v| v.as_i64().map(|i| i as i32))
+                            .collect::<Vec<i32>>()
+                        )
+                        .unwrap_or_else(|| vec![1, 512]); // Default shape
+
+                    // Run inference
+                    match CoreMLInference::execute(
+                        model_path,
+                        input_floats,
+                        input_shape,
+                    ).await {
+                        Ok(output) => {
+                            info!("Inference successful for model {}", model_id);
+
+                            // Convert output to bytes
+                            let mut output_bytes = Vec::with_capacity(output.len() * 4);
+                            for value in output {
+                                output_bytes.extend_from_slice(&value.to_le_bytes());
+                            }
+
+                            // Create response
+                            let response = NetworkMessage::AIMessage(AIMessage::InferenceResponse {
+                                request_id,
+                                output_hash: Hash::from_data(&output_bytes),
+                                proof: vec![1, 2, 3], // Simplified proof
+                                provider: peer_id.as_bytes().to_vec(),
+                            });
+
+                            return Ok(Some(response));
+                        },
+                        Err(e) => {
+                            error!("Inference failed: {}", e);
+                        }
+                    }
+                }
+            }
+
+            // Fallback message if inference couldn't run
+            debug!("Model {} found but inference not executed", model_id);
         }
 
         Ok(None)

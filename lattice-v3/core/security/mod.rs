@@ -1,3 +1,5 @@
+// lattice-v3/core/security/mod.rs
+
 // Security scaffolding for Sprint 10
 
 pub struct DosProtection;

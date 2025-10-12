@@ -1,3 +1,5 @@
+// lattice-v3/core/sequencer/src/validator.rs
+
 use lattice_consensus::{Hash, PublicKey, Transaction};
 use std::collections::HashMap;
 use std::sync::Arc;

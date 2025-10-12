@@ -1,3 +1,5 @@
+//lattice-v3/cli/src/commands/network.rs
+
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;

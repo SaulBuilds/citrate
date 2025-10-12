@@ -1,302 +1,131 @@
-# Lattice V3 Roadmap Status Report
+# Lattice V3 – Phase 3 & 4 Sprint Roadmap
 
-**Last Updated**: Current Session
-**Status**: 🔥 BACK ON TRACK - Phase 1 90% Complete!
-
-## Major Breakthrough
-
-We've successfully unblocked multi-node networking! The P2P infrastructure was already in the codebase but wasn't exposed via CLI. After adding networking flags to the binary, we now have:
+**Scope Window:** Weeks 13–24  
+**Revision:** March 2025  
+**Source:** Updated after the Phase 3 readiness audit (`COMPREHENSIVE_AUDIT_AND_ROADMAP.md`)
 
 ---
 
-## Phase 1 Status: Foundation (Week 3 of 4)
+## Strategic Context
 
-### ✅ Completed (Weeks 1-3)
+- Phases 1–2 delivered a stable GhostDAG core, storage layer, and AI-facing APIs, but the inference stack and incentive wiring remain synthetic.
+- Phase 3 must convert the existing scaffolding into a provable, distributed compute marketplace while keeping the chain stable.
+- Phase 4 will harden, secure, and launch the production environment.
 
-#### Week 1-2 Achievements
-1. **Critical Transaction Fixes** - ✅ DONE
-   - GUI transaction execution fixed
-   - Address format handling normalized
-   - Pending nonce support implemented
-   - EIP-1559 decoding complete
-
-2. **Comprehensive Test Suite** - ✅ DONE
-   - 108 tests written (exceeded target of 80)
-   - 98% pass rate (106/108 passing)
-   - All modules have test coverage
-
-3. **Single-Node Devnet** - ✅ WORKING
-   - Produces blocks every 2 seconds
-   - RPC server functional on port 8545
-   - Pre-funded treasury account
-   - GhostDAG consensus operational
-
-#### Week 3 Breakthrough (TODAY)
-4. **Multi-Node Networking** - ✅ SOLVED!
-   - Added CLI flags: `--bootstrap`, `--bootstrap-nodes`, `--p2p-addr`
-   - 3-node test network: Successfully connected with peer discovery
-   - 10-node testnet: All nodes running and syncing blocks
-   - P2P message propagation confirmed
-
-### ✅ Just Completed (Week 3)
-
-#### Task 6: Deploy Local Multi-Node Network
-**Status**: ✅ COMPLETE
-**Solution Implemented**:
-```rust
-// Added to node/src/main.rs
-- --bootstrap flag for bootstrap nodes
-- --bootstrap-nodes for peer connections
-- --p2p-addr for P2P listen address
-- --rpc-addr for RPC configuration
-- --max-peers for connection limits
-```
-
-**Test Results**:
-- 3-node network: Bootstrap + 2 peers connected
-- 10-node network: All nodes connected, 9 peers on bootstrap
-- Block synchronization working across all nodes
-
-### 🟡 In Progress (Week 3-4)
-
-#### Task 7: Load Testing
-**Status**: 🟡 Script Created, Testing Needed
-- Created `load_test.sh` for 1000+ transaction testing
-- Supports concurrent transaction submission
-- Measures TPS and mempool status
-- Ready to run against 10-node testnet
-
-#### Task 8: Performance Monitoring
-**Status**: 🟡 70% Complete
-- Prometheus metrics exist and exposed
-- `monitor_testnet.sh` provides real-time stats
-- Grafana dashboards still needed
-- Basic metrics being collected
-
-#### Task 9: Documentation
-**Status**: 🟡 80% Complete
-- ✅ DEVNET_QUICKSTART.md created
-- ✅ Multi-node setup documented
-- ✅ Scripts are self-documenting
-- ⏳ Node installation guide pending
-
-#### Task 10: Bug Fixes from Testing
-**Status**: 🟡 Ready to Begin
-- Multi-node testing can now proceed
-- No critical bugs found yet
-- Will address issues as discovered
+The roadmap below slices the remaining work into six two-week sprints with explicit deliverables and exit criteria.
 
 ---
 
-## Problem Solved!
+## Phase 3 – Distributed Compute (Weeks 13–20)
 
-### What Was Missing
-The P2P networking code existed but wasn't exposed via CLI flags.
+### Sprint 13 (Weeks 13–14): **Runtime Convergence**
+- **Goals**
+  - Replace placeholder inference/training paths with real execution in MCP (`core/mcp/src/execution.rs`) and the executor (`core/execution/src/executor.rs`).
+  - Fix Metal runtime/precompile parity (`core/execution/src/inference/metal_runtime.rs`, `core/execution/src/precompiles/inference.rs`).
+  - Pipe model deployment and inference through mempool/consensus instead of direct executor calls (`core/api/src/server.rs`).
+- **Deliverables**
+  - Passing integration tests that invoke `ModelExecutor::execute_inference` end-to-end with deterministic outputs.
+  - Updated RPC/CLI flows that submit transactions and observe receipts.
+  - Regression tests covering the fixed struct mismatches.
+- **Exit Criteria**
+  - No `todo`/placeholder paths in inference pipeline.
+  - CLI `model deploy` + `model inference` completes using the new RPC path on a devnet.
 
-### Solution Implemented
-Extended `node/src/main.rs` with:
-```bash
---bootstrap         # Run as bootstrap node
---bootstrap-nodes   # Connect to peers (peer_id@ip:port)
---p2p-addr         # P2P listen address
---rpc-addr         # RPC listen address
---max-peers        # Maximum peer connections
---chain-id         # Network chain ID
---coinbase         # Mining reward address
-```
+### Sprint 14 (Weeks 15–16): **Provider & Scheduler Wiring**
+- **Goals**
+  - Implement provider capability registration, attestation, and staking in MCP (`core/mcp/src/provider.rs`, `core/mcp/src/registry.rs`).
+  - Integrate VRF leader election into block production (`core/consensus/src/vrf.rs`, `node/src/producer.rs`) to select proposers/providers.
+  - Persist pinning metadata and add retry/backoff in `IPFSService` (`core/storage/src/ipfs/mod.rs`).
+- **Deliverables**
+  - Provider lifecycle tests (register → bid → complete job).
+  - VRF-backed proposer selection exercised in multinode testnet.
+  - Metrics emitted for provider participation and IPFS pinning health.
+- **Exit Criteria**
+  - Testnet run showing provider rotation and VRF selection without manual intervention.
+  - Documented provider onboarding flow (CLI + API).
 
-### Verification
-- ✅ 3-node network: Connected and syncing
-- ✅ 10-node network: All peers discovered
-- ✅ Block propagation: Working across network
-- ✅ Transaction gossip: Messages being relayed
+### Sprint 15 (Weeks 17–18): **Proofs, Payments, and Governance**
+- **Goals**
+  - Generate and verify inference/training proofs, storing artifacts via the artifact service.
+  - Enforce payment flows (fee splits, provider payouts, treasury accrual) inside the executor (`core/execution/src/executor.rs:1783-1845`).
+  - Surface governance hooks for configurable fees/slashing and expose them via RPC.
+- **Deliverables**
+  - Proof verifier integrated with precompiles (`core/execution/src/precompiles/inference.rs`) and Solidity contracts.
+  - Automated tests covering fee distribution and failure cases.
+  - Governance parameter documentation + CLI commands.
+- **Exit Criteria**
+  - Successful proof submission and verification recorded on-chain.
+  - Provider misbehavior path triggers slash/forfeit in simulated scenario.
 
----
-
-## Recovery Complete! ✅
-
-### What We Did (Option 1 - Took 2 hours!)
-1. ✅ Extended CLI with networking flags
-2. ✅ P2P subsystem already initialized properly
-3. ✅ Peer discovery working out of the box
-4. ✅ 3-node test successful
-5. ✅ 10-node testnet operational
-
-### Scripts Created
-- `test_multinode.sh` - 3-node connectivity test
-- `launch_10node_testnet.sh` - Full testnet deployment
-- `load_test.sh` - 1000+ transaction load testing
-
-### Key Discovery
-The networking code was more complete than expected! Once we exposed the CLI flags, everything worked immediately. The P2P layer handles:
-- Automatic peer discovery
-- Block propagation
-- Transaction gossip
-- Chain synchronization
-
----
-
-## Revised Timeline to Complete Phase 1
-
-### Week 3 (Current) - AHEAD OF SCHEDULE!
-- ✅ Day 1: Implement CLI networking flags (DONE in 2 hours!)
-- ✅ Day 1: Test 3-node local network (DONE)
-- ✅ Day 1: Debug peer connections (No issues found)
-- ✅ Day 1: Verify consensus across nodes (Working)
-- ✅ Day 1: Deploy 10-node testnet (DONE)
-
-### Week 3-4 Remaining Tasks
-- [ ] Run load testing with 1000+ transactions
-- [ ] Collect performance metrics
-- [ ] Setup Grafana dashboards
-- [ ] Complete node installation guide
-- [ ] 24-hour stability test
-
-### Deliverable: Week 4 End
-- Multi-node testnet running
-- Performance metrics collected
-- Installation guide published
-- Ready for Phase 2
+### Sprint 16 (Weeks 19–20): **Stability & Performance**
+- **Goals**
+  - Execute scaled load tests (≥10 GPU nodes, sustained inference jobs) using retained scripts (`scripts/load_test.sh`, `scripts/monitor_testnet.sh`).
+  - Harden observability: dashboards, alerts, log hygiene.
+  - Security review of new surfaces (RPC changes, provider registry, proofs).
+- **Deliverables**
+  - Load-test report with TPS, latency, and resource graphs.
+  - Prometheus/Grafana artifacts checked into `monitoring/`.
+  - Security findings backlog with mitigations scheduled.
+- **Exit Criteria**
+  - Stable 24-hour testnet run with successful job completions and no panics.
+  - All P0/P1 security issues closed or waived with sign-off.
 
 ---
 
-## Impact on Overall Roadmap
+## Phase 4 – Production Launch (Weeks 21–24)
 
-### Timeline Recovery! 🎉
-- Phase 1: Back on track (90% complete)
-- Phase 2: Can start on original schedule
-- Phase 3: No delays expected
-- Phase 4: Production launch on target
+### Sprint 17 (Weeks 21–22): **Production Readiness**
+- **Goals**
+  - Harden deployment tooling (Docker images, helm manifests) and document operator runbooks.
+  - Run full-chain upgrade rehearsal including provider onboarding, governance parameter changes, and rollback drills.
+  - Finalize API/SDK changes and update docs/portal content.
+- **Deliverables**
+  - Release candidate build + reproducible build artefacts.
+  - Operator guide covering provisioning, monitoring, and upgrades.
+  - Updated SDK examples exercising new inference marketplace flows.
+- **Exit Criteria**
+  - Dry-run upgrade completed on staging without human intervention.
+  - Documentation sign-off from DevRel/support.
 
-### Adjusted Milestones
-
-#### Phase 1: Foundation ✅ (End of Week 4)
-- Multi-node testnet operational
-- Base performance verified
-- Documentation complete
-
-#### Phase 2: AI Infrastructure (Weeks 5-12)
-**No changes to scope**, includes:
-- IPFS integration
-- Model registry smart contract
-- HuggingFace model imports
-- Basic inference precompile
-
-**Latest progress (Week 5-6 pass):**
-- Landed in-node incentive accounting (`core/storage/src/ipfs/pinning.rs`) and surfaced pinning summaries for RPC consumption.
-- Added dedicated `IPFSIncentives` contract + Foundry coverage to pay out storage reporters.
-- Updated documentation to reflect that IPFS storage, chunking, and reward instrumentation are operational.
-- Executor now synchronises model registrations with StorageManager + MCP, wiring weight CIDs into IPFS-backed inference (`core/execution/src/executor.rs:1151`, `core/mcp/src/execution.rs:26`, `node/src/adapters.rs:1`).
-- `lattice_deployModel` + CLI deploy command push artifacts to IPFS and propagate rich metadata/access policies into the chain & MCP (`core/api/src/server.rs:1060`, `cli/src/commands/model.rs`).
-
-#### Phase 3: Distributed Compute (Weeks 13-20)
-**No changes to scope**, includes:
-- GPU node registration
-- Compute job marketplace
-- Proof-of-compute verification
-- Incentive mechanisms
-
-#### Phase 4: Production (Weeks 21-24)
-**No changes to scope**, includes:
-- Public testnet launch
-- Website with downloads
-- Network monitoring dashboard
-- Marketing launch
+### Sprint 18 (Weeks 23–24): **Launch & Post-Launch Support**
+- **Goals**
+  - Launch controlled mainnet/testnet with selected providers, enable incentives.
+  - Establish incident response playbooks, on-call rotation, and observability dashboards.
+  - Capture post-launch metrics and user feedback for backlog grooming.
+- **Deliverables**
+  - Public launch announcement, explorer overlays, and marketing collateral.
+  - Post-launch health report (uptime, job volume, economic flows).
+  - Prioritized backlog for Phase 5 (scaling/expansion).
+- **Exit Criteria**
+  - Mainnet uptime ≥99% during launch window.
+  - First production inference jobs settled with verified proofs and payouts.
 
 ---
 
-## Completed Today! ✅
+## Cross-Cutting Streams
 
-### What We Accomplished
-
-1. **✅ Fixed Multi-Node Capability**
-   - Added all networking CLI flags
-   - Binary compiles and runs perfectly
-   - P2P connections established
-
-2. **✅ Tested Multi-Node Networks**
-   - 3-node test: All peers connected
-   - 10-node testnet: Fully operational
-   - Block sync confirmed across nodes
-
-3. **✅ Created Production Scripts**
-   - `test_multinode.sh` - Quick connectivity test
-   - `launch_10node_testnet.sh` - Full deployment
-   - `load_test.sh` - Performance testing
-
-### Remaining This Week
-- [ ] Execute 1000+ transaction load test
-- [ ] Analyze performance metrics
-- [ ] Document installation process
-- [ ] Run 24-hour stability test
+- **Quality & Security:** add unit/integration tests alongside features; schedule third-party security review during Sprint 17; ensure CI covers GPU-enabled and CPU-fallback paths.
+- **Documentation:** update developer docs, CLI help, and portal content sprint-by-sprint; keep `docs/` scoped to production materials (historical docs remain in `archive/`).
+- **Stakeholder Demos:** host biweekly demos at the end of Sprints 13, 15, 17, and 18 to validate progress with ecosystem partners.
 
 ---
 
-## Risk Assessment
+## Risks & Mitigations
 
-### High Risk
-- P2P implementation has hidden issues (30% chance)
-- Consensus breaks under network partition (20% chance)
-
-### Medium Risk
-- Performance degrades with >10 nodes (40% chance)
-- State sync issues between nodes (30% chance)
-
-### Low Risk
-- RPC compatibility issues (10% chance)
-- Storage corruption under load (5% chance)
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Runtime/precompile mismatch blocks inference | High | Address in Sprint 13; add compile-time assertions to keep structs aligned. |
+| Provider economics untested at scale | High | Simulate varied provider sets during Sprint 16 load tests; add telemetry for payouts. |
+| Proof generation latency on commodity GPUs | Medium | Provide CPU fallback and asynchronous proof submission queue; benchmark with representative hardware. |
+| RPC migration breaks existing tooling | Medium | Maintain backward-compatible endpoints with deprecation notices; document migration steps. |
+| IPFS availability | Medium | Configure multi-provider pinning and retries; monitor via new metrics dashboards. |
 
 ---
 
-## Success Criteria for Phase 1 Completion
+## Definition of Done for Phase 4
 
-### Must Have (Required)
-- [ ] 10 nodes running simultaneously
-- [ ] Consensus working across all nodes
-- [ ] 1000+ transactions processed
-- [ ] State consistency verified
-- [ ] Basic documentation
+- Distributed compute jobs execute on heterogeneous GPU nodes, produce verifiable proofs, and settle payments automatically.
+- Governance parameters, fee schedules, and provider registry administration are managed on-chain with documented processes.
+- Production nodes, explorers, and APIs are monitored, alerting, and supported by operational runbooks.
 
-### Should Have (Important)
-- [ ] Prometheus metrics exposed
-- [ ] 100+ TPS sustained
-- [ ] Graceful node shutdown/restart
-- [ ] Peer connection resilience
-
-### Could Have (Nice)
-- [ ] Grafana dashboards
-- [ ] Automated deployment script
-- [ ] Docker containers
-- [ ] CI/CD pipeline
-
----
-
-## Conclusion
-
-We are now **90% through Phase 1** and AHEAD OF SCHEDULE! The networking "blocker" was solved in just 2 hours by exposing existing P2P functionality through CLI flags.
-
-**Current Status**:
-1. ✅ Multi-node networking operational
-2. ✅ 10-node testnet deployed successfully
-3. 🟡 Load testing ready to execute
-4. 🟡 Documentation nearly complete
-
-**Next Steps**:
-1. Complete load testing (1-2 hours)
-2. Finish documentation (2-3 hours)
-3. Run stability tests (24 hours)
-4. Begin Phase 2: AI Infrastructure (Week 5)
-
-The vision of distributed AI compute is not just achievable - we're ahead of schedule! The foundation is stronger than expected, with robust P2P networking, GhostDAG consensus, and EVM compatibility all working seamlessly.
-
----
-
-## Tracking Notes
-
-- **Created**: Current session
-- **Phase 1 Start**: Week 1 (completed tasks 1-5)
-- **Current Week**: Week 3
-- **Blocker Identified**: Multi-node networking CLI
-- **Resolution Timeline**: 3-5 days
-- **Phase 1 Completion Target**: End of Week 4
-- **Overall Timeline Impact**: 1 week delay, recoverable
+This roadmap will be refined each sprint, but it provides the framework necessary to take Lattice V3 from the current audit baseline to a production-ready distributed AI compute network.

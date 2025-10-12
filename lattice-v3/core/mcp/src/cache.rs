@@ -1,6 +1,7 @@
 use crate::execution::Model;
 use crate::types::ModelId;
 use anyhow::Result;
+use serde_json;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -180,7 +181,9 @@ impl ModelCache {
         let mut size = 0u64;
         size += model.architecture.len() as u64;
         size += model.weights.len() as u64;
-        size += model.metadata.len() as u64;
+        if let Ok(serialized) = serde_json::to_vec(&model.metadata) {
+            size += serialized.len() as u64;
+        }
         size += 32; // ModelId size
         size
     }

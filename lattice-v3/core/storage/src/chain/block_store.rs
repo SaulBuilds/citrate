@@ -151,7 +151,10 @@ impl BlockStore {
 
         let mut tips: Vec<(u64, Hash)> = Vec::new();
 
-        for hash in all_blocks.into_iter().filter(|h| !parents_with_children.contains(h)) {
+        for hash in all_blocks
+            .into_iter()
+            .filter(|h| !parents_with_children.contains(h))
+        {
             let height = self
                 .get_header(&hash)?
                 .map(|header| header.height)

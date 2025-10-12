@@ -623,7 +623,7 @@ async fn list_verifications(config: &Config) -> Result<()> {
     Ok(())
 }
 
-async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::Value> {
+pub async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::Value> {
     let client = reqwest::Client::new();
 
     for _ in 0..30 {

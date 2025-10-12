@@ -2,6 +2,7 @@ use crate::execution::Model;
 use crate::types::ExecutionProof;
 use anyhow::Result;
 use lattice_execution::Hash;
+use serde_json;
 use sha3::{Digest, Sha3_256};
 use tracing::{debug, warn};
 
@@ -25,8 +26,11 @@ impl ExecutionVerifier {
         if model.weights.is_empty() {
             return Err(anyhow::anyhow!("Model weights are empty"));
         }
-        if model.metadata.is_empty() {
-            return Err(anyhow::anyhow!("Model metadata is empty"));
+        if model.metadata.name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Model metadata missing name"));
+        }
+        if model.metadata.size == 0 {
+            return Err(anyhow::anyhow!("Model metadata reports zero size"));
         }
 
         // Additional sanity checks
@@ -119,7 +123,10 @@ impl ExecutionVerifier {
         let mut hasher = Sha3_256::new();
         hasher.update(&model.architecture);
         hasher.update(&model.weights);
-        hasher.update(&model.metadata);
+        match serde_json::to_vec(&model.metadata) {
+            Ok(metadata_bytes) => hasher.update(metadata_bytes),
+            Err(err) => warn!("Failed to encode model metadata for hashing: {}", err),
+        }
 
         let hash = hasher.finalize();
         Hash::new(hash.into())

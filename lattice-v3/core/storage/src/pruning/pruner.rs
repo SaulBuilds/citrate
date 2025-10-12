@@ -167,8 +167,7 @@ impl Pruner {
             };
 
             if should_prune {
-                self.db
-                    .batch_delete_cf(&mut batch, CF_STATE, key_bytes)?;
+                self.db.batch_delete_cf(&mut batch, CF_STATE, key_bytes)?;
                 pruned += 1;
                 batch_count += 1;
 

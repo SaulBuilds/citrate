@@ -1,6 +1,7 @@
 use ark_bls12_381::Bls12_381;
 use ark_groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use hex;
 use serde::{Deserialize, Serialize};
 use std::hash::Hash;
 
@@ -39,6 +40,34 @@ pub struct GradientProofCircuit {
     pub loss_value: f64,
     pub num_samples: u64,
 }
+
+/// Trait for circuits that can expose public inputs for proof generation
+pub trait PublicInputsProducer {
+    fn public_inputs(&self) -> Vec<String>;
+}
+
+impl PublicInputsProducer for ModelExecutionCircuit {
+    fn public_inputs(&self) -> Vec<String> {
+        vec![
+            format!("0x{}", hex::encode(&self.model_hash)),
+            format!("0x{}", hex::encode(&self.input_hash)),
+            format!("0x{}", hex::encode(&self.output_hash)),
+        ]
+    }
+}
+
+impl PublicInputsProducer for GradientProofCircuit {
+    fn public_inputs(&self) -> Vec<String> {
+        vec![
+            format!("0x{}", hex::encode(&self.model_hash)),
+            format!("0x{}", hex::encode(&self.dataset_hash)),
+            format!("0x{}", hex::encode(&self.gradient_hash)),
+            format!("{}", self.loss_value),
+            self.num_samples.to_string(),
+        ]
+    }
+}
+
 
 /// Serializable proof wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]

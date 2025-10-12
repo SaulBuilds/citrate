@@ -106,6 +106,14 @@ impl StateDB {
         Ok(())
     }
 
+    /// Return all registered models currently in memory
+    pub fn all_models(&self) -> Vec<(ModelId, ModelState)> {
+        self.models
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect()
+    }
+
     /// Create training job
     pub fn create_training_job(&self, job: TrainingJob) -> Result<(), ExecutionError> {
         let job_id = job.id;

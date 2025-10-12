@@ -1,9 +1,104 @@
-use super::types::{GradientProofCircuit, ModelExecutionCircuit};
+use super::types::{GradientProofCircuit, ModelExecutionCircuit, PublicInputsProducer};
 use ark_bls12_381::Fr;
 use ark_ff::Zero;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::*;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use hex;
+use std::cmp;
+
+const HASH_OUTPUT_SIZE: usize = 32;
+const FIXED_POINT_SCALE: u64 = 1_000_000;
+const HASH_SALT: [u8; HASH_OUTPUT_SIZE] = [
+    0x73, 0xa1, 0x5c, 0x44, 0xda, 0xf0, 0x91, 0x2b, 0x6e, 0x0d, 0x83, 0x57, 0x3d, 0x9f, 0xb2,
+    0xc4, 0x1a, 0xe7, 0x66, 0x28, 0xfe, 0x5a, 0x8c, 0xbb, 0x32, 0x47, 0x19, 0xd8, 0x04, 0xaf,
+    0x61, 0x90,
+];
+
+fn encode_fixed(value: f64) -> Result<u64, SynthesisError> {
+    if !value.is_finite() || value.is_sign_negative() {
+        return Err(SynthesisError::Unsatisfiable);
+    }
+    let scaled = value * FIXED_POINT_SCALE as f64;
+    if scaled > u64::MAX as f64 {
+        return Err(SynthesisError::Unsatisfiable);
+    }
+    Ok(scaled.round() as u64)
+}
+
+fn allocate_fixed_var(
+    value: f64,
+    cs: ConstraintSystemRef<Fr>,
+) -> Result<FpVar<Fr>, SynthesisError> {
+    let encoded = encode_fixed(value)?;
+    FpVar::new_witness(cs, || Ok(Fr::from(encoded)))
+}
+
+fn fp_to_hash_bytes(value: &FpVar<Fr>) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
+    let bits = value.to_bits_le()?;
+    let mut bytes = Vec::with_capacity(HASH_OUTPUT_SIZE);
+    for chunk in bits.chunks(8).take(HASH_OUTPUT_SIZE) {
+        let mut chunk_bits = chunk.to_vec();
+        while chunk_bits.len() < 8 {
+            chunk_bits.push(Boolean::FALSE);
+        }
+        bytes.push(UInt8::from_bits_le(&chunk_bits));
+    }
+    while bytes.len() < HASH_OUTPUT_SIZE {
+        bytes.push(UInt8::constant(0));
+    }
+    Ok(bytes)
+}
+
+fn u64_to_hash_bytes(value: u64) -> Vec<UInt8<Fr>> {
+    let mut raw = value.to_le_bytes().to_vec();
+    raw.resize(HASH_OUTPUT_SIZE, 0);
+    UInt8::constant_vec(&raw)
+}
+
+fn hash_pair(left: &[UInt8<Fr>], right: &[UInt8<Fr>]) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
+    let mut result = Vec::with_capacity(HASH_OUTPUT_SIZE);
+    for i in 0..HASH_OUTPUT_SIZE {
+        let l_byte = if i < left.len() {
+            left[i].clone()
+        } else {
+            UInt8::constant(0)
+        };
+        let r_byte = if i < right.len() {
+            right[i].clone()
+        } else {
+            UInt8::constant(0)
+        };
+
+        let l_bits = l_byte.to_bits_le()?;
+        let r_bits = r_byte.to_bits_le()?;
+
+        let mut mixed_bits = Vec::with_capacity(8);
+        for bit_idx in 0..8 {
+            let mut bit = l_bits[bit_idx].xor(&r_bits[bit_idx])?;
+            if (HASH_SALT[i % HASH_OUTPUT_SIZE] >> bit_idx) & 1 == 1 {
+                bit = bit.xor(&Boolean::TRUE)?;
+            }
+            mixed_bits.push(bit);
+        }
+
+        result.push(UInt8::from_bits_le(&mixed_bits));
+    }
+    Ok(result)
+}
+
+fn hash_chain(chunks: &[Vec<UInt8<Fr>>]) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
+    if chunks.is_empty() {
+        return Ok(UInt8::constant_vec(&HASH_SALT));
+    }
+
+    let seed = UInt8::constant_vec(&HASH_SALT);
+    let mut state = hash_pair(&seed, &chunks[0])?;
+    for chunk in chunks.iter().skip(1) {
+        state = hash_pair(&state, chunk)?;
+    }
+    Ok(state)
+}
 
 /// Implementation of model execution circuit
 impl ConstraintSynthesizer<Fr> for ModelExecutionCircuit {

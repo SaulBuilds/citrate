@@ -1,6 +1,7 @@
 use crate::db::{column_families::*, RocksDB};
 use anyhow::Result;
 use lattice_consensus::types::{Block, BlockHeader, Hash};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -127,6 +128,39 @@ impl BlockStore {
         }
 
         Ok(blocks)
+    }
+
+    /// Return the current DAG tips (blocks without known children), sorted by height descending.
+    pub fn get_tips(&self) -> Result<Vec<Hash>> {
+        let mut all_blocks = HashSet::new();
+        for (key, _) in self.db.iter_cf(CF_BLOCKS)? {
+            let key_bytes = key.as_ref();
+            if key_bytes.len() == 32 {
+                all_blocks.insert(Hash::from_bytes(key_bytes));
+            }
+        }
+
+        let mut parents_with_children = HashSet::new();
+        for (key, value) in self.db.iter_cf(CF_DAG_RELATIONS)? {
+            let key_bytes = key.as_ref();
+            if key_bytes.len() == 33 && key_bytes[0] == b'c' && !value.is_empty() {
+                let parent_hash = Hash::from_bytes(&key_bytes[1..]);
+                parents_with_children.insert(parent_hash);
+            }
+        }
+
+        let mut tips: Vec<(u64, Hash)> = Vec::new();
+
+        for hash in all_blocks.into_iter().filter(|h| !parents_with_children.contains(h)) {
+            let height = self
+                .get_header(&hash)?
+                .map(|header| header.height)
+                .unwrap_or_default();
+            tips.push((height, hash));
+        }
+
+        tips.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+        Ok(tips.into_iter().map(|(_, hash)| hash).collect())
     }
 
     /// Delete a block and its associated data

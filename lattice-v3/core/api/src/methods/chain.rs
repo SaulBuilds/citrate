@@ -150,17 +150,25 @@ impl ChainApi {
 
     /// Get current DAG tips
     pub async fn get_tips(&self) -> Result<Vec<Hash>, ApiError> {
-        // In a real implementation, this would query the DAG store for current tips
-        // For now, return the latest block as the only tip
-        let height = self.get_latest_height().await?;
-        let hash = self
+        let mut tips = self
             .storage
             .blocks
-            .get_block_by_height(height)
-            .map_err(|e| ApiError::InternalError(e.to_string()))?
-            .ok_or_else(|| ApiError::BlockNotFound(format!("height {}", height)))?;
+            .get_tips()
+            .map_err(|e| ApiError::InternalError(e.to_string()))?;
 
-        Ok(vec![hash])
+        if tips.is_empty() {
+            let height = self.get_latest_height().await?;
+            if let Some(hash) = self
+                .storage
+                .blocks
+                .get_block_by_height(height)
+                .map_err(|e| ApiError::InternalError(e.to_string()))?
+            {
+                tips.push(hash);
+            }
+        }
+
+        Ok(tips)
     }
 
     // Helper method

@@ -48,6 +48,7 @@ secp256k1 = { version = "0.27", features = ["recovery"] }
 chrono = { version = "0.4", features = ["serde"] }
 tokio-tungstenite = "0.21"
 uuid = { version = "1.0", features = ["v4"] }
+base64 = "0.21"
 
 # Optional verifier tooling
 ethers-solc = { version = "2", optional = true }

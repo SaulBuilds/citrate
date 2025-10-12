@@ -31,6 +31,14 @@ pub enum ModelCommands {
         /// Account to deploy from
         #[arg(short, long)]
         account: Option<String>,
+
+        /// Access policy (public | private | restricted | payPerUse)
+        #[arg(long, default_value = "public")]
+        access_policy: String,
+
+        /// Inference price (only for payPerUse policy)
+        #[arg(long)]
+        price: Option<String>,
     },
 
     /// Run inference on a deployed model
@@ -84,6 +92,14 @@ pub enum ModelCommands {
         /// Account to update from
         #[arg(short, long)]
         account: Option<String>,
+
+        /// Optional updated model file (ONNX/weights)
+        #[arg(long)]
+        model: Option<PathBuf>,
+
+        /// Provide existing artifact CID instead of uploading
+        #[arg(long)]
+        cid: Option<String>,
     },
 
     /// Verify a model proof
@@ -105,8 +121,20 @@ pub async fn execute(cmd: ModelCommands, config: &Config) -> Result<()> {
             name,
             version,
             account,
+            access_policy,
+            price,
         } => {
-            deploy_model(config, model, metadata, name, version, account).await?;
+            deploy_model(
+                config,
+                model,
+                metadata,
+                name,
+                version,
+                account,
+                access_policy,
+                price,
+            )
+            .await?;
         }
         ModelCommands::Inference {
             model_id,
@@ -130,8 +158,10 @@ pub async fn execute(cmd: ModelCommands, config: &Config) -> Result<()> {
             model_id,
             metadata,
             account,
+            model,
+            cid,
         } => {
-            update_model(config, &model_id, metadata, account).await?;
+            update_model(config, &model_id, metadata, model, cid, account).await?;
         }
         ModelCommands::Verify { proof, output_hash } => {
             verify_proof(config, proof, output_hash).await?;
@@ -147,6 +177,8 @@ async fn deploy_model(
     name: Option<String>,
     version: Option<String>,
     account: Option<String>,
+    access_policy: String,
+    price: Option<String>,
 ) -> Result<()> {
     println!("{}", "Deploying model...".cyan());
 
@@ -161,7 +193,7 @@ async fn deploy_model(
         .unwrap_or("unknown");
 
     // Read or generate metadata
-    let metadata = if let Some(path) = metadata_path {
+    let mut metadata = if let Some(path) = metadata_path {
         let content = fs::read_to_string(path).context("Failed to read metadata file")?;
         serde_json::from_str(&content)?
     } else {
@@ -171,8 +203,44 @@ async fn deploy_model(
             "format": model_format,
             "size": model_data.len(),
             "timestamp": chrono::Utc::now().to_rfc3339(),
+            "description": format!("{} model", model_format.to_uppercase()),
+            "framework": model_format,
+            "input_shape": [1],
+            "output_shape": [1],
         })
     };
+
+    let metadata_obj = metadata
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("Metadata JSON must be an object"))?;
+
+    if let Some(name) = name {
+        metadata_obj.insert("name".to_string(), json!(name));
+    } else {
+        metadata_obj
+            .entry("name".to_string())
+            .or_insert(json!("Unnamed Model"));
+    }
+
+    if let Some(version) = version {
+        metadata_obj.insert("version".to_string(), json!(version));
+    } else {
+        metadata_obj
+            .entry("version".to_string())
+            .or_insert(json!("1.0.0"));
+    }
+
+    metadata_obj.insert("framework".to_string(), json!(model_format));
+    metadata_obj
+        .entry("description".to_string())
+        .or_insert(json!(format!("{} model", model_format.to_uppercase())));
+    metadata_obj
+        .entry("input_shape".to_string())
+        .or_insert(json!([1]));
+    metadata_obj
+        .entry("output_shape".to_string())
+        .or_insert(json!([1]));
+    metadata_obj.insert("size_bytes".to_string(), json!(model_data.len()));
 
     // Get account address
     let from_account = account
@@ -181,21 +249,31 @@ async fn deploy_model(
 
     // Prepare deployment transaction
     let model_hash = sha3::Keccak256::digest(&model_data);
+    let model_hash_hex = format!("0x{}", hex::encode(model_hash));
+    let size_bytes = model_data.len() as u64;
+    let model_b64 = base64::engine::general_purpose::STANDARD.encode(&model_data);
 
     // Make RPC call to deploy
     let client = reqwest::Client::new();
+    let mut params = serde_json::Map::new();
+    params.insert("from".to_string(), json!(from_account));
+    params.insert("model_data".to_string(), json!(model_b64));
+    params.insert("metadata".to_string(), metadata);
+    params.insert("model_hash".to_string(), json!(model_hash_hex));
+    params.insert("size_bytes".to_string(), json!(size_bytes));
+    params.insert("access_policy".to_string(), json!(access_policy));
+    params.insert("gas_price".to_string(), json!(config.gas_price));
+    params.insert("gas_limit".to_string(), json!(config.gas_limit));
+    if let Some(price) = price {
+        params.insert("inference_price".to_string(), json!(price));
+    }
+
     let response = client
         .post(&config.rpc_endpoint)
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "lattice_deployModel",
-            "params": {
-                "from": from_account,
-                "model_data": base64::engine::general_purpose::STANDARD.encode(&model_data),
-                "metadata": metadata,
-                "gas_price": config.gas_price,
-                "gas_limit": config.gas_limit,
-            },
+            "params": params,
             "id": 1
         }))
         .send()
@@ -207,6 +285,9 @@ async fn deploy_model(
     if let Some(model_id) = result["result"]["model_id"].as_str() {
         println!("{}", "✓ Model deployed successfully".green());
         println!("Model ID: {}", model_id.cyan());
+        if let Some(cid) = result["result"]["artifact_cid"].as_str() {
+            println!("Artifact CID: {}", cid.cyan());
+        }
         println!("Model Hash: 0x{}", hex::encode(model_hash));
         println!(
             "Transaction: {}",
@@ -399,6 +480,8 @@ async fn update_model(
     config: &Config,
     model_id: &str,
     metadata_path: PathBuf,
+    model_path: Option<PathBuf>,
+    cid_override: Option<String>,
     account: Option<String>,
 ) -> Result<()> {
     println!("{}", "Updating model metadata...".cyan());
@@ -407,13 +490,64 @@ async fn update_model(
     let metadata_str = fs::read_to_string(&metadata_path)
         .with_context(|| format!("Failed to read metadata file {:?}", metadata_path))?;
 
-    let metadata: serde_json::Value =
+    let mut metadata_value: serde_json::Value =
         serde_json::from_str(&metadata_str).context("Invalid JSON metadata")?;
+    let metadata_obj = metadata_value
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("Metadata JSON must be an object"))?;
+
+    metadata_obj
+        .entry("name".to_string())
+        .or_insert(json!("Updated Model"));
+    metadata_obj
+        .entry("version".to_string())
+        .or_insert(json!("1.0.1"));
+    metadata_obj
+        .entry("description".to_string())
+        .or_insert(json!("Updated model"));
+    metadata_obj
+        .entry("framework".to_string())
+        .or_insert(json!("Unknown"));
+    metadata_obj
+        .entry("input_shape".to_string())
+        .or_insert(json!([1]));
+    metadata_obj
+        .entry("output_shape".to_string())
+        .or_insert(json!([1]));
+
+    let mut model_data_b64: Option<String> = None;
+
+    if let Some(path) = model_path {
+        let bytes = fs::read(&path)
+            .with_context(|| format!("Failed to read updated model file {:?}", path))?;
+        metadata_obj.insert("size_bytes".to_string(), json!(bytes.len()));
+        model_data_b64 = Some(STANDARD.encode(bytes));
+    }
+
+    if !metadata_obj.contains_key("size_bytes") {
+        metadata_obj.insert("size_bytes".to_string(), json!(0));
+    }
 
     // Get account
     let from_account = account
         .or(config.default_account.clone())
         .context("No account specified and no default account configured")?;
+
+    let mut params = serde_json::Map::new();
+    params.insert("model_id".to_string(), json!(model_id));
+    params.insert("metadata".to_string(), serde_json::Value::Object(metadata_obj.clone()));
+    params.insert("from".to_string(), json!(from_account));
+
+    if let Some(data_b64) = model_data_b64 {
+        params.insert("model_data".to_string(), json!(data_b64));
+    }
+
+    if let Some(cid) = cid_override {
+        params.insert("ipfs_cid".to_string(), json!(cid));
+    }
+
+    params.insert("gas_price".to_string(), json!(config.gas_price));
+    params.insert("gas_limit".to_string(), json!(config.gas_limit));
 
     // Make RPC call to update
     let client = reqwest::Client::new();
@@ -422,11 +556,7 @@ async fn update_model(
         .json(&json!({
             "jsonrpc": "2.0",
             "method": "lattice_updateModel",
-            "params": {
-                "model_id": model_id,
-                "metadata": metadata,
-                "from": from_account,
-            },
+            "params": params,
             "id": 1
         }))
         .send()
@@ -441,6 +571,9 @@ async fn update_model(
             "Transaction: {}",
             result["result"]["tx_hash"].as_str().unwrap_or("N/A")
         );
+        if let Some(cid) = result["result"]["artifact_cid"].as_str() {
+            println!("Artifact CID: {}", cid.cyan());
+        }
     } else if let Some(error) = result["error"].as_object() {
         anyhow::bail!(
             "Update failed: {}",

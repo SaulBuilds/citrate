@@ -6,8 +6,11 @@ use crate::types::{
 };
 use crate::vm::VM;
 use async_trait::async_trait;
+use hex;
 use lattice_consensus::types::{Block, Hash, Transaction};
 use primitive_types::U256;
+use std::time::Instant;
+use serde_json;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
@@ -132,6 +135,16 @@ pub trait ArtifactService: Send + Sync {
     async fn add(&self, data: &[u8]) -> Result<String, ExecutionError>;
 }
 
+/// Summary returned by `run_inference_preview`
+pub struct InferencePreview {
+    pub output: Vec<u8>,
+    pub gas_used: u64,
+    pub provider: Address,
+    pub provider_fee: U256,
+    pub proof: Option<Vec<u8>>,
+    pub latency_ms: u64,
+}
+
 impl Executor {
     pub fn new(state_db: Arc<StateDB>) -> Self {
         Self {
@@ -187,6 +200,17 @@ impl Executor {
     /// Get reference to state database
     pub fn state_db(&self) -> &Arc<StateDB> {
         &self.state_db
+    }
+
+    /// Store raw artifact bytes via configured artifact service
+    pub async fn add_artifact(&self, data: &[u8]) -> Result<String, ExecutionError> {
+        if let Some(svc) = &self.artifact_service {
+            svc.add(data).await
+        } else {
+            Err(ExecutionError::Reverted(
+                "Artifact service not configured".into(),
+            ))
+        }
     }
 
     /// Get account balance
@@ -381,6 +405,10 @@ impl Executor {
                         // Inference request
                         self.parse_inference_request(&tx.data[4..])
                     }
+                    [0x03, 0x00, 0x00, 0x00] => {
+                        // Update model
+                        self.parse_update_model(&tx.data[4..])
+                    }
                     _ => {
                         // Generic call
                         Ok(TransactionType::Call {
@@ -402,27 +430,85 @@ impl Executor {
 
     /// Parse register model transaction
     fn parse_register_model(&self, data: &[u8]) -> Result<TransactionType, ExecutionError> {
-        // Simplified parsing - in production would use proper encoding
-        if data.len() < 32 {
+        if data.len() < 36 {
             return Err(ExecutionError::InvalidInput);
         }
 
         let model_hash = Hash::new(data[0..32].try_into().unwrap());
+        let meta_len = u32::from_be_bytes(data[32..36].try_into().unwrap()) as usize;
+        let mut offset = 36;
+        if data.len() < offset + meta_len {
+            return Err(ExecutionError::InvalidInput);
+        }
+        let metadata_bytes = &data[offset..offset + meta_len];
+        offset += meta_len;
+
+        let mut metadata: ModelMetadata =
+            serde_json::from_slice(metadata_bytes).map_err(|_| ExecutionError::InvalidInput)?;
+
+        if metadata.name.is_empty() {
+            metadata.name = format!("Model-{}", hex::encode(&model_hash.as_bytes()[..4]));
+        }
+        if metadata.version.is_empty() {
+            metadata.version = "1.0.0".to_string();
+        }
+        if metadata.description.is_empty() {
+            metadata.description = "Registered AI model".to_string();
+        }
+        if metadata.framework.is_empty() {
+            metadata.framework = "Unknown".to_string();
+        }
+        if metadata.input_shape.is_empty() {
+            metadata.input_shape = vec![1];
+        }
+        if metadata.output_shape.is_empty() {
+            metadata.output_shape = vec![1];
+        }
+
+        if offset >= data.len() {
+            return Err(ExecutionError::InvalidInput);
+        }
+        let policy_byte = data[offset];
+        offset += 1;
+
+        let access_policy = match policy_byte {
+            0 => AccessPolicy::Public,
+            1 => AccessPolicy::Private,
+            2 => AccessPolicy::Restricted(Vec::new()),
+            3 => {
+                if data.len() < offset + 32 {
+                    return Err(ExecutionError::InvalidInput);
+                }
+                let mut fee_bytes = [0u8; 32];
+                fee_bytes.copy_from_slice(&data[offset..offset + 32]);
+                offset += 32;
+                AccessPolicy::PayPerUse {
+                    fee: U256::from_big_endian(&fee_bytes),
+                }
+            }
+            _ => AccessPolicy::Public,
+        };
+
+        let mut artifact_cid: Option<String> = None;
+        if data.len() >= offset + 4 {
+            let cid_len = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+            offset += 4;
+            if cid_len > 0 {
+                if data.len() < offset + cid_len {
+                    return Err(ExecutionError::InvalidInput);
+                }
+                artifact_cid = Some(
+                    String::from_utf8(data[offset..offset + cid_len].to_vec())
+                        .map_err(|_| ExecutionError::InvalidInput)?,
+                );
+            }
+        }
 
         Ok(TransactionType::RegisterModel {
             model_hash,
-            metadata: ModelMetadata {
-                name: "Model".to_string(),
-                version: "1.0".to_string(),
-                description: "AI Model".to_string(),
-                framework: "PyTorch".to_string(),
-                input_shape: vec![1, 224, 224, 3],
-                output_shape: vec![1, 1000],
-                size_bytes: 1_000_000,
-                created_at: 0,
-            },
-            access_policy: AccessPolicy::Public,
-            artifact_cid: None,
+            metadata,
+            access_policy,
+            artifact_cid,
         })
     }
 
@@ -438,6 +524,67 @@ impl Executor {
             model_id,
             input_data: data[32..].to_vec(),
             max_gas: 1_000_000,
+        })
+    }
+
+    /// Parse update model transaction
+    fn parse_update_model(&self, data: &[u8]) -> Result<TransactionType, ExecutionError> {
+        if data.len() < 36 {
+            return Err(ExecutionError::InvalidInput);
+        }
+
+        let model_id = ModelId(Hash::new(data[0..32].try_into().unwrap()));
+        let meta_len = u32::from_be_bytes(data[32..36].try_into().unwrap()) as usize;
+        let mut offset = 36;
+        if data.len() < offset + meta_len {
+            return Err(ExecutionError::InvalidInput);
+        }
+        let metadata_bytes = &data[offset..offset + meta_len];
+        offset += meta_len;
+
+        let mut metadata: ModelMetadata = serde_json::from_slice(metadata_bytes)
+            .map_err(|_| ExecutionError::InvalidInput)?;
+
+        if metadata.name.is_empty() {
+            metadata.name = format!("Model-{}", hex::encode(&model_id.0.as_bytes()[..4]));
+        }
+        if metadata.version.is_empty() {
+            metadata.version = "1.0.1".to_string();
+        }
+        if metadata.framework.is_empty() {
+            metadata.framework = "Unknown".to_string();
+        }
+        if metadata.input_shape.is_empty() {
+            metadata.input_shape = vec![1];
+        }
+        if metadata.output_shape.is_empty() {
+            metadata.output_shape = vec![1];
+        }
+
+        metadata.created_at = metadata.created_at.max(0);
+
+        let artifact_cid = if data.len() >= offset + 4 {
+            let cid_len = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+            offset += 4;
+            if cid_len > 0 {
+                if data.len() < offset + cid_len {
+                    return Err(ExecutionError::InvalidInput);
+                }
+                Some(
+                    String::from_utf8(data[offset..offset + cid_len].to_vec())
+                        .map_err(|_| ExecutionError::InvalidInput)?,
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(TransactionType::UpdateModel {
+            model_id,
+            metadata,
+            artifact_cid,
         })
     }
 
@@ -480,10 +627,10 @@ impl Executor {
 
             TransactionType::UpdateModel {
                 model_id,
-                new_version,
-                changelog,
+                metadata,
+                artifact_cid,
             } => {
-                self.execute_update_model(from, model_id, new_version, changelog, context)
+                self.execute_update_model(from, model_id, metadata, artifact_cid, context)
                     .await
             }
 
@@ -1200,6 +1347,57 @@ impl Executor {
         1
     }
 
+    /// Execute an inference using the configured inference service without mutating state.
+    pub async fn run_inference_preview(
+        &self,
+        from: Address,
+        model_id: ModelId,
+        input_data: Vec<u8>,
+        max_gas: u64,
+    ) -> Result<InferencePreview, ExecutionError> {
+        let model = self
+            .state_db
+            .get_model(&model_id)
+            .ok_or(ExecutionError::ModelNotFound(model_id))?;
+
+        match &model.access_policy {
+            AccessPolicy::Public => {}
+            AccessPolicy::Private if model.owner == from => {}
+            AccessPolicy::Restricted(allowed) if allowed.contains(&from) => {}
+            AccessPolicy::PayPerUse { .. } => {
+                if model.owner != from {
+                    return Err(ExecutionError::AccessDenied);
+                }
+            }
+            _ => return Err(ExecutionError::AccessDenied),
+        }
+
+        if let Some(svc) = &self.inference_service {
+            let start = Instant::now();
+            let (output, gas_used, provider, provider_fee, proof) =
+                svc.run_inference(model_id, input_data, max_gas).await?;
+            let latency_ms = start.elapsed().as_millis() as u64;
+
+            Ok(InferencePreview {
+                output,
+                gas_used,
+                provider,
+                provider_fee,
+                proof,
+                latency_ms,
+            })
+        } else {
+            Ok(InferencePreview {
+                output: vec![0x01, 0x02, 0x03, 0x04],
+                gas_used: 0,
+                provider: Address([0; 20]),
+                provider_fee: U256::zero(),
+                proof: None,
+                latency_ms: 0,
+            })
+        }
+    }
+
     /// Scan bytecode for AI opcodes and execute them
     async fn scan_and_execute_ai_opcodes(
         &self,
@@ -1473,8 +1671,8 @@ impl Executor {
         &self,
         from: Address,
         model_id: ModelId,
-        new_version: Hash,
-        _changelog: String,
+        new_metadata: ModelMetadata,
+        artifact_cid: Option<String>,
         context: &mut ExecutionContext,
     ) -> Result<(), ExecutionError> {
         context.use_gas(self.gas_schedule.model_update)?;
@@ -1489,14 +1687,42 @@ impl Executor {
             return Err(ExecutionError::AccessDenied);
         }
 
-        // Update model
-        model.model_hash = new_version;
+        model.metadata = new_metadata;
+        model.metadata.created_at = context.timestamp;
         model.version += 1;
         let updated_model = model.clone();
 
         self.state_db.update_model(model_id, model)?;
 
-        if let Some(adapter) = &self.model_registry {
+        if let Some(cid) = artifact_cid.clone() {
+            self.add_model_artifact(&updated_model.model_hash, &cid);
+            if let Some(art) = &self.artifact_service {
+                let replicas = self.default_artifact_replicas();
+                if let Err(err) = art.pin(&cid, replicas).await {
+                    warn!("Failed to pin updated model artifact {}: {}", cid, err);
+                }
+            }
+            if let Some(storage) = &self.ai_storage {
+                if let Err(err) = storage.update_model_weights(model_id, &cid, updated_model.version)
+                {
+                    warn!(
+                        "AI storage weight update failed for {:?}: {}",
+                        model_id, err
+                    );
+                }
+            }
+            if let Some(adapter) = &self.model_registry {
+                if let Err(err) = adapter
+                    .update_model(model_id, &updated_model, Some(&cid))
+                    .await
+                {
+                    warn!(
+                        "Model registry adapter update failed for {:?}: {}",
+                        model_id, err
+                    );
+                }
+            }
+        } else if let Some(adapter) = &self.model_registry {
             if let Err(err) = adapter.update_model(model_id, &updated_model, None).await {
                 warn!(
                     "Model registry adapter update failed for {:?}: {}",
@@ -1505,7 +1731,10 @@ impl Executor {
             }
         }
 
-        info!("Model updated: {:?} to version {}", model_id, new_version);
+        info!(
+            "Model updated: {:?} to version {}",
+            model_id, updated_model.version
+        );
         Ok(())
     }
 
@@ -1654,8 +1883,91 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
     use lattice_consensus::types::{BlockHeader, PublicKey, Signature, VrfProof};
+    use parking_lot::Mutex;
+    use serde_json::json;
     use sha3::{Digest, Keccak256};
+    use std::sync::Arc;
+
+    struct RecordingStorage {
+        records: Arc<Mutex<Vec<(ModelId, String)>>>,
+        updates: Arc<Mutex<Vec<(ModelId, String, u32)>>>,
+    }
+
+    impl RecordingStorage {
+        fn new() -> (
+            Self,
+            Arc<Mutex<Vec<(ModelId, String)>>>,
+            Arc<Mutex<Vec<(ModelId, String, u32)>>>,
+        ) {
+            let records = Arc::new(Mutex::new(Vec::new()));
+            let updates = Arc::new(Mutex::new(Vec::new()));
+            (
+                Self {
+                    records: records.clone(),
+                    updates: updates.clone(),
+                },
+                records,
+                updates,
+            )
+        }
+    }
+
+    impl AIModelStorage for RecordingStorage {
+        fn register_model(
+            &self,
+            model_id: ModelId,
+            _model_state: &ModelState,
+            weight_cid: &str,
+        ) -> anyhow::Result<()> {
+            self.records.lock().push((model_id, weight_cid.to_string()));
+            Ok(())
+        }
+
+        fn update_model_weights(
+            &self,
+            model_id: ModelId,
+            weight_cid: &str,
+            new_version: u32,
+        ) -> anyhow::Result<()> {
+            self.updates
+                .lock()
+                .push((model_id, weight_cid.to_string(), new_version));
+            Ok(())
+        }
+    }
+
+    struct RecordingRegistry {
+        records: Arc<Mutex<Vec<(ModelId, Option<String>)>>>,
+    }
+
+    impl RecordingRegistry {
+        fn new() -> (Self, Arc<Mutex<Vec<(ModelId, Option<String>)>>>) {
+            let records = Arc::new(Mutex::new(Vec::new()));
+            (
+                Self {
+                    records: records.clone(),
+                },
+                records,
+            )
+        }
+    }
+
+    #[async_trait]
+    impl ModelRegistryAdapter for RecordingRegistry {
+        async fn register_model(
+            &self,
+            model_id: ModelId,
+            _model_state: &ModelState,
+            artifact_cid: Option<&str>,
+        ) -> anyhow::Result<()> {
+            self.records
+                .lock()
+                .push((model_id, artifact_cid.map(|s| s.to_string())));
+            Ok(())
+        }
+    }
 
     fn create_test_block() -> Block {
         Block {
@@ -1727,6 +2039,85 @@ mod tests {
 
         assert!(receipt.status);
         assert_eq!(state_db.accounts.get_balance(&bob_addr), U256::from(1000));
+    }
+
+    #[tokio::test]
+    async fn test_register_model_via_transaction_payload() {
+        let state_db = Arc::new(StateDB::new());
+        let (storage_adapter, storage_records, _) = RecordingStorage::new();
+        let (registry_adapter, registry_records) = RecordingRegistry::new();
+
+        let executor = Executor::new(state_db.clone())
+            .with_ai_storage_adapter(Arc::new(storage_adapter))
+            .with_model_registry_adapter(Arc::new(registry_adapter));
+
+        let sender_pk = PublicKey::new([4; 32]);
+        let from_addr = Address::from_public_key(&sender_pk);
+        state_db
+            .accounts
+            .set_balance(from_addr, U256::from(1_000_000_000_000_000u128));
+
+        let block = create_test_block();
+        let mut target_addr = [0u8; 32];
+        target_addr[18] = 0x10;
+        target_addr[19] = 0x00;
+        let target_pk = PublicKey::new(target_addr);
+
+        let model_hash_bytes = [0xAB; 32];
+        let metadata_json = json!({
+            "name": "CLI Model",
+            "version": "1.2.3",
+            "description": "Integration test model",
+            "framework": "onnx",
+            "input_shape": [1, 4],
+            "output_shape": [1],
+            "size_bytes": 2048
+        });
+        let metadata_bytes = serde_json::to_vec(&metadata_json).unwrap();
+        let metadata_len = metadata_bytes.len() as u32;
+        let artifact_cid = "bafyModelCID123";
+
+        let mut data = Vec::new();
+        data.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+        data.extend_from_slice(&model_hash_bytes);
+        data.extend_from_slice(&metadata_len.to_be_bytes());
+        data.extend_from_slice(&metadata_bytes);
+        data.push(0); // public policy
+        data.extend_from_slice(&(artifact_cid.len() as u32).to_be_bytes());
+        data.extend_from_slice(artifact_cid.as_bytes());
+
+        let tx = lattice_consensus::types::Transaction {
+            hash: Hash::new([5; 32]),
+            nonce: 0,
+            from: sender_pk,
+            to: Some(target_pk),
+            value: 0,
+            gas_limit: 200000,
+            gas_price: 1_000_000_000,
+            data,
+            signature: Signature::new([0; 64]),
+            tx_type: None,
+        };
+
+        let receipt = executor.execute_transaction(&block, &tx).await.unwrap();
+        assert!(receipt.status);
+
+        let model_id = ModelId(Hash::new(model_hash_bytes));
+        let stored_model = state_db.get_model(&model_id).expect("model stored");
+        assert_eq!(stored_model.metadata.name, "CLI Model");
+        assert_eq!(stored_model.metadata.framework, "onnx");
+        assert_eq!(stored_model.metadata.input_shape, vec![1, 4]);
+
+        let stored_records = storage_records.lock();
+        assert_eq!(stored_records.len(), 1);
+        assert_eq!(stored_records[0].0, model_id);
+        assert_eq!(stored_records[0].1, artifact_cid);
+        drop(stored_records);
+
+        let registry_records_guard = registry_records.lock();
+        assert_eq!(registry_records_guard.len(), 1);
+        assert_eq!(registry_records_guard[0].0, model_id);
+        assert_eq!(registry_records_guard[0].1.as_deref(), Some(artifact_cid));
     }
 
     #[tokio::test]

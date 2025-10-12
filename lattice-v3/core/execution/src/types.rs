@@ -99,7 +99,8 @@ impl Default for AccountState {
 }
 
 /// Model metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ModelMetadata {
     pub name: String,
     pub version: String,
@@ -193,8 +194,8 @@ pub enum TransactionType {
     /// Update model version
     UpdateModel {
         model_id: ModelId,
-        new_version: Hash,
-        changelog: String,
+        metadata: ModelMetadata,
+        artifact_cid: Option<String>,
     },
 
     /// Request inference

@@ -187,6 +187,7 @@ The networking code was more complete than expected! Once we exposed the CLI fla
 - Added dedicated `IPFSIncentives` contract + Foundry coverage to pay out storage reporters.
 - Updated documentation to reflect that IPFS storage, chunking, and reward instrumentation are operational.
 - Executor now synchronises model registrations with StorageManager + MCP, wiring weight CIDs into IPFS-backed inference (`core/execution/src/executor.rs:1151`, `core/mcp/src/execution.rs:26`, `node/src/adapters.rs:1`).
+- `lattice_deployModel` + CLI deploy command push artifacts to IPFS and propagate rich metadata/access policies into the chain & MCP (`core/api/src/server.rs:1060`, `cli/src/commands/model.rs`).
 
 #### Phase 3: Distributed Compute (Weeks 13-20)
 **No changes to scope**, includes:

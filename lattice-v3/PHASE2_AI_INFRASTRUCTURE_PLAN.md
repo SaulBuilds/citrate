@@ -304,6 +304,7 @@ contract ModelAccess {
 - MCP registry tracks weight artifacts and `ModelExecutor` fetches model bytes from IPFS or manifests before inference (`core/mcp/src/registry.rs:74`, `core/mcp/src/execution.rs:26`).
 - Node runtime wires new storage & registry adapters so registerModel events hydrate StorageManager and MCP (`node/src/adapters.rs:1`, `node/src/main.rs:283`).
 - Model inference pipeline can retrieve weight blobs through IPFS, satisfying core registry/execution wiring ahead of Phase 2 inference milestones.
+- CLI + RPC pipeline now handles metadata-aware model registration by uploading artifacts to IPFS and passing access policy data to the executor (`cli/src/commands/model.rs`, `core/api/src/server.rs:1060`).
 
 ---
 

@@ -6,17 +6,19 @@ use crate::types::{
     request::{BlockId, CallRequest},
 };
 use anyhow::Result;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures::executor::block_on;
 use jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::CloseHandle;
 use jsonrpc_http_server::{AccessControlAllowOrigin, DomainsValidation, ServerBuilder};
 use lattice_consensus::types::Hash;
-use lattice_execution::executor::Executor;
-use lattice_execution::types::Address;
+use lattice_execution::executor::{Executor, InferencePreview};
+use lattice_execution::types::{AccessPolicy, Address, ModelId};
 use lattice_network::peer::PeerManager;
 use lattice_sequencer::mempool::Mempool;
 use lattice_storage::StorageManager;
 use once_cell::sync::Lazy;
+use primitive_types::U256;
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -36,6 +38,21 @@ fn parse_pagination(obj: &serde_json::Map<String, serde_json::Value>) -> (usize,
         .and_then(|v| v.as_u64())
         .map(|v| v as usize);
     (offset, limit)
+}
+
+fn access_policy_to_json(policy: &AccessPolicy) -> serde_json::Value {
+    match policy {
+        AccessPolicy::Public => json!({ "type": "public" }),
+        AccessPolicy::Private => json!({ "type": "private" }),
+        AccessPolicy::Restricted(addresses) => json!({
+            "type": "restricted",
+            "allowed": addresses.iter().map(|addr| format!("0x{}", hex::encode(addr.0))).collect::<Vec<_>>()
+        }),
+        AccessPolicy::PayPerUse { fee } => json!({
+            "type": "payPerUse",
+            "fee": fee.to_string()
+        }),
+    }
 }
 
 /// Helper: slice with offset/limit
@@ -275,6 +292,206 @@ impl RpcServer {
             match block_on(api.get_height()) {
                 Ok(height) => Ok(Value::Number(height.into())),
                 Err(_e) => Err(jsonrpc_core::Error::internal_error()),
+            }
+        });
+
+        // lattice_updateModel
+        let executor_ai_update = executor.clone();
+        io_handler.add_sync_method("lattice_updateModel", move |params: Params| {
+            rpc_request("lattice_updateModel");
+            let value: serde_json::Value = match params.parse() {
+                Ok(v) => v,
+                Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+            };
+            let map = value
+                .as_object()
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("Expected object"))?;
+
+            let model_id_str = map
+                .get("model_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'model_id'"))?;
+            let from_hex = map
+                .get("from")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'from'"))?;
+
+            let mut metadata_value = map
+                .get("metadata")
+                .cloned()
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'metadata'"))?;
+            let metadata_obj = metadata_value
+                .as_object_mut()
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("'metadata' must be object"))?;
+
+            metadata_obj
+                .entry("name".to_string())
+                .or_insert(json!("Updated Model"));
+            metadata_obj
+                .entry("version".to_string())
+                .or_insert(json!("1.0.1"));
+            metadata_obj
+                .entry("description".to_string())
+                .or_insert(json!("Updated model"));
+            metadata_obj
+                .entry("framework".to_string())
+                .or_insert(json!("Unknown"));
+            metadata_obj
+                .entry("input_shape".to_string())
+                .or_insert(json!([1]));
+            metadata_obj
+                .entry("output_shape".to_string())
+                .or_insert(json!([1]));
+
+            let mut model_bytes: Option<Vec<u8>> = None;
+            if let Some(data_str) = map.get("model_data").and_then(|v| v.as_str()) {
+                let decoded = STANDARD
+                    .decode(data_str)
+                    .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid base64 in 'model_data'"))?;
+                metadata_obj.insert("size_bytes".to_string(), json!(decoded.len()));
+                model_bytes = Some(decoded);
+            }
+
+            if !metadata_obj.contains_key("size_bytes") {
+                metadata_obj.insert("size_bytes".to_string(), json!(0));
+            }
+
+            let metadata_bytes = serde_json::to_vec(&metadata_value)
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid metadata"))?;
+
+            let from_bytes = hex::decode(from_hex.trim().trim_start_matches("0x"))
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from'"))?;
+            if from_bytes.len() != 20 {
+                return Err(jsonrpc_core::Error::invalid_params("Invalid 'from' length"));
+            }
+            let mut from_pkb = [0u8; 32];
+            from_pkb[..20].copy_from_slice(&from_bytes);
+            let from_pk = lattice_consensus::types::PublicKey::new(from_pkb);
+            let from_addr = lattice_execution::types::Address({
+                let mut a = [0u8; 20];
+                a.copy_from_slice(&from_bytes);
+                a
+            });
+
+            let model_id_bytes = hex::decode(model_id_str.trim_start_matches("0x"))
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'model_id'"))?;
+            if model_id_bytes.len() != 32 {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "'model_id' must be 32 bytes",
+                ));
+            }
+
+            let mut model_id_array = [0u8; 32];
+            model_id_array.copy_from_slice(&model_id_bytes);
+
+            let artifact_cid = if let Some(cid) = map.get("ipfs_cid").and_then(|v| v.as_str()) {
+                cid.to_string()
+            } else if let Some(bytes) = model_bytes.as_ref() {
+                match block_on(executor_ai_update.add_artifact(bytes)) {
+                    Ok(cid) => cid,
+                    Err(e) => {
+                        return Err(jsonrpc_core::Error::invalid_params(format!(
+                            "Failed to add artifact: {}",
+                            e
+                        )))
+                    }
+                }
+            } else {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Provide 'model_data' or 'ipfs_cid'",
+                ));
+            };
+
+            metadata_obj.insert("artifact_cid".to_string(), json!(artifact_cid.clone()));
+
+            let gas_price = map
+                .get("gas_price")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1_000_000_000);
+            let gas_limit = map
+                .get("gas_limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200_000);
+
+            let to_addr = {
+                let mut a = [0u8; 20];
+                a[18] = 0x10;
+                a[19] = 0x00;
+                a
+            };
+            let mut to_pkb = [0u8; 32];
+            to_pkb[..20].copy_from_slice(&to_addr);
+            let to_pk = lattice_consensus::types::PublicKey::new(to_pkb);
+
+            let mut data = Vec::new();
+            data.extend_from_slice(&[0x03, 0x00, 0x00, 0x00]);
+            data.extend_from_slice(&model_id_array);
+            data.extend_from_slice(&(metadata_bytes.len() as u32).to_be_bytes());
+            data.extend_from_slice(&metadata_bytes);
+            let cid_bytes = artifact_cid.as_bytes();
+            data.extend_from_slice(&(cid_bytes.len() as u32).to_be_bytes());
+            data.extend_from_slice(cid_bytes);
+
+            let exec = executor_ai_update.clone();
+            exec.state_db()
+                .accounts
+                .set_balance(from_addr, primitive_types::U256::from(1_000_000_000_000_000_000u128));
+
+            let blk = lattice_consensus::types::Block {
+                header: lattice_consensus::types::BlockHeader {
+                    version: 1,
+                    block_hash: lattice_consensus::types::Hash::default(),
+                    selected_parent_hash: lattice_consensus::types::Hash::default(),
+                    merge_parent_hashes: vec![],
+                    timestamp: 0,
+                    height: 0,
+                    blue_score: 0,
+                    blue_work: 0,
+                    pruning_point: lattice_consensus::types::Hash::default(),
+                    proposer_pubkey: from_pk,
+                    vrf_reveal: lattice_consensus::types::VrfProof {
+                        proof: vec![],
+                        output: lattice_consensus::types::Hash::default(),
+                    },
+                },
+                state_root: lattice_consensus::types::Hash::default(),
+                tx_root: lattice_consensus::types::Hash::default(),
+                receipt_root: lattice_consensus::types::Hash::default(),
+                artifact_root: lattice_consensus::types::Hash::default(),
+                ghostdag_params: Default::default(),
+                transactions: vec![],
+                signature: lattice_consensus::types::Signature::new([0; 64]),
+            };
+
+            let tx = lattice_consensus::types::Transaction {
+                hash: lattice_consensus::types::Hash::default(),
+                nonce: 0,
+                from: from_pk,
+                to: Some(to_pk),
+                value: 0,
+                gas_limit,
+                gas_price,
+                data,
+                signature: lattice_consensus::types::Signature::new([0; 64]),
+                tx_type: None,
+            };
+
+            match block_on(exec.execute_transaction(&blk, &tx)) {
+                Ok(rcpt) => {
+                    if rcpt.status {
+                        Ok(json!({
+                            "success": true,
+                            "tx_hash": format!("0x{}", hex::encode(rcpt.tx_hash.as_bytes())),
+                            "artifact_cid": artifact_cid
+                        }))
+                    } else {
+                        Ok(json!({ "success": false, "gas_used": rcpt.gas_used }))
+                    }
+                }
+                Err(e) => Err(jsonrpc_core::Error::invalid_params(format!(
+                    "update failed: {}",
+                    e
+                ))),
             }
         });
 
@@ -1051,100 +1268,267 @@ impl RpcServer {
         let executor_ai_deploy = executor.clone();
         io_handler.add_sync_method("lattice_deployModel", move |params: Params| {
             rpc_request("lattice_deployModel");
-            let obj: serde_json::Value = match params.parse() { Ok(v) => v, Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())) };
-            let map = obj.as_object().ok_or_else(|| jsonrpc_core::Error::invalid_params("Expected object"))?;
-            let from_hex = map.get("from").and_then(|v| v.as_str()).ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'from'"))?;
-            let cid = map.get("ipfs_cid").and_then(|v| v.as_str()).ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'ipfs_cid'"))?;
-            let size_bytes = map.get("size_bytes").and_then(|v| v.as_u64()).unwrap_or(0u64);
-            let model_hash_opt = map.get("model_hash").and_then(|v| v.as_str());
-            let policy_str = map.get("access_policy").and_then(|v| v.as_str());
-            let price_wei = map.get("inference_price").and_then(|v| v.as_str()).or_else(|| map.get("inference_price_wei").and_then(|v| v.as_str()));
+            let value: serde_json::Value = match params.parse() {
+                Ok(v) => v,
+                Err(e) => {
+                    return Err(jsonrpc_core::Error::invalid_params(e.to_string()));
+                }
+            };
+            let map = value
+                .as_object()
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("Expected object"))?;
 
-            let from_bytes = hex::decode(from_hex.trim().trim_start_matches("0x")).map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from'"))?;
-            if from_bytes.len() != 20 { return Err(jsonrpc_core::Error::invalid_params("Invalid 'from' length")); }
-            let mut from_pkb = [0u8; 32]; from_pkb[..20].copy_from_slice(&from_bytes);
+            let from_hex = map
+                .get("from")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'from'"))?;
+            let policy_str = map
+                .get("access_policy")
+                .and_then(|v| v.as_str())
+                .unwrap_or("public");
+            let price_wei = map
+                .get("inference_price")
+                .and_then(|v| v.as_str())
+                .or_else(|| map.get("inference_price_wei").and_then(|v| v.as_str()));
+
+            let mut metadata_value = map
+                .get("metadata")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            let metadata_obj = metadata_value.as_object_mut().ok_or_else(|| {
+                jsonrpc_core::Error::invalid_params("'metadata' must be an object")
+            })?;
+
+            let model_data_b64 = map.get("model_data").and_then(|v| v.as_str());
+            let ipfs_cid_param = map.get("ipfs_cid").and_then(|v| v.as_str());
+
+            let mut model_bytes: Option<Vec<u8>> = None;
+            if let Some(data_str) = model_data_b64 {
+                let decoded = STANDARD.decode(data_str).map_err(|_| {
+                    jsonrpc_core::Error::invalid_params("Invalid base64 in 'model_data'")
+                })?;
+                model_bytes = Some(decoded);
+            }
+
+            let mut size_bytes = map
+                .get("size_bytes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_else(|| model_bytes.as_ref().map(|b| b.len() as u64).unwrap_or(0));
+            if size_bytes == 0 {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Provide 'model_data' or 'size_bytes'",
+                ));
+            }
+
+            metadata_obj
+                .entry("size_bytes".to_string())
+                .or_insert(serde_json::json!(size_bytes));
+            metadata_obj
+                .entry("name".to_string())
+                .or_insert(serde_json::json!("Unnamed Model"));
+            metadata_obj
+                .entry("version".to_string())
+                .or_insert(serde_json::json!("1.0.0"));
+            metadata_obj
+                .entry("description".to_string())
+                .or_insert(serde_json::json!("Registered via lattice_deployModel"));
+            metadata_obj
+                .entry("framework".to_string())
+                .or_insert(serde_json::json!("Unknown"));
+            metadata_obj
+                .entry("input_shape".to_string())
+                .or_insert(serde_json::json!([1]));
+            metadata_obj
+                .entry("output_shape".to_string())
+                .or_insert(serde_json::json!([1]));
+
+            let metadata_bytes = serde_json::to_vec(&metadata_value)
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid metadata"))?;
+
+            let from_bytes = hex::decode(from_hex.trim().trim_start_matches("0x"))
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from'"))?;
+            if from_bytes.len() != 20 {
+                return Err(jsonrpc_core::Error::invalid_params("Invalid 'from' length"));
+            }
+            let mut from_pkb = [0u8; 32];
+            from_pkb[..20].copy_from_slice(&from_bytes);
             let from_pk = lattice_consensus::types::PublicKey::new(from_pkb);
-            let from_addr = lattice_execution::types::Address({ let mut a=[0u8;20]; a.copy_from_slice(&from_bytes); a });
+            let from_addr = lattice_execution::types::Address({
+                let mut a = [0u8; 20];
+                a.copy_from_slice(&from_bytes);
+                a
+            });
 
-            let model_hash_arr = if let Some(hs) = model_hash_opt {
-                let b = hex::decode(hs.trim_start_matches("0x")).map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'model_hash'"))?;
-                if b.len()!=32 { return Err(jsonrpc_core::Error::invalid_params("Invalid 'model_hash' length")); }
-                let mut a=[0u8;32]; a.copy_from_slice(&b); a
+            let cid = if let Some(existing) = ipfs_cid_param {
+                existing.to_string()
+            } else if let Some(bytes) = model_bytes.as_ref() {
+                match block_on(executor_ai_deploy.add_artifact(bytes)) {
+                    Ok(cid) => cid,
+                    Err(e) => {
+                        return Err(jsonrpc_core::Error::invalid_params(format!(
+                            "Failed to add artifact: {}",
+                            e
+                        )))
+                    }
+                }
             } else {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Provide 'model_data' or 'ipfs_cid'",
+                ));
+            };
+
+            metadata_obj
+                .entry("artifact_cid".to_string())
+                .or_insert(serde_json::json!(cid.clone()));
+
+            let model_hash_arr = if let Some(bytes) = model_bytes.as_ref() {
+                use sha3::Digest as _;
                 let mut hasher = sha3::Keccak256::default();
-                hasher.update(&from_bytes); hasher.update(cid.as_bytes()); hasher.update(size_bytes.to_le_bytes());
-                let out = hasher.finalize(); let mut a=[0u8;32]; a.copy_from_slice(&out); a
+                hasher.update(bytes);
+                let out = hasher.finalize();
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&out);
+                arr
+            } else if let Some(hs) = map.get("model_hash").and_then(|v| v.as_str()) {
+                let bytes = hex::decode(hs.trim_start_matches("0x"))
+                    .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'model_hash'"))?;
+                if bytes.len() != 32 {
+                    return Err(jsonrpc_core::Error::invalid_params(
+                        "Invalid 'model_hash' length",
+                    ));
+                }
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                arr
+            } else {
+                use sha3::Digest as _;
+                let mut hasher = sha3::Keccak256::default();
+                hasher.update(&from_bytes);
+                hasher.update(cid.as_bytes());
+                hasher.update(size_bytes.to_le_bytes());
+                let out = hasher.finalize();
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&out);
+                arr
             };
             let model_hash = lattice_consensus::types::Hash::new(model_hash_arr);
 
-            // Build data for registerModel precompile. If access_policy provided, use extended form registerModel(bytes32,string,uint8,uint256)
-            use sha3::Digest as _;
-            let mut data = Vec::new();
-            if let Some(pol) = policy_str {
-                // Extended signature
-                let sel = &sha3::Keccak256::digest(b"registerModel(bytes32,string,uint8,uint256)")[..4];
-                data.extend_from_slice(sel);
-                data.extend_from_slice(model_hash.as_bytes()); // bytes32
-                // offset to string (after 4 static args = 128 bytes => 0x80)
-                let mut off = [0u8; 32]; off[31] = 128u8; data.extend_from_slice(&off);
-                // access policy as uint8 in 32-byte big endian
-                let pol_idx: u8 = match pol.to_lowercase().as_str() {
-                    "public" => 0,
-                    "private" => 1,
-                    "restricted" => 2,
-                    "payperuse" | "pay_per_use" | "pay-per-use" => 3,
-                    _ => 0,
-                };
-                let mut pol_be = [0u8; 32]; pol_be[31] = pol_idx; data.extend_from_slice(&pol_be);
-                // price
-                let mut price_be = [0u8; 32];
-                if let Some(p) = price_wei {
-                    // Accept decimal string or 0x-hex
-                    let pstr = p.trim();
-                    let val = if let Some(h) = pstr.strip_prefix("0x").or(pstr.strip_prefix("0X")) {
-                        primitive_types::U256::from_big_endian(&hex::decode(h).map_err(|_| jsonrpc_core::Error::invalid_params("Invalid price hex"))?)
-                    } else {
-                        primitive_types::U256::from_dec_str(pstr).map_err(|_| jsonrpc_core::Error::invalid_params("Invalid price"))?
-                    };
-                    let mut tmp = [0u8; 32]; val.to_big_endian(&mut tmp); price_be.copy_from_slice(&tmp);
-                }
-                data.extend_from_slice(&price_be);
-                // dynamic string
-                let len = cid.len(); let mut lenb=[0u8;32]; lenb[31]=(len & 0xFF) as u8; data.extend_from_slice(&lenb);
-                data.extend_from_slice(cid.as_bytes()); let pad=(32-(len%32))%32; data.extend_from_slice(&vec![0u8; pad]);
-            } else {
-                // Legacy 2-arg signature
-                let sel = &sha3::Keccak256::digest(b"registerModel(bytes32,string)")[..4];
-                data.extend_from_slice(sel);
-                data.extend_from_slice(model_hash.as_bytes());
-                let mut off=[0u8;32]; off[31]=64; data.extend_from_slice(&off);
-                let len = cid.len(); let mut lenb=[0u8;32]; lenb[31]=(len & 0xFF) as u8; data.extend_from_slice(&lenb);
-                data.extend_from_slice(cid.as_bytes()); let pad=(32-(len%32))%32; data.extend_from_slice(&vec![0u8; pad]);
-            }
+            let policy_byte: u8 = match policy_str.to_lowercase().as_str() {
+                "public" => 0,
+                "private" => 1,
+                "restricted" => 2,
+                "payperuse" | "pay_per_use" | "pay-per-use" => 3,
+                _ => 0,
+            };
 
-            let to_addr = { let mut a=[0u8;20]; a[18]=0x10; a[19]=0x00; a };
-            let mut to_pkb=[0u8;32]; to_pkb[..20].copy_from_slice(&to_addr);
+            let price_bytes: Option<[u8; 32]> = if policy_byte == 3 {
+                if let Some(val) = price_wei {
+                    let price = if let Some(h) = val
+                        .trim()
+                        .strip_prefix("0x")
+                        .or_else(|| val.trim().strip_prefix("0X"))
+                    {
+                        primitive_types::U256::from_big_endian(&hex::decode(h).map_err(|_| {
+                            jsonrpc_core::Error::invalid_params("Invalid price hex")
+                        })?)
+                    } else {
+                        primitive_types::U256::from_dec_str(val.trim())
+                            .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid price"))?
+                    };
+                    let mut tmp = [0u8; 32];
+                    price.to_big_endian(&mut tmp);
+                    Some(tmp)
+                } else {
+                    return Err(jsonrpc_core::Error::invalid_params(
+                        "payPerUse policy requires 'inference_price'",
+                    ));
+                }
+            } else {
+                None
+            };
+
+            let mut data = Vec::new();
+            data.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
+            data.extend_from_slice(model_hash.as_bytes());
+            data.extend_from_slice(&(metadata_bytes.len() as u32).to_be_bytes());
+            data.extend_from_slice(&metadata_bytes);
+            data.push(policy_byte);
+            if let Some(price) = price_bytes {
+                data.extend_from_slice(&price);
+            }
+            let cid_bytes = cid.as_bytes();
+            data.extend_from_slice(&(cid_bytes.len() as u32).to_be_bytes());
+            data.extend_from_slice(cid_bytes);
+
+            let to_addr = {
+                let mut a = [0u8; 20];
+                a[18] = 0x10;
+                a[19] = 0x00;
+                a
+            };
+            let mut to_pkb = [0u8; 32];
+            to_pkb[..20].copy_from_slice(&to_addr);
             let to_pk = lattice_consensus::types::PublicKey::new(to_pkb);
 
             let exec = executor_ai_deploy.clone();
-            exec.state_db().accounts.set_balance(from_addr, primitive_types::U256::from(1_000_000_000_000_000_000u128));
-            let blk = lattice_consensus::types::Block { header: lattice_consensus::types::BlockHeader {
-                    version:1, block_hash: lattice_consensus::types::Hash::default(), selected_parent_hash: lattice_consensus::types::Hash::default(),
-                    merge_parent_hashes: vec![], timestamp:0, height:0, blue_score:0, blue_work:0, pruning_point: lattice_consensus::types::Hash::default(),
-                    proposer_pubkey: from_pk, vrf_reveal: lattice_consensus::types::VrfProof { proof: vec![], output: lattice_consensus::types::Hash::default() },
-                }, state_root: lattice_consensus::types::Hash::default(), tx_root: lattice_consensus::types::Hash::default(),
-                receipt_root: lattice_consensus::types::Hash::default(), artifact_root: lattice_consensus::types::Hash::default(), ghostdag_params: Default::default(),
-                transactions: vec![], signature: lattice_consensus::types::Signature::new([0;64]) };
-            let tx = lattice_consensus::types::Transaction { hash: lattice_consensus::types::Hash::default(), nonce:0, from:from_pk, to: Some(to_pk), value:0,
-                gas_limit:200000, gas_price:1, data, signature: lattice_consensus::types::Signature::new([0;64]), tx_type: None };
+            exec.state_db().accounts.set_balance(
+                from_addr,
+                primitive_types::U256::from(1_000_000_000_000_000_000u128),
+            );
+            let blk = lattice_consensus::types::Block {
+                header: lattice_consensus::types::BlockHeader {
+                    version: 1,
+                    block_hash: lattice_consensus::types::Hash::default(),
+                    selected_parent_hash: lattice_consensus::types::Hash::default(),
+                    merge_parent_hashes: vec![],
+                    timestamp: 0,
+                    height: 0,
+                    blue_score: 0,
+                    blue_work: 0,
+                    pruning_point: lattice_consensus::types::Hash::default(),
+                    proposer_pubkey: from_pk,
+                    vrf_reveal: lattice_consensus::types::VrfProof {
+                        proof: vec![],
+                        output: lattice_consensus::types::Hash::default(),
+                    },
+                },
+                state_root: lattice_consensus::types::Hash::default(),
+                tx_root: lattice_consensus::types::Hash::default(),
+                receipt_root: lattice_consensus::types::Hash::default(),
+                artifact_root: lattice_consensus::types::Hash::default(),
+                ghostdag_params: Default::default(),
+                transactions: vec![],
+                signature: lattice_consensus::types::Signature::new([0; 64]),
+            };
+            let tx = lattice_consensus::types::Transaction {
+                hash: lattice_consensus::types::Hash::default(),
+                nonce: 0,
+                from: from_pk,
+                to: Some(to_pk),
+                value: 0,
+                gas_limit: 200000,
+                gas_price: 1,
+                data,
+                signature: lattice_consensus::types::Signature::new([0; 64]),
+                tx_type: None,
+            };
 
             match block_on(exec.execute_transaction(&blk, &tx)) {
                 Ok(rcpt) => {
                     if rcpt.status {
-                        Ok(json!({ "model_id": format!("0x{}", hex::encode(model_hash.as_bytes())), "tx_hash": format!("0x{}", hex::encode(rcpt.tx_hash.as_bytes())) }))
-                    } else { Ok(json!({ "error": "deployment failed", "gas_used": rcpt.gas_used })) }
+                        Ok(json!({
+                            "model_id": format!("0x{}", hex::encode(model_hash.as_bytes())),
+                            "tx_hash": format!("0x{}", hex::encode(rcpt.tx_hash.as_bytes())),
+                            "artifact_cid": cid
+                        }))
+                    } else {
+                        Ok(json!({ "error": "deployment failed", "gas_used": rcpt.gas_used }))
+                    }
                 }
-                Err(e) => Err(jsonrpc_core::Error::invalid_params(format!("deploy failed: {}", e)))
+                Err(e) => Err(jsonrpc_core::Error::invalid_params(format!(
+                    "deploy failed: {}",
+                    e
+                ))),
             }
         });
 
@@ -1206,7 +1590,32 @@ impl RpcServer {
                     let model_id = lattice_execution::types::ModelId(Hash::new(model_id_array));
 
                     match block_on(api.get_model(model_id)) {
-                        Ok(model) => Ok(serde_json::to_value(model).unwrap_or(Value::Null)),
+                        Ok(model) => {
+                            let artifacts = executor_ai_get
+                                .list_model_artifacts(&model.model_hash);
+                            let latest_artifact = artifacts.last().cloned();
+
+                            let metadata_json = serde_json::to_value(&model.metadata)
+                                .unwrap_or(Value::Null);
+                            let usage_json = json!({
+                                "total_inferences": model.usage_stats.total_inferences,
+                                "total_gas_used": model.usage_stats.total_gas_used,
+                                "total_fees_earned": model.usage_stats.total_fees_earned.to_string(),
+                                "last_used": model.usage_stats.last_used,
+                            });
+
+                            Ok(json!({
+                                "model_id": format!("0x{}", hex::encode(model_id.0.as_bytes())),
+                                "model_hash": format!("0x{}", hex::encode(model.model_hash.as_bytes())),
+                                "owner": format!("0x{}", hex::encode(model.owner.0)),
+                                "version": model.version,
+                                "metadata": metadata_json,
+                                "access_policy": access_policy_to_json(&model.access_policy),
+                                "usage_stats": usage_json,
+                                "artifacts": artifacts,
+                                "latest_artifact": latest_artifact,
+                            }))
+                        }
                         Err(ApiError::ModelNotFound(_)) => Ok(Value::Null),
                         Err(_) => Err(jsonrpc_core::Error::internal_error()),
                     }

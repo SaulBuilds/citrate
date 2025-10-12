@@ -1,7 +1,9 @@
 use crate::chain::BlockStore;
+use crate::db::column_families::*;
 use crate::db::RocksDB;
 use crate::state::StateStore;
 use anyhow::Result;
+use lattice_consensus::types::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
@@ -135,10 +137,55 @@ impl Pruner {
     }
 
     /// Prune state snapshots before specified height
-    async fn prune_states_before(&self, _height: u64) -> Result<usize> {
-        // In a real implementation, this would prune old state snapshots
-        // For now, we'll just return 0 as we don't have state snapshot height tracking
-        Ok(0)
+    async fn prune_states_before(&self, height: u64) -> Result<usize> {
+        let mut pruned = 0usize;
+        let mut batch = self.db.batch();
+        let mut batch_count = 0usize;
+
+        for (key, _value) in self.db.iter_cf(CF_STATE)? {
+            let key_bytes = key.as_ref();
+            if key_bytes.is_empty() {
+                continue;
+            }
+
+            let prefix = key_bytes[0];
+            if prefix != b's' && prefix != b'r' {
+                continue;
+            }
+
+            if key_bytes.len() < 33 {
+                continue;
+            }
+
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes.copy_from_slice(&key_bytes[1..33]);
+            let block_hash = Hash::new(hash_bytes);
+
+            let should_prune = match self.block_store.get_header(&block_hash)? {
+                Some(header) => header.height < height,
+                None => true,
+            };
+
+            if should_prune {
+                self.db
+                    .batch_delete_cf(&mut batch, CF_STATE, key_bytes)?;
+                pruned += 1;
+                batch_count += 1;
+
+                if batch_count >= self.config.batch_size {
+                    self.db.write_batch(batch)?;
+                    batch = self.db.batch();
+                    batch_count = 0;
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+
+        if batch_count > 0 {
+            self.db.write_batch(batch)?;
+        }
+
+        Ok(pruned)
     }
 
     /// Compact the database

@@ -96,7 +96,7 @@ Downloads (prebuilt)
 ## Architecture (Mermaid)
 
 
-mermaid```
+```mermaid
 flowchart LR
     subgraph Clients_&_Tools
         CLI[CLI\ncli/]
@@ -143,7 +143,6 @@ flowchart LR
 ```
 
 ```mermaid
-
 graph TD
     LC[lattice-consensus]
     LE[lattice-execution]
@@ -299,7 +298,6 @@ flowchart LR
   DOCS -. reference .-> U
 ```
 
-Transaction & Inference Flow
 ```mermaid
 sequenceDiagram
   participant Wallet

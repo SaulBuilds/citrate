@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 // Import CoreML bridge only on macOS
 #[cfg(target_os = "macos")]
-use super::coreml_bridge::{CoreMLModel, CoreMLInference};
+use super::coreml_bridge::CoreMLInference;
 
 /// Supported model formats for Metal GPU
 #[derive(Debug, Clone, Serialize, Deserialize)]

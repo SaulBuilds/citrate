@@ -190,7 +190,7 @@ impl KeyManager {
 
         // Derive for each path component
         for component in components.iter().skip(1) {
-            let (index, hardened) = if component.ends_with('\'') {
+            let (index, _hardened) = if component.ends_with('\'') {
                 let idx_str = &component[..component.len() - 1];
                 let idx = idx_str.parse::<u32>()
                     .map_err(|_| anyhow!("Invalid path component"))?;

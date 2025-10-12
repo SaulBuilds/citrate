@@ -13,11 +13,11 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use lattice_execution::crypto::encryption::{
-    EncryptedModel, ModelEncryption, EncryptionConfig,
+    ModelEncryption, EncryptionConfig,
     EncryptionMetadata, EncryptedKey,
 };
 use lattice_execution::crypto::key_manager::{
-    KeyManager, DerivedKey, AccessPolicy, KeyPurpose,
+    KeyManager, KeyPurpose,
 };
 use primitive_types::{H256, H160};
 
@@ -224,7 +224,7 @@ impl EncryptedIPFSStore {
         &self,
         manifest_cid: &Cid,
         recipient: H160,
-        recipient_key: &[u8; 32],
+        _recipient_key: &[u8; 32],
     ) -> Result<Vec<u8>> {
         // Fetch manifest from IPFS
         let manifest_data = self.ipfs.cat(&manifest_cid.0).await?;
@@ -485,7 +485,7 @@ impl EncryptedIPFSStore {
     fn decrypt_key_for_recipient(
         &self,
         encrypted_key: &[u8],
-        recipient_key: &[u8; 32],
+        _recipient_key: &[u8; 32],
     ) -> Result<[u8; 32]> {
         // Simplified decryption (production would use ECIES)
         if encrypted_key.len() != 32 {
@@ -537,13 +537,13 @@ impl IPFSOperations for IPFSService {
         Ok(format!("Qm{}", hex::encode(&data[..16])))
     }
 
-    async fn cat(&self, cid: &str) -> Result<Vec<u8>> {
+    async fn cat(&self, _cid: &str) -> Result<Vec<u8>> {
         // Implementation would call IPFS HTTP API
         // GET /api/v0/cat?arg={cid}
         Ok(Vec::new())
     }
 
-    async fn pin(&self, cid: &str) -> Result<()> {
+    async fn pin(&self, _cid: &str) -> Result<()> {
         // Implementation would call IPFS HTTP API
         // POST /api/v0/pin/add?arg={cid}
         Ok(())

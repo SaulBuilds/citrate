@@ -317,7 +317,7 @@ impl ModelEncryption {
     fn decrypt_key_for_recipient(
         &self,
         encrypted_key: &[u8],
-        recipient_key: &[u8; 32],
+        _recipient_key: &[u8; 32],
     ) -> Result<[u8; 32]> {
         // In production, this would:
         // 1. Use recipient's private key

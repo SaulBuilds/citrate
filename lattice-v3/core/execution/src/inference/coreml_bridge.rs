@@ -4,7 +4,7 @@
 // Provides Rust interface to Apple's CoreML for model execution
 
 use std::ffi::{c_void, CStr, CString};
-use std::os::raw::{c_char, c_double, c_float, c_int};
+use std::os::raw::{c_char, c_float, c_int};
 use std::path::Path;
 use std::ptr;
 
@@ -12,21 +12,25 @@ use anyhow::{Context, Result};
 
 // Opaque types for CoreML objects
 #[repr(C)]
+#[allow(dead_code)]
 struct MLModel {
     _private: [u8; 0],
 }
 
 #[repr(C)]
+#[allow(dead_code)]
 struct MLFeatureProvider {
     _private: [u8; 0],
 }
 
 #[repr(C)]
+#[allow(dead_code)]
 struct MLPredictionOptions {
     _private: [u8; 0],
 }
 
 #[repr(C)]
+#[allow(dead_code)]
 struct MLMultiArray {
     _private: [u8; 0],
 }
@@ -82,7 +86,9 @@ extern "C" {
     ) -> *mut c_void;
 
     fn MLMultiArrayGetDataPointer(array: *const c_void) -> *mut c_float;
+    #[allow(dead_code)]
     fn MLMultiArrayGetShape(array: *const c_void) -> *const c_int;
+    #[allow(dead_code)]
     fn MLMultiArrayGetStrides(array: *const c_void) -> *const c_int;
     fn MLMultiArrayGetCount(array: *const c_void) -> c_int;
 

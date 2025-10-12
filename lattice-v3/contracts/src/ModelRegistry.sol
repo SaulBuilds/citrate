@@ -356,7 +356,7 @@ contract ModelRegistry is IModelRegistry, AccessControl, ReentrancyGuard {
             )
         );
         require(success, "Inference execution failed");
-        return result;
+        return abi.decode(result, (bytes));
     }
     
     // Admin functions
@@ -369,7 +369,7 @@ contract ModelRegistry is IModelRegistry, AccessControl, ReentrancyGuard {
         require(success, "Withdrawal failed");
     }
     
-    function setRegistrationFee(uint256 newFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setRegistrationFee(uint256 /* newFee */) external view onlyRole(DEFAULT_ADMIN_ROLE) {
         // Registration fee is constant in this version
         revert("Registration fee is immutable");
     }

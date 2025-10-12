@@ -286,11 +286,11 @@ mod tests {
         assert!(executor.is_precompile(&standard::BLAKE2F));
 
         // Test AI precompiles
-        assert!(executor.is_precompile(&inference::addresses::MODEL_DEPLOY));
-        assert!(executor.is_precompile(&inference::addresses::MODEL_INFERENCE));
+        assert!(executor.is_precompile(&Address(inference::addresses::MODEL_DEPLOY)));
+        assert!(executor.is_precompile(&Address(inference::addresses::MODEL_INFERENCE)));
 
         // Test non-precompile
-        let regular_addr = Address::from([1u8; 20]);
+        let regular_addr = Address([1u8; 20]);
         assert!(!executor.is_precompile(&regular_addr));
     }
 }

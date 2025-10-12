@@ -10,11 +10,9 @@ use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce, Key
 };
-use argon2::{Argon2, PasswordHasher, PasswordHash, PasswordVerifier};
 use rand::RngCore;
 use sha3::{Sha3_256, Digest};
 use primitive_types::{H256, H160};
-use std::collections::HashSet;
 
 /// Encrypted model structure for storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,8 +73,8 @@ pub struct EncryptedKey {
     /// Encrypted AES key using recipient's public key
     pub encrypted_key: Vec<u8>,
 
-    /// Ephemeral public key for ECDH
-    pub ephemeral_pubkey: [u8; 33],
+    /// Ephemeral public key for ECDH (33 bytes)
+    pub ephemeral_pubkey: Vec<u8>,
 }
 
 /// Configuration for model encryption
@@ -311,7 +309,7 @@ impl ModelEncryption {
         Ok(EncryptedKey {
             recipient: *recipient,
             encrypted_key: encrypted,
-            ephemeral_pubkey: [0u8; 33], // Would be actual public key
+            ephemeral_pubkey: vec![0u8; 33], // Would be actual public key
         })
     }
 

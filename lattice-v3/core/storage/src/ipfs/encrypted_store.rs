@@ -22,7 +22,6 @@ use lattice_execution::crypto::key_manager::{
 use primitive_types::{H256, H160};
 
 use super::{Cid, ModelMetadata, IPFSService};
-use super::chunking::ChunkingStrategy;
 
 /// Encrypted model manifest stored on IPFS
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,13 +163,16 @@ impl EncryptedIPFSStore {
                 index,
             )?;
 
+            // Store size before moving data
+            let data_len = encrypted_chunk.data.len() as u64;
+
             // Upload encrypted chunk to IPFS
             let cid = self.ipfs.add(encrypted_chunk.data).await?;
 
             encrypted_chunks.push(EncryptedChunk {
                 cid: Cid(cid),
                 index,
-                size_bytes: encrypted_chunk.data.len() as u64,
+                size_bytes: data_len,
                 nonce: encrypted_chunk.nonce,
                 auth_tag: encrypted_chunk.auth_tag,
             });
@@ -205,14 +207,14 @@ impl EncryptedIPFSStore {
         let manifest_data = serde_json::to_vec(&manifest)?;
         let manifest_cid = self.ipfs.add(manifest_data).await?;
 
-        // Cache manifest
-        self.manifest_cache.write().insert(model_id, manifest);
-
         // Pin manifest and chunks for persistence
         self.ipfs.pin(&manifest_cid).await?;
-        for chunk in &encrypted_chunks {
+        for chunk in &manifest.encrypted_chunks {
             self.ipfs.pin(&chunk.cid.0).await?;
         }
+
+        // Cache manifest
+        self.manifest_cache.write().insert(model_id, manifest);
 
         Ok(Cid(manifest_cid))
     }
@@ -475,7 +477,7 @@ impl EncryptedIPFSStore {
         Ok(EncryptedKey {
             recipient: *recipient,
             encrypted_key: encrypted,
-            ephemeral_pubkey: [0u8; 33], // Would be actual public key
+            ephemeral_pubkey: vec![0u8; 33], // Would be actual public key
         })
     }
 

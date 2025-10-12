@@ -10,6 +10,8 @@ pub use encryption::{
     EncryptedModel,
     ModelEncryption,
     EncryptionConfig,
+    EncryptionMetadata,
+    EncryptedKey,
     decrypt_model,
     encrypt_model,
 };
@@ -17,8 +19,8 @@ pub use encryption::{
 pub use key_manager::{
     KeyManager,
     DerivedKey,
-    ThresholdKey,
     AccessPolicy,
+    KeyPurpose,
 };
 
 #[cfg(target_os = "macos")]

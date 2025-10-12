@@ -4033,7 +4033,9 @@ dependencies = [
 name = "lattice-execution"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
+ "argon2",
  "ark-bls12-381",
  "ark-ec",
  "ark-ff",
@@ -4052,6 +4054,7 @@ dependencies = [
  "ethereum-types",
  "futures",
  "hex",
+ "hmac",
  "lattice-consensus",
  "lru",
  "ndarray",
@@ -4206,6 +4209,7 @@ dependencies = [
 name = "lattice-storage"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "async-trait",
  "bincode",

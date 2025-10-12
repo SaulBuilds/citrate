@@ -2,6 +2,7 @@
 
 // Re-export modules
 pub mod address_utils;
+pub mod crypto;
 pub mod executor;
 pub mod inference;
 pub mod metrics;

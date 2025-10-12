@@ -10,11 +10,11 @@ contract IPFSIncentivesTest is Test {
 
     function setUp() public {
         incentives = new IPFSIncentives();
-        vm.deal(address(this), 10 ether);
+        vm.deal(address(this), 20 ether);
 
         // Admin grants reporter role and funds the contract.
         incentives.grantRole(incentives.REPORTER_ROLE(), reporter);
-        incentives.depositRewards{value: 5 ether}();
+        incentives.depositRewards{value: 10 ether}(); // Increased funding to cover rewards
     }
 
     function test_reportPinningAccruesRewards() public {

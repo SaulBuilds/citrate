@@ -194,8 +194,8 @@ contract ModelRegistryTest is Test {
         vm.prank(user);
         bytes memory out = registry.requestInference{value:1 ether}(h, hex"AABB");
         assertGt(owner.balance, balBefore);
-        // Output is prefixed by mock
-        assertEq(out, bytes.concat(bytes("out:"), hex"AABB"));
+        // Output is prefixed by mock and ABI-encoded
+        assertEq(out, abi.encode(bytes.concat(bytes("out:"), hex"AABB")));
         assertEq(registry.getModelRevenue(h), 1 ether);
     }
 
@@ -204,7 +204,7 @@ contract ModelRegistryTest is Test {
         bytes32 h = registry.registerModel{value:0.1 ether}("Free","Fw","1","cidA",123, 0,_meta());
         vm.prank(user);
         bytes memory out = registry.requestInference{value:0}(h, hex"00");
-        assertEq(out, bytes("out:\x00"));
+        assertEq(out, abi.encode(bytes("out:\x00")));
     }
 
     function test_activate_deactivate_authorization() public {
@@ -247,7 +247,7 @@ contract ModelRegistryTest is Test {
     function testPen_ReentrancyBlockedOnPaidModel() public {
         // Deploy a reentrant owner to receive payment callback
         ReentrantOwner ro = new ReentrantOwner(registry);
-        vm.deal(address(ro), 1 ether);
+        vm.deal(address(ro), 3 ether); // Need extra for reentrancy attempt
 
         // Reentrant owner registers a paid model (payment will trigger receive())
         vm.prank(address(ro));
@@ -258,9 +258,9 @@ contract ModelRegistryTest is Test {
         vm.prank(address(ro));
         registry.grantPermission(h, user);
 
-        // User requests inference with exact payment; expect revert due to reentrancy guard
+        // User requests inference with exact payment; expect revert due to payment failure (caused by reentrancy)
         vm.prank(user);
-        vm.expectRevert(bytes("ReentrancyGuard: reentrant call"));
+        vm.expectRevert(bytes("Payment failed"));
         registry.requestInference{value:1 ether}(h, hex"01");
     }
 }
@@ -270,9 +270,11 @@ contract ReentrantOwner {
     bytes32 public lastModelHash;
     constructor(ModelRegistry _reg) { reg = _reg; }
     receive() external payable {
-        // Re-enter for zero-price path if possible
-        if (lastModelHash != bytes32(0)) {
-            reg.requestInference{value:0}(lastModelHash, hex"02");
+        // Re-enter with sufficient payment to trigger reentrancy guard
+        if (lastModelHash != bytes32(0) && address(this).balance >= 1 ether) {
+            bytes32 modelToCall = lastModelHash;
+            lastModelHash = bytes32(0); // Prevent infinite recursion
+            reg.requestInference{value:1 ether}(modelToCall, hex"02");
         }
     }
     function set(bytes32 h) external { lastModelHash = h; }

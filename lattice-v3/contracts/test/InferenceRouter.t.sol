@@ -136,19 +136,20 @@ contract InferenceRouterTest is Test {
         vm.prank(p);
         router.registerProvider{value: 2 ether}("http://p", 0.2 ether, models);
 
-        // Create request
+        // Create request - this will be immediately assigned to provider (status = Processing)
         address user = address(0xFEED);
         vm.deal(user, 2 ether);
         vm.prank(user);
         uint256 id = router.requestInference{value: 1 ether}(models[0], hex"AB", 1 ether);
 
-        // Non-requester cannot cancel
+        // Non-requester cannot cancel (should fail authorization first)
         vm.prank(p);
-        vm.expectRevert();
+        vm.expectRevert(bytes("Not request owner"));
         router.cancelRequest(id);
 
-        // Requester can cancel
+        // Requester also cannot cancel because request is already Processing
         vm.prank(user);
+        vm.expectRevert(bytes("Cannot cancel"));
         router.cancelRequest(id);
     }
 

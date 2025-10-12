@@ -13,16 +13,15 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use lattice_execution::crypto::encryption::{
-    EncryptedModel, ModelEncryption, EncryptionConfig,
+    ModelEncryption, EncryptionConfig,
     EncryptionMetadata, EncryptedKey,
 };
 use lattice_execution::crypto::key_manager::{
-    KeyManager, DerivedKey, AccessPolicy, KeyPurpose,
+    KeyManager, KeyPurpose,
 };
 use primitive_types::{H256, H160};
 
 use super::{Cid, ModelMetadata, IPFSService};
-use super::chunking::ChunkingStrategy;
 
 /// Encrypted model manifest stored on IPFS
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,13 +163,16 @@ impl EncryptedIPFSStore {
                 index,
             )?;
 
+            // Store size before moving data
+            let data_len = encrypted_chunk.data.len() as u64;
+
             // Upload encrypted chunk to IPFS
             let cid = self.ipfs.add(encrypted_chunk.data).await?;
 
             encrypted_chunks.push(EncryptedChunk {
                 cid: Cid(cid),
                 index,
-                size_bytes: encrypted_chunk.data.len() as u64,
+                size_bytes: data_len,
                 nonce: encrypted_chunk.nonce,
                 auth_tag: encrypted_chunk.auth_tag,
             });
@@ -205,14 +207,14 @@ impl EncryptedIPFSStore {
         let manifest_data = serde_json::to_vec(&manifest)?;
         let manifest_cid = self.ipfs.add(manifest_data).await?;
 
-        // Cache manifest
-        self.manifest_cache.write().insert(model_id, manifest);
-
         // Pin manifest and chunks for persistence
         self.ipfs.pin(&manifest_cid).await?;
-        for chunk in &encrypted_chunks {
+        for chunk in &manifest.encrypted_chunks {
             self.ipfs.pin(&chunk.cid.0).await?;
         }
+
+        // Cache manifest
+        self.manifest_cache.write().insert(model_id, manifest);
 
         Ok(Cid(manifest_cid))
     }
@@ -222,7 +224,7 @@ impl EncryptedIPFSStore {
         &self,
         manifest_cid: &Cid,
         recipient: H160,
-        recipient_key: &[u8; 32],
+        _recipient_key: &[u8; 32],
     ) -> Result<Vec<u8>> {
         // Fetch manifest from IPFS
         let manifest_data = self.ipfs.cat(&manifest_cid.0).await?;
@@ -475,7 +477,7 @@ impl EncryptedIPFSStore {
         Ok(EncryptedKey {
             recipient: *recipient,
             encrypted_key: encrypted,
-            ephemeral_pubkey: [0u8; 33], // Would be actual public key
+            ephemeral_pubkey: vec![0u8; 33], // Would be actual public key
         })
     }
 
@@ -483,7 +485,7 @@ impl EncryptedIPFSStore {
     fn decrypt_key_for_recipient(
         &self,
         encrypted_key: &[u8],
-        recipient_key: &[u8; 32],
+        _recipient_key: &[u8; 32],
     ) -> Result<[u8; 32]> {
         // Simplified decryption (production would use ECIES)
         if encrypted_key.len() != 32 {
@@ -535,13 +537,13 @@ impl IPFSOperations for IPFSService {
         Ok(format!("Qm{}", hex::encode(&data[..16])))
     }
 
-    async fn cat(&self, cid: &str) -> Result<Vec<u8>> {
+    async fn cat(&self, _cid: &str) -> Result<Vec<u8>> {
         // Implementation would call IPFS HTTP API
         // GET /api/v0/cat?arg={cid}
         Ok(Vec::new())
     }
 
-    async fn pin(&self, cid: &str) -> Result<()> {
+    async fn pin(&self, _cid: &str) -> Result<()> {
         // Implementation would call IPFS HTTP API
         // POST /api/v0/pin/add?arg={cid}
         Ok(())

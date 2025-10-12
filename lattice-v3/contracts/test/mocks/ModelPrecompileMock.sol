@@ -20,7 +20,7 @@ contract ModelPrecompileMock {
         lastInput = input;
         emit Inference(modelHash, input);
         // Return a simple echo-like payload to assert on
-        return bytes.concat(bytes("out:"), input);
+        return abi.encode(bytes.concat(bytes("out:"), input));
     }
 }
 

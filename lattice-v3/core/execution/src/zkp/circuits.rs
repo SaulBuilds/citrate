@@ -1,16 +1,15 @@
 // lattice-v3/core/execution/src/zkp/circuits.rs
 
 // ZKP circuits for different proof types
-use super::types::{GradientProofCircuit, ModelExecutionCircuit, PublicInputsProducer};
+use super::types::{GradientProofCircuit, ModelExecutionCircuit};
 use ark_bls12_381::Fr;
 use ark_ff::Zero;
 use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::prelude::*;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use hex;
-use std::cmp;
 
 const HASH_OUTPUT_SIZE: usize = 32;
+#[allow(dead_code)]
 const FIXED_POINT_SCALE: u64 = 1_000_000;
 const HASH_SALT: [u8; HASH_OUTPUT_SIZE] = [
     0x73, 0xa1, 0x5c, 0x44, 0xda, 0xf0, 0x91, 0x2b, 0x6e, 0x0d, 0x83, 0x57, 0x3d, 0x9f, 0xb2,
@@ -18,6 +17,7 @@ const HASH_SALT: [u8; HASH_OUTPUT_SIZE] = [
     0x61, 0x90,
 ];
 
+#[allow(dead_code)]
 fn encode_fixed(value: f64) -> Result<u64, SynthesisError> {
     if !value.is_finite() || value.is_sign_negative() {
         return Err(SynthesisError::Unsatisfiable);
@@ -29,6 +29,7 @@ fn encode_fixed(value: f64) -> Result<u64, SynthesisError> {
     Ok(scaled.round() as u64)
 }
 
+#[allow(dead_code)]
 fn allocate_fixed_var(
     value: f64,
     cs: ConstraintSystemRef<Fr>,
@@ -37,6 +38,7 @@ fn allocate_fixed_var(
     FpVar::new_witness(cs, || Ok(Fr::from(encoded)))
 }
 
+#[allow(dead_code)]
 fn fp_to_hash_bytes(value: &FpVar<Fr>) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
     let bits = value.to_bits_le()?;
     let mut bytes = Vec::with_capacity(HASH_OUTPUT_SIZE);
@@ -53,6 +55,7 @@ fn fp_to_hash_bytes(value: &FpVar<Fr>) -> Result<Vec<UInt8<Fr>>, SynthesisError>
     Ok(bytes)
 }
 
+#[allow(dead_code)]
 fn u64_to_hash_bytes(value: u64) -> Vec<UInt8<Fr>> {
     let mut raw = value.to_le_bytes().to_vec();
     raw.resize(HASH_OUTPUT_SIZE, 0);
@@ -90,6 +93,7 @@ fn hash_pair(left: &[UInt8<Fr>], right: &[UInt8<Fr>]) -> Result<Vec<UInt8<Fr>>, 
     Ok(result)
 }
 
+#[allow(dead_code)]
 fn hash_chain(chunks: &[Vec<UInt8<Fr>>]) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
     if chunks.is_empty() {
         return Ok(UInt8::constant_vec(&HASH_SALT));

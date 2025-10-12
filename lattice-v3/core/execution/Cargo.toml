@@ -49,6 +49,12 @@ ark-relations = "0.4"
 ark-bls12-381 = "0.4"
 ark-snark = "0.4"
 
+# Cryptography
+aes-gcm = "0.10"
+argon2 = "0.5"
+hmac = "0.12"
+rand = { workspace = true }
+
 [build-dependencies]
 cc = "1.0"
 

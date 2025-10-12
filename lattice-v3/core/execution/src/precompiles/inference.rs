@@ -8,12 +8,10 @@ use ethereum_types::{H160, H256, U256};
 use sha3::Digest;
 use crate::types::Address;
 use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
-use crate::inference::metal_runtime::{MetalModel, MetalModelFormat, MetalRuntime, ModelConfig, QuantizationType};
+use crate::inference::metal_runtime::{MetalModel, MetalModelFormat, MetalRuntime, ModelConfig};
 
 /// Precompile addresses for AI operations
 pub mod addresses {
@@ -345,7 +343,7 @@ impl InferencePrecompile {
             return Err(anyhow!("Insufficient gas"));
         }
 
-        let model_id = H256::from_slice(&input[0..32]);
+        let _model_id = H256::from_slice(&input[0..32]);
         let proof_data = &input[32..];
 
         // Verify proof (simplified for now)

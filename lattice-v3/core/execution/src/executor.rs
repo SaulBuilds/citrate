@@ -70,6 +70,7 @@ pub struct Executor {
     artifact_service: Option<Arc<dyn ArtifactService>>,
     ai_storage: Option<Arc<dyn AIModelStorage>>,
     model_registry: Option<Arc<dyn ModelRegistryAdapter>>,
+    #[allow(dead_code)]
     precompile_executor: Option<Arc<tokio::sync::RwLock<PrecompileExecutor>>>,
 }
 

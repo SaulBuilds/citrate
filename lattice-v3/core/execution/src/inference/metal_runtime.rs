@@ -7,10 +7,10 @@ use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::path::{Path, PathBuf};
 
-// Import CoreML bridge
-use super::coreml_bridge::{CoreMLModel, CoreMLInference};
+// Import CoreML bridge only on macOS
+#[cfg(target_os = "macos")]
+use super::coreml_bridge::CoreMLInference;
 
 /// Supported model formats for Metal GPU
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,10 +206,11 @@ impl MetalRuntime {
     }
 
     /// CoreML inference - NOW WITH ACTUAL IMPLEMENTATION
+    #[cfg(target_os = "macos")]
     async fn infer_coreml(
         &self,
         model: &MetalModel,
-        input: &[f32],
+        _input: &[f32],
     ) -> Result<Vec<f32>> {
         // For CoreML bridge, we need to save weights to a temp file
         // In production, this would use cached files or direct memory mapping
@@ -230,7 +231,7 @@ impl MetalRuntime {
         // Run inference through CoreML
         let output = CoreMLInference::execute(
             &model_path,
-            input.to_vec(),
+            _input.to_vec(),
             input_shape,
         ).await?;
 
@@ -242,11 +243,21 @@ impl MetalRuntime {
         Ok(output)
     }
 
+    /// CoreML inference - Fallback for non-macOS
+    #[cfg(not(target_os = "macos"))]
+    async fn infer_coreml(
+        &self,
+        model: &MetalModel,
+        _input: &[f32],
+    ) -> Result<Vec<f32>> {
+        Err(anyhow!("CoreML is only available on macOS"))
+    }
+
     /// MLX inference (Apple's new framework)
     async fn infer_mlx(
         &self,
         model: &MetalModel,
-        input: &[f32],
+        _input: &[f32],
     ) -> Result<Vec<f32>> {
         // MLX is optimized for Apple Silicon
         // Particularly good for LLMs
@@ -257,7 +268,7 @@ impl MetalRuntime {
     async fn infer_onnx_metal(
         &self,
         model: &MetalModel,
-        input: &[f32],
+        _input: &[f32],
     ) -> Result<Vec<f32>> {
         // ONNX Runtime with Metal execution provider
         Ok(vec![0.0; model.config.output_shape.iter().product()])
@@ -267,7 +278,7 @@ impl MetalRuntime {
     async fn infer_tflite(
         &self,
         model: &MetalModel,
-        input: &[f32],
+        _input: &[f32],
     ) -> Result<Vec<f32>> {
         // TF Lite with Metal delegate
         Ok(vec![0.0; model.config.output_shape.iter().product()])
@@ -277,7 +288,7 @@ impl MetalRuntime {
     async fn infer_pytorch_mobile(
         &self,
         model: &MetalModel,
-        input: &[f32],
+        _input: &[f32],
     ) -> Result<Vec<f32>> {
         // PyTorch Mobile with Metal backend
         Ok(vec![0.0; model.config.output_shape.iter().product()])

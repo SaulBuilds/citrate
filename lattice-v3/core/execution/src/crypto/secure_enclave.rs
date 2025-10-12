@@ -5,7 +5,7 @@
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
-use primitive_types::{H256, H160};
+use primitive_types::H256;
 use sha3::{Sha3_256, Digest};
 use std::collections::HashMap;
 
@@ -95,6 +95,7 @@ pub struct AppleSecureEnclave {
     enclave_id: String,
 
     /// Cached keys
+    #[allow(dead_code)]
     cached_keys: HashMap<H256, Vec<u8>>,
 
     /// Platform info
@@ -105,6 +106,7 @@ pub struct AppleSecureEnclave {
 #[derive(Debug, Clone)]
 struct PlatformInfo {
     chip_type: String,
+    #[allow(dead_code)]
     secure_enclave_version: String,
     supports_attestation: bool,
 }

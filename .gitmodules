@@ -1,3 +1,6 @@
 [submodule "lattice-v3/lib/forge-std"]
 	path = lattice-v3/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "lattice-v3/contracts/lib/openzeppelin-contracts"]
+	path = lattice-v3/contracts/lib/openzeppelin-contracts
+	url = https://github.com/openzeppelin/openzeppelin-contracts

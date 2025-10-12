@@ -15,6 +15,8 @@ from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
 from .errors import LatticeError
+from .finite_field import split_secret_bytes, reconstruct_secret_bytes
+from .ecdh_real import ECDHManager
 
 
 class KeyManager:
@@ -43,8 +45,14 @@ class KeyManager:
             self.account: LocalAccount = Account.create()
 
         # Generate ECDH key pair for model encryption
-        self.ecdh_private_key = ec.generate_private_key(ec.SECP256K1(), default_backend())
-        self.ecdh_public_key = self.ecdh_private_key.public_key()
+        private_key_bytes = None
+        if private_key:
+            # Use Ethereum private key for ECDH as well
+            if private_key.startswith('0x'):
+                private_key = private_key[2:]
+            private_key_bytes = bytes.fromhex(private_key)
+
+        self.ecdh_manager = ECDHManager(private_key_bytes)
 
     def get_address(self) -> str:
         """Get Ethereum address"""
@@ -56,7 +64,7 @@ class KeyManager:
 
     def get_public_key(self) -> str:
         """Get ECDH public key for sharing"""
-        public_bytes = self.ecdh_public_key.public_numbers().x.to_bytes(32, 'big')
+        public_bytes = self.ecdh_manager.get_public_key_compressed()
         return public_bytes.hex()
 
     def sign_transaction(self, transaction: Dict[str, Any]) -> str:
@@ -71,7 +79,7 @@ class KeyManager:
         """
         try:
             signed_txn = self.account.sign_transaction(transaction)
-            return signed_txn.raw_transaction.hex()
+            return "0x" + signed_txn.raw_transaction.hex()
         except Exception as e:
             raise LatticeError(f"Transaction signing failed: {str(e)}")
 
@@ -191,28 +199,12 @@ class KeyManager:
             32-byte shared key
         """
         try:
-            # Reconstruct peer public key
             peer_key_bytes = bytes.fromhex(peer_public_key)
-            peer_public_numbers = ec.EllipticCurvePublicNumbers(
-                x=int.from_bytes(peer_key_bytes, 'big'),
-                y=0,  # Compressed format
-                curve=ec.SECP256K1()
-            )
-            peer_key = peer_public_numbers.public_key(default_backend())
-
-            # Perform ECDH
-            shared_key = self.ecdh_private_key.exchange(ec.ECDH(), peer_key)
-
-            # Derive final key using HKDF
-            hkdf = HKDF(
-                algorithm=hashes.SHA256(),
-                length=32,
+            return self.ecdh_manager.derive_shared_secret(
+                peer_key_bytes,
                 salt=b"lattice-model-encryption",
-                info=b"shared-key-derivation",
-                backend=default_backend()
+                info=b"shared-key-derivation"
             )
-
-            return hkdf.derive(shared_key)
 
         except Exception as e:
             raise LatticeError(f"Key derivation failed: {str(e)}")
@@ -244,33 +236,36 @@ class KeyManager:
         return aesgcm.decrypt(nonce, encrypted_key, None)
 
     def _create_key_shares(self, key: bytes, threshold: int, total: int) -> List[Dict[str, str]]:
-        """Create Shamir's secret shares for key"""
-        # Simplified implementation - in production use proper finite field arithmetic
+        """Create Shamir's secret shares for key using proper finite field arithmetic"""
+        shares_tuples = split_secret_bytes(key, threshold, total)
+
         shares = []
-        for i in range(1, total + 1):
-            # Generate polynomial evaluation at point i
-            share_value = hashlib.sha256(key + i.to_bytes(4, 'big')).digest()
+        for x, share_bytes in shares_tuples:
             shares.append({
-                "x": str(i),
-                "y": share_value.hex(),
+                "x": str(x),
+                "y": share_bytes.hex(),
                 "threshold": str(threshold)
             })
 
         return shares
 
     def reconstruct_key_from_shares(self, shares: List[Dict[str, str]]) -> bytes:
-        """Reconstruct key from Shamir's shares"""
-        # Simplified implementation
-        # In production, use proper Lagrange interpolation
-        if len(shares) < int(shares[0]["threshold"]):
+        """Reconstruct key from Shamir's shares using proper Lagrange interpolation"""
+        if not shares:
+            raise LatticeError("No shares provided")
+
+        threshold = int(shares[0]["threshold"])
+        if len(shares) < threshold:
             raise LatticeError("Insufficient shares for key reconstruction")
 
-        # For demo, just return hash of combined shares
-        combined = b""
-        for share in shares[:int(shares[0]["threshold"])]:
-            combined += bytes.fromhex(share["y"])
+        # Convert shares back to tuples format
+        shares_tuples = []
+        for share in shares:
+            x = int(share["x"])
+            y = bytes.fromhex(share["y"])
+            shares_tuples.append((x, y))
 
-        return hashlib.sha256(combined).digest()
+        return reconstruct_secret_bytes(shares_tuples, threshold)
 
 
 class EncryptionConfig:

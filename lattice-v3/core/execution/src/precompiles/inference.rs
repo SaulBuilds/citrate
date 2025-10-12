@@ -4,7 +4,7 @@
 // Addresses 0x0100 - 0x0105 reserved for AI operations
 
 use anyhow::{anyhow, Result};
-use ethereum_types::{H256, U256};
+use ethereum_types::{H160, H256, U256};
 use sha3::Digest;
 use crate::types::Address;
 use std::collections::HashMap;

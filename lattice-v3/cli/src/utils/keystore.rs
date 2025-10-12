@@ -1,8 +1,14 @@
 //lattice-v3/cli/src/utils/keystore.rs
 
+use aes_gcm::{
+    aead::{Aead, KeyInit, OsRng},
+    Aes256Gcm, Nonce, Key
+};
 use anyhow::{Context, Result};
+use rand::RngCore;
 use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 use std::fs;
 use std::path::Path;
 
@@ -11,33 +17,35 @@ struct Keystore {
     version: u32,
     encrypted_key: String,
     salt: String,
-    iv: String,
+    nonce: String,
 }
 
 pub fn save_key(secret_key: &SecretKey, password: &str, path: &Path) -> Result<()> {
-    // Simple encryption (in production, use proper key derivation and encryption)
-    use sha3::{Digest, Sha3_256};
+    // Generate random salt
+    let mut salt = [0u8; 32];
+    OsRng.fill_bytes(&mut salt);
 
-    let mut hasher = Sha3_256::new();
-    hasher.update(password.as_bytes());
-    let password_hash = hasher.finalize();
+    // Derive key from password using PBKDF2-like approach
+    let encryption_key = derive_key(password, &salt)?;
 
-    // Generate salt and IV
-    let salt = hex::encode(&password_hash[..16]);
-    let iv = hex::encode(&password_hash[16..32]);
+    // Generate random nonce for AES-GCM
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
 
-    // XOR encrypt the key (simplified - use AES in production)
+    // Encrypt the private key using AES-256-GCM
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&encryption_key));
     let key_bytes = secret_key.secret_bytes();
-    let mut encrypted = Vec::new();
-    for (i, byte) in key_bytes.iter().enumerate() {
-        encrypted.push(byte ^ password_hash[i % 32]);
-    }
+
+    let ciphertext = cipher
+        .encrypt(nonce, key_bytes.as_ref())
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
 
     let keystore = Keystore {
         version: 1,
-        encrypted_key: hex::encode(encrypted),
-        salt,
-        iv,
+        encrypted_key: hex::encode(ciphertext),
+        salt: hex::encode(salt),
+        nonce: hex::encode(nonce_bytes),
     };
 
     // Create parent directory if needed
@@ -57,25 +65,44 @@ pub fn load_key(path: &Path, password: &str) -> Result<SecretKey> {
 
     let keystore: Keystore = serde_json::from_str(&contents).context("Invalid keystore format")?;
 
+    // Decode salt and nonce
+    let salt = hex::decode(&keystore.salt).context("Invalid salt format")?;
+    let nonce_bytes = hex::decode(&keystore.nonce).context("Invalid nonce format")?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
     // Derive key from password
-    use sha3::{Digest, Sha3_256};
+    let encryption_key = derive_key(password, &salt)?;
 
+    // Decrypt the private key
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&encryption_key));
+    let ciphertext = hex::decode(&keystore.encrypted_key).context("Invalid encrypted key format")?;
+
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext.as_ref())
+        .map_err(|_| anyhow::anyhow!("Decryption failed - invalid password or corrupted keystore"))?;
+
+    SecretKey::from_slice(&plaintext).context("Failed to recover private key")
+}
+
+fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
+    // Use SHA3-256 with multiple iterations for key derivation
+    let mut key = [0u8; 32];
     let mut hasher = Sha3_256::new();
+
+    // Initial hash
     hasher.update(password.as_bytes());
-    let password_hash = hasher.finalize();
+    hasher.update(salt);
+    let mut hash = hasher.finalize();
 
-    // Verify salt matches
-    let expected_salt = hex::encode(&password_hash[..16]);
-    if keystore.salt != expected_salt {
-        anyhow::bail!("Invalid password");
+    // Apply 10000 iterations to strengthen the key derivation
+    for _ in 0..10000 {
+        let mut new_hasher = Sha3_256::new();
+        new_hasher.update(&hash);
+        new_hasher.update(password.as_bytes());
+        new_hasher.update(salt);
+        hash = new_hasher.finalize();
     }
 
-    // Decrypt the key
-    let encrypted_bytes = hex::decode(&keystore.encrypted_key)?;
-    let mut decrypted = Vec::new();
-    for (i, byte) in encrypted_bytes.iter().enumerate() {
-        decrypted.push(byte ^ password_hash[i % 32]);
-    }
-
-    SecretKey::from_slice(&decrypted).context("Failed to recover private key")
+    key.copy_from_slice(&hash);
+    Ok(key)
 }

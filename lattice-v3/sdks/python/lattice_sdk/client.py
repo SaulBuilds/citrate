@@ -13,6 +13,7 @@ import time
 from .models import ModelConfig, ModelDeployment, InferenceRequest, InferenceResult
 from .crypto import EncryptionConfig, KeyManager
 from .errors import LatticeError, ModelNotFoundError, InsufficientFundsError
+from .ipfs import upload_to_ipfs
 
 
 class LatticeClient:
@@ -271,9 +272,12 @@ class LatticeClient:
 
     def _upload_to_ipfs(self, data: bytes) -> str:
         """Upload data to IPFS and return hash"""
-        # In production, integrate with actual IPFS node
-        # For now, simulate with hash
-        return hashlib.sha256(data).hexdigest()
+        try:
+            return upload_to_ipfs(data)
+        except Exception as e:
+            # Fallback to local hash if IPFS is unavailable
+            print(f"Warning: IPFS upload failed ({e}), using local hash fallback")
+            return f"fallback_{hashlib.sha256(data).hexdigest()}"
 
     def _send_transaction(
         self,

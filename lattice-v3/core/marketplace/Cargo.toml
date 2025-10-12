@@ -1,0 +1,33 @@
+[package]
+name = "lattice-marketplace"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core dependencies (using workspace versions)
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+futures = "0.3"
+
+# Database and storage
+reqwest = { version = "0.11", features = ["json"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Hashing and crypto
+sha3 = { workspace = true }
+blake3 = { workspace = true }
+
+# Async utilities
+async-trait = { workspace = true }
+dashmap = "5.5"
+
+# Time handling
+chrono = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.0"
+test-log = "0.2"

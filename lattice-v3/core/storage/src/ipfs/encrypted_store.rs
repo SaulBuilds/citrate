@@ -348,24 +348,6 @@ impl EncryptedIPFSStore {
         key: &[u8; 32],
         index: usize,
     ) -> Result<EncryptedChunkData> {
-        use aes_gcm::{
-            aead::{Aead, KeyInit, OsRng},
-            Aes256Gcm, Nonce, Key,
-        };
-        use rand::RngCore;
-
-        // Generate unique nonce for this chunk
-        let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
-
-        // Include chunk index in nonce for additional uniqueness
-        nonce_bytes[0] = (index & 0xFF) as u8;
-        nonce_bytes[1] = ((index >> 8) & 0xFF) as u8;
-
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        let key = Key::<Aes256Gcm>::from_slice(key);
-        let cipher = Aes256Gcm::new(key);
-
         // Compress if configured
         let data_to_encrypt = if self.config.compress {
             self.compress_data(chunk)?
@@ -373,25 +355,13 @@ impl EncryptedIPFSStore {
             chunk.to_vec()
         };
 
-        // Encrypt
-        let ciphertext = cipher
-            .encrypt(nonce, data_to_encrypt.as_ref())
-            .map_err(|e| anyhow!("Encryption failed: {}", e))?;
-
-        // Extract auth tag (last 16 bytes)
-        let (encrypted_data, auth_tag) = if ciphertext.len() >= 16 {
-            let split_point = ciphertext.len() - 16;
-            let mut tag = [0u8; 16];
-            tag.copy_from_slice(&ciphertext[split_point..]);
-            (ciphertext[..split_point].to_vec(), tag)
-        } else {
-            return Err(anyhow!("Invalid ciphertext length"));
-        };
+        // Use the encryption module for actual encryption
+        let encrypted_result = self.encryption.encrypt_chunk(&data_to_encrypt, key, index)?;
 
         Ok(EncryptedChunkData {
-            data: encrypted_data,
-            nonce: nonce_bytes,
-            auth_tag,
+            data: encrypted_result.data,
+            nonce: encrypted_result.nonce,
+            auth_tag: encrypted_result.auth_tag,
         })
     }
 
@@ -403,23 +373,8 @@ impl EncryptedIPFSStore {
         nonce: &[u8; 12],
         auth_tag: &[u8; 16],
     ) -> Result<Vec<u8>> {
-        use aes_gcm::{
-            aead::{Aead, KeyInit},
-            Aes256Gcm, Nonce, Key,
-        };
-
-        // Reconstruct full ciphertext with auth tag
-        let mut full_ciphertext = encrypted_data.to_vec();
-        full_ciphertext.extend_from_slice(auth_tag);
-
-        let nonce = Nonce::from_slice(nonce);
-        let key = Key::<Aes256Gcm>::from_slice(key);
-        let cipher = Aes256Gcm::new(key);
-
-        // Decrypt
-        let decrypted = cipher
-            .decrypt(nonce, full_ciphertext.as_ref())
-            .map_err(|e| anyhow!("Decryption failed: {}", e))?;
+        // Use the encryption module for actual decryption
+        let decrypted = self.encryption.decrypt_chunk(encrypted_data, key, nonce, auth_tag)?;
 
         // Decompress if needed
         if self.config.compress {

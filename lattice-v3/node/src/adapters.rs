@@ -5,18 +5,18 @@ use async_trait::async_trait;
 use lattice_execution::executor::{AIModelStorage, ModelRegistryAdapter};
 use lattice_execution::{ModelId, ModelState};
 use lattice_mcp::{
-    types::{ComputeRequirements, Currency, ModelMetadata, PricingModel},
+    types::{ComputeRequirements, Currency, ModelMetadata, PricingModel, ModelId as MCPModelId},
     MCPService,
 };
-use lattice_storage::StorageManager;
+use lattice_storage::state_manager::StateManager;
 
-/// Bridge that persists model metadata & artifacts via `StorageManager`.
+/// Bridge that persists model metadata & artifacts via `StateManager`.
 pub struct StorageAdapter {
-    storage: Arc<StorageManager>,
+    storage: Arc<StateManager>,
 }
 
 impl StorageAdapter {
-    pub fn new(storage: Arc<StorageManager>) -> Self {
+    pub fn new(storage: Arc<StateManager>) -> Self {
         Self { storage }
     }
 }
@@ -100,8 +100,12 @@ impl ModelRegistryAdapter for MCPRegistryBridge {
         artifact_cid: Option<&str>,
     ) -> Result<()> {
         if let Some(cid) = artifact_cid {
+            // Convert execution ModelId to MCP ModelId
+            let mut bytes = [0u8; 32];
+            bytes.copy_from_slice(model_id.0.as_bytes());
+            let mcp_model_id = MCPModelId(bytes);
             self.mcp
-                .update_model_weight(model_id, cid.to_string())
+                .update_model_weight(mcp_model_id, cid.to_string())
                 .await?;
         }
         Ok(())

@@ -15,13 +15,14 @@ use lattice_execution::types::{Address, TransactionReceipt};
 use lattice_execution::Executor;
 use lattice_network::{NetworkMessage, PeerManager};
 use lattice_sequencer::Mempool;
-use lattice_storage::StorageManager;
+use lattice_storage::{state_manager::StateManager as AIStateManager, StorageManager};
 
 pub struct BlockProducer {
     ghostdag: Arc<GhostDag>,
     mempool: Arc<RwLock<Mempool>>,
     executor: Arc<Executor>,
     storage: Arc<StorageManager>,
+    ai_state_manager: Arc<AIStateManager>,
     reward_address: Arc<RwLock<Option<String>>>,
     running: Arc<RwLock<bool>>,
     wallet_manager: Option<Arc<WalletManager>>,
@@ -38,11 +39,15 @@ impl BlockProducer {
         wallet_manager: Option<Arc<WalletManager>>,
         peer_manager: Option<Arc<PeerManager>>,
     ) -> Self {
+        // Create AI state manager
+        let ai_state_manager = Arc::new(AIStateManager::new(storage.db.clone()));
+
         Self {
             ghostdag,
             mempool,
             executor,
             storage,
+            ai_state_manager,
             reward_address,
             running: Arc::new(RwLock::new(false)),
             wallet_manager,
@@ -469,6 +474,7 @@ impl Clone for BlockProducer {
             mempool: self.mempool.clone(),
             executor: self.executor.clone(),
             storage: self.storage.clone(),
+            ai_state_manager: self.ai_state_manager.clone(),
             reward_address: self.reward_address.clone(),
             running: self.running.clone(),
             wallet_manager: self.wallet_manager.clone(),

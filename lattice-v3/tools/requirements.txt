@@ -1,0 +1,31 @@
+# Lattice AI Model Tools - Python Requirements
+# For Apple Silicon optimized AI model deployment
+
+# Core ML frameworks
+torch>=2.0.0
+transformers>=4.35.0
+coremltools>=7.0
+tensorflow-macos>=2.13.0  # Optional, for TensorFlow models
+tensorflow-metal>=1.0.0   # Metal GPU acceleration for TF
+
+# Model formats
+onnx>=1.14.0
+onnxruntime>=1.16.0
+
+# Blockchain integration
+web3>=6.11.0
+ipfshttpclient>=0.8.0
+
+# Utilities
+numpy>=1.24.0
+pillow>=10.0.0
+requests>=2.31.0
+tqdm>=4.66.0
+pyyaml>=6.0.1
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Optional: MLX support (Apple's new ML framework)
+# mlx>=0.5.0  # Uncomment when stable

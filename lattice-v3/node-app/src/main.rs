@@ -4,14 +4,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{error, info};
 
+use axum::{response::IntoResponse, routing::get, Router};
 use lattice_api::{ApiService, RpcConfig};
 use lattice_execution::{Executor, StateDB};
 use lattice_network::peer::{PeerManager, PeerManagerConfig};
 use lattice_sequencer::mempool::{Mempool, MempoolConfig};
-use lattice_storage::{StorageManager};
 use lattice_storage::pruning::PruningConfig;
-use axum::{routing::get, Router, response::IntoResponse};
-use prometheus::{Encoder, TextEncoder, gather};
+use lattice_storage::StorageManager;
+use prometheus::{gather, Encoder, TextEncoder};
 
 fn data_dir() -> PathBuf {
     std::env::var_os("LATTICE_DATA_DIR")
@@ -38,18 +38,22 @@ async fn metrics_handler() -> impl IntoResponse {
     let metric_families = gather();
     let mut buf = Vec::new();
     if let Err(e) = encoder.encode(&metric_families, &mut buf) {
-        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("encode error: {}", e));
+        return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("encode error: {}", e),
+        );
     }
-    (axum::http::StatusCode::OK, String::from_utf8(buf).unwrap_or_default())
+    (
+        axum::http::StatusCode::OK,
+        String::from_utf8(buf).unwrap_or_default(),
+    )
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     // Logging
     tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info,lattice=info".into()),
-        )
+        .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "info,lattice=info".into()))
         .with_target(false)
         .init();
 
@@ -70,8 +74,14 @@ async fn main() -> Result<()> {
     let peer_manager = Arc::new(PeerManager::new(PeerManagerConfig::default()));
 
     // RPC config
-    let rpc_cfg = RpcConfig { listen_addr: rpc_addr(), ..Default::default() };
-    info!("Starting Lattice RPC on {} (data_dir={:?})", rpc_cfg.listen_addr, data_dir);
+    let rpc_cfg = RpcConfig {
+        listen_addr: rpc_addr(),
+        ..Default::default()
+    };
+    info!(
+        "Starting Lattice RPC on {} (data_dir={:?})",
+        rpc_cfg.listen_addr, data_dir
+    );
 
     // Start metrics server
     let maddr = metrics_addr();

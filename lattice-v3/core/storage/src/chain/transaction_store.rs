@@ -14,37 +14,41 @@ impl TransactionStore {
     pub fn new(db: Arc<RocksDB>) -> Self {
         Self { db }
     }
-    
+
     /// Store a transaction
     pub fn put_transaction(&self, tx: &Transaction) -> Result<()> {
         let tx_bytes = bincode::serialize(tx)?;
-        self.db.put_cf(CF_TRANSACTIONS, tx.hash.as_bytes(), &tx_bytes)?;
-        
+        self.db
+            .put_cf(CF_TRANSACTIONS, tx.hash.as_bytes(), &tx_bytes)?;
+
         // Index by sender
         let sender_key = sender_tx_key(&tx.from, tx.nonce);
-        self.db.put_cf(CF_METADATA, &sender_key, tx.hash.as_bytes())?;
-        
+        self.db
+            .put_cf(CF_METADATA, &sender_key, tx.hash.as_bytes())?;
+
         debug!("Stored transaction {}", tx.hash);
         Ok(())
     }
-    
+
     /// Store multiple transactions in batch
     pub fn put_transactions(&self, txs: &[Transaction]) -> Result<()> {
         let mut batch = self.db.batch();
-        
+
         for tx in txs {
             let tx_bytes = bincode::serialize(tx)?;
-            self.db.batch_put_cf(&mut batch, CF_TRANSACTIONS, tx.hash.as_bytes(), &tx_bytes)?;
-            
+            self.db
+                .batch_put_cf(&mut batch, CF_TRANSACTIONS, tx.hash.as_bytes(), &tx_bytes)?;
+
             let sender_key = sender_tx_key(&tx.from, tx.nonce);
-            self.db.batch_put_cf(&mut batch, CF_METADATA, &sender_key, tx.hash.as_bytes())?;
+            self.db
+                .batch_put_cf(&mut batch, CF_METADATA, &sender_key, tx.hash.as_bytes())?;
         }
-        
+
         self.db.write_batch(batch)?;
         debug!("Stored {} transactions", txs.len());
         Ok(())
     }
-    
+
     /// Get a transaction by hash
     pub fn get_transaction(&self, hash: &Hash) -> Result<Option<Transaction>> {
         match self.db.get_cf(CF_TRANSACTIONS, hash.as_bytes()) {
@@ -62,42 +66,45 @@ impl TransactionStore {
             }
         }
     }
-    
+
     /// Check if transaction exists
     pub fn has_transaction(&self, hash: &Hash) -> Result<bool> {
         self.db.exists_cf(CF_TRANSACTIONS, hash.as_bytes())
     }
-    
+
     /// Store a transaction receipt
     pub fn put_receipt(&self, tx_hash: &Hash, receipt: &TransactionReceipt) -> Result<()> {
         let receipt_bytes = bincode::serialize(receipt)?;
-        self.db.put_cf(CF_RECEIPTS, tx_hash.as_bytes(), &receipt_bytes)?;
-        
+        self.db
+            .put_cf(CF_RECEIPTS, tx_hash.as_bytes(), &receipt_bytes)?;
+
         // Index by block
         let block_tx_key = block_tx_key(&receipt.block_hash, tx_hash);
         self.db.put_cf(CF_METADATA, &block_tx_key, &[])?;
-        
+
         debug!("Stored receipt for transaction {}", tx_hash);
         Ok(())
     }
-    
+
     /// Store multiple receipts in batch
     pub fn put_receipts(&self, receipts: &[(Hash, TransactionReceipt)]) -> Result<()> {
         let mut batch = self.db.batch();
-        
+
         for (tx_hash, receipt) in receipts {
             let receipt_bytes = bincode::serialize(receipt)?;
-            self.db.batch_put_cf(&mut batch, CF_RECEIPTS, tx_hash.as_bytes(), &receipt_bytes)?;
-            
+            self.db
+                .batch_put_cf(&mut batch, CF_RECEIPTS, tx_hash.as_bytes(), &receipt_bytes)?;
+
             let block_tx_key = block_tx_key(&receipt.block_hash, tx_hash);
-            self.db.batch_put_cf(&mut batch, CF_METADATA, &block_tx_key, &[])?;
+            self.db
+                .batch_put_cf(&mut batch, CF_METADATA, &block_tx_key, &[])?;
         }
-        
+
         self.db.write_batch(batch)?;
         debug!("Stored {} receipts", receipts.len());
         Ok(())
     }
-    
+
     /// Get a transaction receipt
     pub fn get_receipt(&self, tx_hash: &Hash) -> Result<Option<TransactionReceipt>> {
         match self.db.get_cf(CF_RECEIPTS, tx_hash.as_bytes())? {
@@ -105,12 +112,12 @@ impl TransactionStore {
             None => Ok(None),
         }
     }
-    
+
     /// Get all transactions in a block
     pub fn get_block_transactions(&self, block_hash: &Hash) -> Result<Vec<Hash>> {
         let prefix = block_tx_prefix(block_hash);
         let mut tx_hashes = Vec::new();
-        
+
         for (key, _) in self.db.prefix_iter_cf(CF_METADATA, &prefix)? {
             // Ensure the key actually starts with the expected prefix, since
             // RocksDB prefix iterator requires a configured prefix extractor.
@@ -123,30 +130,33 @@ impl TransactionStore {
                 }
             }
         }
-        
+
         Ok(tx_hashes)
     }
-    
+
     /// Delete a transaction and its receipt
     pub fn delete_transaction(&self, hash: &Hash) -> Result<()> {
         let mut batch = self.db.batch();
-        
+
         // Delete transaction
-        self.db.batch_delete_cf(&mut batch, CF_TRANSACTIONS, hash.as_bytes())?;
-        
+        self.db
+            .batch_delete_cf(&mut batch, CF_TRANSACTIONS, hash.as_bytes())?;
+
         // Delete receipt if exists
         if let Some(receipt) = self.get_receipt(hash)? {
-            self.db.batch_delete_cf(&mut batch, CF_RECEIPTS, hash.as_bytes())?;
-            
+            self.db
+                .batch_delete_cf(&mut batch, CF_RECEIPTS, hash.as_bytes())?;
+
             // Delete block index
             let block_tx_key = block_tx_key(&receipt.block_hash, hash);
-            self.db.batch_delete_cf(&mut batch, CF_METADATA, &block_tx_key)?;
+            self.db
+                .batch_delete_cf(&mut batch, CF_METADATA, &block_tx_key)?;
         }
-        
+
         self.db.write_batch(batch)?;
         Ok(())
     }
-    
+
     /// Compact transaction storage
     pub fn compact(&self) -> Result<()> {
         self.db.compact_cf(CF_TRANSACTIONS)?;
@@ -182,7 +192,7 @@ mod tests {
     use lattice_consensus::types::{PublicKey, Signature};
     use lattice_execution::types::Address;
     use tempfile::TempDir;
-    
+
     fn create_test_transaction(nonce: u64) -> Transaction {
         Transaction {
             hash: Hash::new([nonce as u8; 32]),
@@ -197,7 +207,7 @@ mod tests {
             tx_type: None,
         }
     }
-    
+
     fn create_test_receipt(tx_hash: Hash, block_hash: Hash) -> TransactionReceipt {
         TransactionReceipt {
             tx_hash,
@@ -211,39 +221,39 @@ mod tests {
             output: vec![],
         }
     }
-    
+
     #[test]
     fn test_transaction_storage() {
         let temp_dir = TempDir::new().unwrap();
         let db = Arc::new(RocksDB::open(temp_dir.path()).unwrap());
         let store = TransactionStore::new(db);
-        
+
         // Store transaction
         let tx = create_test_transaction(1);
         store.put_transaction(&tx).unwrap();
-        
+
         // Check existence
         assert!(store.has_transaction(&tx.hash).unwrap());
     }
-    
+
     #[test]
     fn test_receipt_storage() {
         let temp_dir = TempDir::new().unwrap();
         let db = Arc::new(RocksDB::open(temp_dir.path()).unwrap());
         let store = TransactionStore::new(db);
-        
+
         let tx_hash = Hash::new([1; 32]);
         let block_hash = Hash::new([2; 32]);
         let receipt = create_test_receipt(tx_hash, block_hash);
-        
+
         // Store receipt
         store.put_receipt(&tx_hash, &receipt).unwrap();
-        
+
         // Retrieve receipt
         let retrieved = store.get_receipt(&tx_hash).unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().block_hash, block_hash);
-        
+
         // Get block transactions
         let block_txs = store.get_block_transactions(&block_hash).unwrap();
         assert_eq!(block_txs.len(), 1);

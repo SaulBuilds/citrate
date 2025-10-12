@@ -1,7 +1,7 @@
-use super::types::{Tensor, TensorError};
 use super::ops::TensorOps;
-use std::collections::HashMap;
+use super::types::{Tensor, TensorError};
 use primitive_types::U256;
+use std::collections::HashMap;
 
 /// Tensor execution engine for the VM
 pub struct TensorEngine {
@@ -22,10 +22,14 @@ impl TensorEngine {
     }
 
     /// Allocate a new tensor
-    pub fn create_tensor(&mut self, data: Vec<f32>, shape: Vec<usize>) -> Result<U256, TensorError> {
+    pub fn create_tensor(
+        &mut self,
+        data: Vec<f32>,
+        shape: Vec<usize>,
+    ) -> Result<U256, TensorError> {
         let tensor = Tensor::new(data, shape)?;
         let memory_size = tensor.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -34,7 +38,7 @@ impl TensorEngine {
         self.tensors.insert(id, tensor);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
@@ -42,7 +46,7 @@ impl TensorEngine {
     pub fn create_zeros(&mut self, shape: Vec<usize>) -> Result<U256, TensorError> {
         let tensor = Tensor::zeros(shape);
         let memory_size = tensor.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -51,7 +55,7 @@ impl TensorEngine {
         self.tensors.insert(id, tensor);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
@@ -59,7 +63,7 @@ impl TensorEngine {
     pub fn create_ones(&mut self, shape: Vec<usize>) -> Result<U256, TensorError> {
         let tensor = Tensor::ones(shape);
         let memory_size = tensor.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -68,7 +72,7 @@ impl TensorEngine {
         self.tensors.insert(id, tensor);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
@@ -76,7 +80,7 @@ impl TensorEngine {
     pub fn create_random(&mut self, shape: Vec<usize>) -> Result<U256, TensorError> {
         let tensor = Tensor::random(shape);
         let memory_size = tensor.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -85,7 +89,7 @@ impl TensorEngine {
         self.tensors.insert(id, tensor);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
@@ -112,14 +116,18 @@ impl TensorEngine {
 
     /// Perform element-wise addition
     pub fn add(&mut self, a_id: &U256, b_id: &U256) -> Result<U256, TensorError> {
-        let a = self.tensors.get(a_id)
+        let a = self
+            .tensors
+            .get(a_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor A not found".to_string()))?;
-        let b = self.tensors.get(b_id)
+        let b = self
+            .tensors
+            .get(b_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor B not found".to_string()))?;
-        
+
         let result = TensorOps::add(a, b)?;
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -128,20 +136,24 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Perform element-wise subtraction
     pub fn sub(&mut self, a_id: &U256, b_id: &U256) -> Result<U256, TensorError> {
-        let a = self.tensors.get(a_id)
+        let a = self
+            .tensors
+            .get(a_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor A not found".to_string()))?;
-        let b = self.tensors.get(b_id)
+        let b = self
+            .tensors
+            .get(b_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor B not found".to_string()))?;
-        
+
         let result = TensorOps::sub(a, b)?;
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -150,20 +162,24 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Perform element-wise multiplication
     pub fn mul(&mut self, a_id: &U256, b_id: &U256) -> Result<U256, TensorError> {
-        let a = self.tensors.get(a_id)
+        let a = self
+            .tensors
+            .get(a_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor A not found".to_string()))?;
-        let b = self.tensors.get(b_id)
+        let b = self
+            .tensors
+            .get(b_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor B not found".to_string()))?;
-        
+
         let result = TensorOps::mul(a, b)?;
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -172,20 +188,24 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Perform matrix multiplication
     pub fn matmul(&mut self, a_id: &U256, b_id: &U256) -> Result<U256, TensorError> {
-        let a = self.tensors.get(a_id)
+        let a = self
+            .tensors
+            .get(a_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor A not found".to_string()))?;
-        let b = self.tensors.get(b_id)
+        let b = self
+            .tensors
+            .get(b_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor B not found".to_string()))?;
-        
+
         let result = TensorOps::matmul(a, b)?;
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -194,18 +214,20 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Apply ReLU activation
     pub fn relu(&mut self, tensor_id: &U256) -> Result<U256, TensorError> {
-        let tensor = self.tensors.get(tensor_id)
+        let tensor = self
+            .tensors
+            .get(tensor_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor not found".to_string()))?;
-        
+
         let result = TensorOps::relu(tensor);
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -214,18 +236,20 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Apply Sigmoid activation
     pub fn sigmoid(&mut self, tensor_id: &U256) -> Result<U256, TensorError> {
-        let tensor = self.tensors.get(tensor_id)
+        let tensor = self
+            .tensors
+            .get(tensor_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor not found".to_string()))?;
-        
+
         let result = TensorOps::sigmoid(tensor);
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -234,18 +258,20 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Apply Softmax activation
     pub fn softmax(&mut self, tensor_id: &U256) -> Result<U256, TensorError> {
-        let tensor = self.tensors.get(tensor_id)
+        let tensor = self
+            .tensors
+            .get(tensor_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor not found".to_string()))?;
-        
+
         let result = TensorOps::softmax(tensor)?;
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -254,18 +280,20 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Transpose tensor
     pub fn transpose(&mut self, tensor_id: &U256) -> Result<U256, TensorError> {
-        let tensor = self.tensors.get(tensor_id)
+        let tensor = self
+            .tensors
+            .get(tensor_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor not found".to_string()))?;
-        
+
         let result = TensorOps::transpose(tensor)?;
         let memory_size = result.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -274,15 +302,17 @@ impl TensorEngine {
         self.tensors.insert(id, result);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 
     /// Reshape tensor
     pub fn reshape(&mut self, tensor_id: &U256, new_shape: Vec<usize>) -> Result<(), TensorError> {
-        let tensor = self.tensors.get_mut(tensor_id)
+        let tensor = self
+            .tensors
+            .get_mut(tensor_id)
             .ok_or_else(|| TensorError::InvalidShape("Tensor not found".to_string()))?;
-        
+
         tensor.reshape(new_shape)
     }
 
@@ -300,7 +330,7 @@ impl TensorEngine {
     pub fn load_tensor_bytes(&mut self, bytes: &[u8]) -> Result<U256, TensorError> {
         let tensor = Tensor::from_bytes(bytes)?;
         let memory_size = tensor.numel() * std::mem::size_of::<f32>();
-        
+
         if self.current_memory + memory_size > self.max_memory {
             return Err(TensorError::OutOfMemory);
         }
@@ -309,7 +339,7 @@ impl TensorEngine {
         self.tensors.insert(id, tensor);
         self.next_id += U256::one();
         self.current_memory += memory_size;
-        
+
         Ok(id)
     }
 

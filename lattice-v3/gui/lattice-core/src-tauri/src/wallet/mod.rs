@@ -1,23 +1,23 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use aes_gcm::{
+    aead::{Aead, AeadCore, KeyInit},
+    Aes256Gcm, Key, Nonce,
+};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use ed25519_dalek::{SigningKey, VerifyingKey, Signer, Signature as Ed25519Signature};
-use keyring::Entry;
 use argon2::{
     password_hash::{PasswordHasher, SaltString},
     Argon2,
 };
-use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit},
-    Aes256Gcm, Nonce, Key,
-};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use bip39::{Language, Mnemonic};
+use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, VerifyingKey};
+use keyring::Entry;
+use lattice_consensus::types::{Hash, PublicKey, Signature, Transaction};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use lattice_consensus::types::{Transaction, Hash, PublicKey, Signature};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::info;
-use bip39::{Mnemonic, Language};
 
 const KEYRING_SERVICE: &str = "lattice-core";
 const KEYRING_USER: &str = "wallet";
@@ -34,7 +34,7 @@ impl WalletManager {
     pub fn new() -> Result<Self> {
         let keystore = Arc::new(SecureKeyStore::new()?);
         let accounts = Arc::new(RwLock::new(Self::load_accounts(&keystore)?));
-        
+
         Ok(Self {
             accounts,
             keystore,
@@ -58,15 +58,15 @@ impl WalletManager {
         }
         let signing_key = SigningKey::from_bytes(&sk_bytes);
         let verifying_key = signing_key.verifying_key();
-        
+
         // Derive address from public key
         let address = self.derive_address(&verifying_key);
-        
+
         // Store encrypted private key in OS keychain
         self.keystore.store_key(&address, &signing_key, password)?;
         // Verify roundtrip immediately to guarantee correct format
         let _ = self.keystore.get_key(&address, password)?;
-        
+
         // Create account
         let account = Account {
             address: address.clone(),
@@ -76,17 +76,21 @@ impl WalletManager {
             nonce: 0,
             created_at: chrono::Utc::now().timestamp() as u64,
         };
-        
+
         // Add to accounts list
         self.accounts.write().await.push(account.clone());
         self.save_accounts().await?;
-        
+
         info!("Created new account: {}", address);
         Ok(account)
     }
 
     /// Create account and return credentials (mnemonic & private key)
-    pub async fn create_account_with_credentials(&self, label: String, password: &str) -> Result<(Account, String, String)> {
+    pub async fn create_account_with_credentials(
+        &self,
+        label: String,
+        password: &str,
+    ) -> Result<(Account, String, String)> {
         let mut entropy = [0u8; 16];
         OsRng.fill_bytes(&mut entropy);
         let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)?;
@@ -116,32 +120,47 @@ impl WalletManager {
         self.accounts.write().await.push(account.clone());
         self.save_accounts().await?;
 
-        Ok((account, hex::encode(signing_key.to_bytes()), mnemonic.to_string()))
+        Ok((
+            account,
+            hex::encode(signing_key.to_bytes()),
+            mnemonic.to_string(),
+        ))
     }
 
-    pub async fn import_account(&self, private_key: &str, label: String, password: &str) -> Result<Account> {
+    pub async fn import_account(
+        &self,
+        private_key: &str,
+        label: String,
+        password: &str,
+    ) -> Result<Account> {
         // Parse private key
         let key_bytes = hex::decode(private_key)?;
         if key_bytes.len() != 32 {
             return Err(anyhow::anyhow!("Invalid private key length"));
         }
-        
+
         let signing_key = SigningKey::from_bytes(&key_bytes.try_into().unwrap());
         let verifying_key = signing_key.verifying_key();
-        
+
         // Derive address
         let address = self.derive_address(&verifying_key);
-        
+
         // Check if account already exists
-        if self.accounts.read().await.iter().any(|a| a.address == address) {
+        if self
+            .accounts
+            .read()
+            .await
+            .iter()
+            .any(|a| a.address == address)
+        {
             return Err(anyhow::anyhow!("Account already exists"));
         }
-        
+
         // Store in keychain
         self.keystore.store_key(&address, &signing_key, password)?;
         // Verify roundtrip immediately
         let _ = self.keystore.get_key(&address, password)?;
-        
+
         // Create account
         let account = Account {
             address: address.clone(),
@@ -151,16 +170,21 @@ impl WalletManager {
             nonce: 0,
             created_at: chrono::Utc::now().timestamp() as u64,
         };
-        
+
         // Add to accounts list
         self.accounts.write().await.push(account.clone());
         self.save_accounts().await?;
-        
+
         info!("Imported account: {}", address);
         Ok(account)
     }
 
-    pub async fn import_account_from_mnemonic(&self, mnemonic_phrase: &str, label: String, password: &str) -> Result<Account> {
+    pub async fn import_account_from_mnemonic(
+        &self,
+        mnemonic_phrase: &str,
+        label: String,
+        password: &str,
+    ) -> Result<Account> {
         let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic_phrase)
             .map_err(|e| anyhow::anyhow!("Invalid mnemonic: {}", e))?;
         let mut sk_bytes = [0u8; 32];
@@ -174,7 +198,13 @@ impl WalletManager {
         let signing_key = SigningKey::from_bytes(&sk_bytes);
         let verifying_key = signing_key.verifying_key();
         let address = self.derive_address(&verifying_key);
-        if self.accounts.read().await.iter().any(|a| a.address == address) {
+        if self
+            .accounts
+            .read()
+            .await
+            .iter()
+            .any(|a| a.address == address)
+        {
             return Err(anyhow::anyhow!("Account already exists"));
         }
         self.keystore.store_key(&address, &signing_key, password)?;
@@ -202,14 +232,20 @@ impl WalletManager {
     }
 
     pub async fn get_account(&self, address: &str) -> Option<Account> {
-        self.accounts.read().await
+        self.accounts
+            .read()
+            .await
             .iter()
             .find(|a| a.address == address)
             .cloned()
     }
 
     #[allow(dead_code)]
-    pub async fn send_transaction(&self, request: TransactionRequest, password: &str) -> Result<String> {
+    pub async fn send_transaction(
+        &self,
+        request: TransactionRequest,
+        password: &str,
+    ) -> Result<String> {
         let tx = self.create_signed_transaction(request, password).await?;
         let tx_hash = hex::encode(tx.hash.as_bytes());
         info!("Transaction sent: {}", tx_hash);
@@ -217,11 +253,17 @@ impl WalletManager {
     }
 
     /// Create and sign a transaction, update nonce, and return the full Transaction
-    pub async fn create_signed_transaction(&self, request: TransactionRequest, password: &str) -> Result<Transaction> {
+    pub async fn create_signed_transaction(
+        &self,
+        request: TransactionRequest,
+        password: &str,
+    ) -> Result<Transaction> {
         // Get account
-        let account = self.get_account(&request.from).await
+        let account = self
+            .get_account(&request.from)
+            .await
             .ok_or_else(|| anyhow::anyhow!("Account not found"))?;
-        
+
         // Create transaction
         // Parse numeric fields from strings
         let value_u128: u128 = request.value.parse().unwrap_or(0);
@@ -248,27 +290,33 @@ impl WalletManager {
             signature: Signature::new([0u8; 64]),
             tx_type: None,
         };
-        
+
         // Sign transaction
-        self.sign_transaction(&mut tx, &request.from, password).await?;
-        
+        self.sign_transaction(&mut tx, &request.from, password)
+            .await?;
+
         // Update nonce
         self.update_nonce(&request.from, account.nonce + 1).await?;
         Ok(tx)
     }
-    
-    pub async fn sign_transaction(&self, tx: &mut Transaction, address: &str, password: &str) -> Result<()> {
+
+    pub async fn sign_transaction(
+        &self,
+        tx: &mut Transaction,
+        address: &str,
+        password: &str,
+    ) -> Result<()> {
         // Get private key from keystore
         let signing_key = self.keystore.get_key(address, password)?;
-        
+
         // Build canonical bytes and sign them
         let msg = self.canonical_tx_bytes(tx);
         let signature = signing_key.sign(&msg);
-        
+
         // Update transaction
         tx.signature = Signature::new(signature.to_bytes());
         tx.from = PublicKey::new(signing_key.verifying_key().to_bytes());
-        
+
         // Update hash (Keccak of canonical bytes for id/display)
         {
             use sha3::{Digest, Keccak256};
@@ -277,26 +325,38 @@ impl WalletManager {
             let digest = hasher.finalize();
             tx.hash = Hash::from_bytes(&digest);
         }
-        
+
         Ok(())
     }
 
-    pub async fn sign_message(&self, message: &[u8], address: &str, password: &str) -> Result<String> {
+    pub async fn sign_message(
+        &self,
+        message: &[u8],
+        address: &str,
+        password: &str,
+    ) -> Result<String> {
         let signing_key = self.keystore.get_key(address, password)?;
         let signature = signing_key.sign(message);
         Ok(hex::encode(signature.to_bytes()))
     }
 
-    pub async fn verify_signature(&self, message: &[u8], signature: &str, address: &str) -> Result<bool> {
-        let account = self.get_account(address).await
+    pub async fn verify_signature(
+        &self,
+        message: &[u8],
+        signature: &str,
+        address: &str,
+    ) -> Result<bool> {
+        let account = self
+            .get_account(address)
+            .await
             .ok_or_else(|| anyhow::anyhow!("Account not found"))?;
-        
+
         let public_key_bytes = hex::decode(&account.public_key)?;
         let verifying_key = VerifyingKey::from_bytes(&public_key_bytes.try_into().unwrap())?;
-        
+
         let signature_bytes = hex::decode(signature)?;
         let signature = Ed25519Signature::from_bytes(&signature_bytes.try_into().unwrap());
-        
+
         Ok(verifying_key.verify_strict(message, &signature).is_ok())
     }
 
@@ -410,9 +470,9 @@ impl SecureKeyStore {
         #[derive(Serialize)]
         struct StoredKey<'a> {
             v: u8,
-            salt: &'a str,        // PHC salt string
-            nonce: String,        // base64
-            ct: String,           // base64
+            salt: &'a str, // PHC salt string
+            nonce: String, // base64
+            ct: String,    // base64
         }
         let record = StoredKey {
             v: 1,
@@ -491,7 +551,8 @@ impl SecureKeyStore {
     fn delete_key(&self, address: &str) -> Result<()> {
         // Delete the address-specific entry
         let entry = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address))?;
-        entry.delete_password()
+        entry
+            .delete_password()
             .map_err(|e| anyhow::anyhow!("Failed to delete key: {}", e))?;
         info!("Deleted key for address: {}", address);
         Ok(())
@@ -503,7 +564,10 @@ pub struct Account {
     pub address: String,
     pub label: String,
     pub public_key: String,
-    #[serde(serialize_with = "serialize_u128", deserialize_with = "deserialize_u128")]
+    #[serde(
+        serialize_with = "serialize_u128",
+        deserialize_with = "deserialize_u128"
+    )]
     pub balance: u128,
     pub nonce: u64,
     pub created_at: u64,

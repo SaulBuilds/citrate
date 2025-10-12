@@ -1,6 +1,6 @@
 use ndarray::{ArrayD, IxDyn};
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use serde::de::{self};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Tensor representation for VM operations
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ impl Serialize for Tensor {
     {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("Tensor", 4)?;
-        
+
         // Serialize data as a flat vec
         let data_vec: Vec<f32> = self.data.iter().cloned().collect();
         state.serialize_field("data", &data_vec)?;
@@ -43,11 +43,11 @@ impl<'de> Deserialize<'de> for Tensor {
             requires_grad: bool,
             grad: Option<Box<Tensor>>,
         }
-        
+
         let tensor_data = TensorData::deserialize(deserializer)?;
         let array = ArrayD::from_shape_vec(IxDyn(&tensor_data.shape.0), tensor_data.data)
             .map_err(de::Error::custom)?;
-        
+
         Ok(Tensor {
             data: array,
             shape: tensor_data.shape,
@@ -103,9 +103,9 @@ impl Tensor {
 
     /// Create a random tensor
     pub fn random(shape: Vec<usize>) -> Self {
-        use ndarray_rand::RandomExt;
         use ndarray_rand::rand_distr::Uniform;
-        
+        use ndarray_rand::RandomExt;
+
         let array = ArrayD::random(IxDyn(&shape), Uniform::new(0., 1.));
         Self {
             data: array,
@@ -140,7 +140,10 @@ impl Tensor {
             });
         }
 
-        self.data = self.data.clone().into_shape(IxDyn(&new_shape))
+        self.data = self
+            .data
+            .clone()
+            .into_shape(IxDyn(&new_shape))
             .map_err(|e| TensorError::InvalidShape(e.to_string()))?;
         self.shape = TensorShape(new_shape);
         Ok(())
@@ -153,8 +156,7 @@ impl Tensor {
 
     /// Create from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TensorError> {
-        bincode::deserialize(bytes)
-            .map_err(|e| TensorError::SerializationError(e.to_string()))
+        bincode::deserialize(bytes).map_err(|e| TensorError::SerializationError(e.to_string()))
     }
 }
 
@@ -179,7 +181,7 @@ impl TensorShape {
         if self.0.len() != other.0.len() {
             return false;
         }
-        
+
         for (a, b) in self.0.iter().zip(&other.0) {
             if *a != *b && *a != 1 && *b != 1 {
                 return false;
@@ -194,25 +196,25 @@ impl TensorShape {
 pub enum TensorError {
     #[error("Shape mismatch: expected {expected} elements, got {got}")]
     ShapeMismatch { expected: usize, got: usize },
-    
+
     #[error("Invalid shape: {0}")]
     InvalidShape(String),
-    
+
     #[error("Incompatible shapes for operation")]
     IncompatibleShapes,
-    
+
     #[error("Division by zero")]
     DivisionByZero,
-    
+
     #[error("Invalid axis: {0}")]
     InvalidAxis(usize),
-    
+
     #[error("Serialization error: {0}")]
     SerializationError(String),
-    
+
     #[error("Out of memory")]
     OutOfMemory,
-    
+
     #[error("Unsupported operation")]
     UnsupportedOperation,
 }

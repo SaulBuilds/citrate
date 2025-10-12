@@ -1,15 +1,15 @@
 use crate::{NetworkError, NetworkMessage, ProtocolVersion};
 use dashmap::DashMap;
+use futures::{SinkExt, StreamExt};
 use lattice_consensus::types::Hash;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, info, warn};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, RwLock};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use futures::{SinkExt, StreamExt};
+use tracing::{debug, info, warn};
 
 /// Unique peer identifier
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -19,7 +19,7 @@ impl PeerId {
     pub fn new(id: String) -> Self {
         Self(id)
     }
-    
+
     pub fn random() -> Self {
         Self(format!("peer_{}", rand::random::<u64>()))
     }
@@ -87,11 +87,11 @@ impl PeerInfo {
             score: 0,
         }
     }
-    
+
     pub fn update_last_seen(&mut self) {
         self.last_seen = Instant::now();
     }
-    
+
     pub fn is_stale(&self, timeout: Duration) -> bool {
         self.last_seen.elapsed() > timeout
     }
@@ -116,26 +116,26 @@ impl Peer {
             recv_tx,
         }
     }
-    
+
     pub async fn send(&self, message: NetworkMessage) -> Result<(), NetworkError> {
         self.send_tx
             .send(message)
             .await
             .map_err(|_| NetworkError::ConnectionFailed("Channel closed".to_string()))?;
-        
+
         let mut info = self.info.write().await;
         info.messages_sent += 1;
         info.update_last_seen();
-        
+
         Ok(())
     }
-    
+
     pub async fn disconnect(&self, reason: String) -> Result<(), NetworkError> {
         self.send(NetworkMessage::Disconnect { reason }).await?;
-        
+
         let mut info = self.info.write().await;
         info.state = PeerState::Disconnected;
-        
+
         Ok(())
     }
 }
@@ -147,7 +147,7 @@ pub struct PeerManager {
     config: PeerManagerConfig,
     peers: Arc<DashMap<PeerId, Arc<Peer>>>,
     banned_peers: Arc<RwLock<Vec<SocketAddr>>>,
-    stats: Arc<RwLock<PeerStats>>, 
+    stats: Arc<RwLock<PeerStats>>,
     incoming: Arc<RwLock<Option<IncomingTx>>>,
 }
 
@@ -196,66 +196,76 @@ impl PeerManager {
     pub async fn set_incoming(&self, tx: mpsc::Sender<(PeerId, NetworkMessage)>) {
         *self.incoming.write().await = Some(tx);
     }
-    
+
     /// Get max peers configuration
     pub fn max_peers(&self) -> usize {
         self.config.max_peers
     }
-    
+
     /// Connect to a peer
-    pub async fn connect_to_peer(&self, peer_id: PeerId, addr: SocketAddr) -> Result<(), NetworkError> {
+    pub async fn connect_to_peer(
+        &self,
+        peer_id: PeerId,
+        addr: SocketAddr,
+    ) -> Result<(), NetworkError> {
         // Check if already connected
         if self.peers.contains_key(&peer_id) {
             return Ok(());
         }
-        
+
         // Check if banned
         if self.is_banned(&addr).await {
             return Err(NetworkError::ConnectionFailed("Peer is banned".to_string()));
         }
-        
+
         // Create channels for communication
         let (send_tx, _send_rx) = mpsc::channel(100);
         let (_recv_tx, recv_rx) = mpsc::channel(100);
-        
+
         // Create peer info and peer
         let info = PeerInfo::new(peer_id.clone(), addr, Direction::Outbound);
         let peer = Arc::new(Peer::new(info, send_tx, recv_rx));
-        
+
         // Add the peer
         self.add_peer(peer).await?;
-        
+
         info!("Initiated connection to peer: {} at {}", peer_id, addr);
         Ok(())
     }
-    
+
     /// Add a new peer
     pub async fn add_peer(&self, peer: Arc<Peer>) -> Result<(), NetworkError> {
         let info = peer.info.read().await;
         let peer_id = info.id.clone();
         let direction = info.direction.clone();
-        
+
         // Check limits
         let stats = self.stats.read().await;
         if stats.total_connected >= self.config.max_peers {
-            return Err(NetworkError::ConnectionFailed("Max peers reached".to_string()));
+            return Err(NetworkError::ConnectionFailed(
+                "Max peers reached".to_string(),
+            ));
         }
-        
+
         match direction {
             Direction::Inbound if stats.inbound_count >= self.config.max_inbound => {
-                return Err(NetworkError::ConnectionFailed("Max inbound peers reached".to_string()));
+                return Err(NetworkError::ConnectionFailed(
+                    "Max inbound peers reached".to_string(),
+                ));
             }
             Direction::Outbound if stats.outbound_count >= self.config.max_outbound => {
-                return Err(NetworkError::ConnectionFailed("Max outbound peers reached".to_string()));
+                return Err(NetworkError::ConnectionFailed(
+                    "Max outbound peers reached".to_string(),
+                ));
             }
             _ => {}
         }
         drop(stats);
         drop(info);
-        
+
         // Add peer
         self.peers.insert(peer_id.clone(), peer);
-        
+
         // Update stats
         let mut stats = self.stats.write().await;
         stats.total_connected += 1;
@@ -263,46 +273,52 @@ impl PeerManager {
             Direction::Inbound => stats.inbound_count += 1,
             Direction::Outbound => stats.outbound_count += 1,
         }
-        
+
         info!("Added peer: {}", peer_id);
         Ok(())
     }
-    
+
     /// Remove a peer
     pub async fn remove_peer(&self, peer_id: &PeerId) -> Option<Arc<Peer>> {
         let peer = self.peers.remove(peer_id).map(|(_, p)| p);
-        
+
         if let Some(ref p) = peer {
             let info = p.info.read().await;
             let mut stats = self.stats.write().await;
             stats.total_connected = stats.total_connected.saturating_sub(1);
             match info.direction {
                 Direction::Inbound => stats.inbound_count = stats.inbound_count.saturating_sub(1),
-                Direction::Outbound => stats.outbound_count = stats.outbound_count.saturating_sub(1),
+                Direction::Outbound => {
+                    stats.outbound_count = stats.outbound_count.saturating_sub(1)
+                }
             }
-            
+
             info!("Removed peer: {}", peer_id);
         }
-        
+
         peer
     }
-    
+
     /// Get a peer by ID
     pub fn get_peer(&self, peer_id: &PeerId) -> Option<Arc<Peer>> {
         self.peers.get(peer_id).map(|p| p.clone())
     }
-    
+
     /// Get all connected peers
     pub fn get_all_peers(&self) -> Vec<Arc<Peer>> {
         self.peers.iter().map(|p| p.value().clone()).collect()
     }
-    
+
     /// Get peer count by direction
     pub async fn get_peer_counts(&self) -> (usize, usize, usize) {
         let stats = self.stats.read().await;
-        (stats.total_connected, stats.inbound_count, stats.outbound_count)
+        (
+            stats.total_connected,
+            stats.inbound_count,
+            stats.outbound_count,
+        )
     }
-    
+
     /// Ban a peer
     pub async fn ban_peer(&self, addr: SocketAddr) {
         let mut banned = self.banned_peers.write().await;
@@ -311,18 +327,18 @@ impl PeerManager {
             warn!("Banned peer: {}", addr);
         }
     }
-    
+
     /// Check if an address is banned
     pub async fn is_banned(&self, addr: &SocketAddr) -> bool {
         self.banned_peers.read().await.contains(addr)
     }
-    
+
     /// Update peer score
     pub async fn update_peer_score(&self, peer_id: &PeerId, delta: i32) {
         if let Some(peer) = self.get_peer(peer_id) {
             let mut info = peer.info.write().await;
             info.score += delta;
-            
+
             // Ban if score too low
             if info.score < self.config.score_threshold {
                 drop(info);
@@ -331,7 +347,7 @@ impl PeerManager {
             }
         }
     }
-    
+
     /// Clean up stale peers
     pub async fn cleanup_stale_peers(&self) {
         let stale_peers: Vec<PeerId> = {
@@ -344,30 +360,34 @@ impl PeerManager {
             }
             stale
         };
-        
+
         for peer_id in stale_peers {
             debug!("Removing stale peer: {}", peer_id);
             self.remove_peer(&peer_id).await;
         }
     }
-    
+
     /// Broadcast a message to all connected peers
     pub async fn broadcast(&self, message: &NetworkMessage) -> Result<(), NetworkError> {
         let peers = self.get_all_peers();
         let mut send_count = 0;
-        
+
         for peer in peers {
             if (peer.send(message.clone()).await).is_ok() {
                 send_count += 1;
             }
         }
-        
+
         debug!("Broadcasted message to {} peers", send_count);
         Ok(())
     }
-    
+
     /// Send message to specific peers
-    pub async fn send_to_peers(&self, peer_ids: &[PeerId], message: &NetworkMessage) -> Result<(), NetworkError> {
+    pub async fn send_to_peers(
+        &self,
+        peer_ids: &[PeerId],
+        message: &NetworkMessage,
+    ) -> Result<(), NetworkError> {
         for peer_id in peer_ids {
             if let Some(peer) = self.get_peer(peer_id) {
                 peer.send(message.clone()).await?;
@@ -396,7 +416,17 @@ impl PeerManager {
                         let pm = this.clone();
                         let g = genesis_hash;
                         tokio::spawn(async move {
-                            if let Err(e) = handle_incoming(stream, addr, pm, network_id, g, head_height, head_hash).await {
+                            if let Err(e) = handle_incoming(
+                                stream,
+                                addr,
+                                pm,
+                                network_id,
+                                g,
+                                head_height,
+                                head_hash,
+                            )
+                            .await
+                            {
                                 warn!("Inbound connection error from {}: {}", addr, e);
                             }
                         });
@@ -424,7 +454,17 @@ impl PeerManager {
     ) -> Result<(), NetworkError> {
         let stream = TcpStream::connect(addr).await.map_err(NetworkError::Io)?;
         let peer_id = peer_id_hint.unwrap_or_else(PeerId::random);
-        perform_handshake_outbound(self, stream, addr, peer_id, network_id, genesis_hash, head_height, head_hash).await
+        perform_handshake_outbound(
+            self,
+            stream,
+            addr,
+            peer_id,
+            network_id,
+            genesis_hash,
+            head_height,
+            head_hash,
+        )
+        .await
     }
 }
 
@@ -439,20 +479,34 @@ async fn handle_incoming(
 ) -> Result<(), NetworkError> {
     let mut framed = Framed::new(stream, LengthDelimitedCodec::new());
     // Expect Hello
-    let bytes = framed.next().await.ok_or_else(|| NetworkError::ProtocolError("EOF before hello".into()))
+    let bytes = framed
+        .next()
+        .await
+        .ok_or_else(|| NetworkError::ProtocolError("EOF before hello".into()))
         .map_err(|_| NetworkError::ProtocolError("Stream closed".into()))??;
     let hello: NetworkMessage = bincode::deserialize(&bytes)
         .map_err(|e| NetworkError::DecodeError(format!("handshake decode: {}", e)))?;
     let (peer_id_str, ver, net_ok) = match hello {
-        NetworkMessage::Hello { version, network_id: nid, peer_id, .. } => {
-            (peer_id, version, nid == network_id)
-        }
+        NetworkMessage::Hello {
+            version,
+            network_id: nid,
+            peer_id,
+            ..
+        } => (peer_id, version, nid == network_id),
         _ => return Err(NetworkError::ProtocolError("Expected Hello".into())),
     };
     if !ver.is_compatible(&ProtocolVersion::CURRENT) || !net_ok {
         // send disconnect
-        let _ = send_msg(&mut framed, &NetworkMessage::Disconnect { reason: "incompatible".into() }).await;
-        return Err(NetworkError::ProtocolError("incompatible version or network".into()));
+        let _ = send_msg(
+            &mut framed,
+            &NetworkMessage::Disconnect {
+                reason: "incompatible".into(),
+            },
+        )
+        .await;
+        return Err(NetworkError::ProtocolError(
+            "incompatible version or network".into(),
+        ));
     }
     // Register peer
     let peer_id = PeerId::new(peer_id_str);
@@ -463,22 +517,33 @@ async fn handle_incoming(
     let peer = Arc::new(Peer::new(info, send_tx.clone(), recv_rx));
     pm.add_peer(peer.clone()).await?;
     // Reply HelloAck
-    let ack = NetworkMessage::HelloAck { version: ProtocolVersion::CURRENT, head_height, head_hash };
+    let ack = NetworkMessage::HelloAck {
+        version: ProtocolVersion::CURRENT,
+        head_height,
+        head_hash,
+    };
     send_msg(&mut framed, &ack).await?;
     // Split framed into sink and stream
     let (mut sink, mut stream) = framed.split();
     let writer = tokio::spawn(async move {
         while let Some(msg) = send_rx.recv().await {
-            if send_msg_sink(&mut sink, &msg).await.is_err() { break; }
+            if send_msg_sink(&mut sink, &msg).await.is_err() {
+                break;
+            }
         }
     });
     // Reader
     while let Some(frame) = stream.next().await {
-        let bytes = match frame { Ok(b) => b, Err(_) => break };
+        let bytes = match frame {
+            Ok(b) => b,
+            Err(_) => break,
+        };
         if let Ok(msg) = bincode::deserialize::<NetworkMessage>(&bytes) {
             // Basic responses
             match msg {
-                NetworkMessage::Ping { nonce } => { let _ = send_tx.send(NetworkMessage::Pong { nonce }).await; },
+                NetworkMessage::Ping { nonce } => {
+                    let _ = send_tx.send(NetworkMessage::Pong { nonce }).await;
+                }
                 other => {
                     // publish to global incoming
                     if let Some(tx) = pm.incoming.read().await.clone() {
@@ -522,13 +587,20 @@ async fn perform_handshake_outbound(
     };
     send_msg(&mut framed, &hello).await?;
     // Expect Ack
-    let bytes = framed.next().await.ok_or_else(|| NetworkError::ProtocolError("EOF before ack".into()))
+    let bytes = framed
+        .next()
+        .await
+        .ok_or_else(|| NetworkError::ProtocolError("EOF before ack".into()))
         .map_err(|_| NetworkError::ProtocolError("Stream closed".into()))??;
     let ack: NetworkMessage = bincode::deserialize(&bytes)
         .map_err(|e| NetworkError::DecodeError(format!("ack decode: {}", e)))?;
-    match ack { NetworkMessage::HelloAck { version, .. } if version.is_compatible(&ProtocolVersion::CURRENT) => {}, _ => {
-        return Err(NetworkError::ProtocolError("invalid ack".into()));
-    }}
+    match ack {
+        NetworkMessage::HelloAck { version, .. }
+            if version.is_compatible(&ProtocolVersion::CURRENT) => {}
+        _ => {
+            return Err(NetworkError::ProtocolError("invalid ack".into()));
+        }
+    }
     // Register peer and spawn IO
     let (send_tx, mut send_rx) = mpsc::channel(256);
     let (_recv_tx, recv_rx) = mpsc::channel(256);
@@ -538,7 +610,9 @@ async fn perform_handshake_outbound(
     let (mut sink, mut stream) = framed.split();
     let writer = tokio::spawn(async move {
         while let Some(msg) = send_rx.recv().await {
-            if let Err(_e) = send_msg_sink(&mut sink, &msg).await { break; }
+            if let Err(_e) = send_msg_sink(&mut sink, &msg).await {
+                break;
+            }
         }
     });
     let pm2 = pm.clone();
@@ -550,7 +624,9 @@ async fn perform_handshake_outbound(
                         let _ = tx.send((peer_id.clone(), msg)).await;
                     }
                 }
-            } else { break }
+            } else {
+                break;
+            }
         }
         writer.abort();
     });
@@ -558,13 +634,18 @@ async fn perform_handshake_outbound(
     Ok(())
 }
 
-async fn send_msg(framed: &mut Framed<TcpStream, LengthDelimitedCodec>, msg: &NetworkMessage) -> Result<(), NetworkError> {
+async fn send_msg(
+    framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
+    msg: &NetworkMessage,
+) -> Result<(), NetworkError> {
     let bytes = bincode::serialize(msg).map_err(|e| NetworkError::DecodeError(e.to_string()))?;
     framed.send(bytes.into()).await.map_err(NetworkError::Io)
 }
 
 async fn send_msg_sink<S>(sink: &mut S, msg: &NetworkMessage) -> Result<(), NetworkError>
-where S: futures::Sink<bytes::Bytes, Error = std::io::Error> + Unpin {
+where
+    S: futures::Sink<bytes::Bytes, Error = std::io::Error> + Unpin,
+{
     let bytes = bincode::serialize(msg).map_err(|e| NetworkError::DecodeError(e.to_string()))?;
     sink.send(bytes.into()).await.map_err(NetworkError::Io)
 }
@@ -572,70 +653,90 @@ where S: futures::Sink<bytes::Bytes, Error = std::io::Error> + Unpin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_peer_manager_limits() {
-        let config = PeerManagerConfig { max_peers: 2, max_inbound: 1, max_outbound: 1, ..Default::default() };
-        
+        let config = PeerManagerConfig {
+            max_peers: 2,
+            max_inbound: 1,
+            max_outbound: 1,
+            ..Default::default()
+        };
+
         let manager = PeerManager::new(config);
-        
+
         // Create mock peers
         let (send_tx1, recv_rx1) = mpsc::channel(10);
         let (send_tx2, recv_rx2) = mpsc::channel(10);
         let (send_tx3, recv_rx3) = mpsc::channel(10);
-        
+
         let peer1 = Arc::new(Peer::new(
-            PeerInfo::new(PeerId::random(), "127.0.0.1:8001".parse().unwrap(), Direction::Inbound),
+            PeerInfo::new(
+                PeerId::random(),
+                "127.0.0.1:8001".parse().unwrap(),
+                Direction::Inbound,
+            ),
             send_tx1,
             recv_rx1,
         ));
-        
+
         let peer2 = Arc::new(Peer::new(
-            PeerInfo::new(PeerId::random(), "127.0.0.1:8002".parse().unwrap(), Direction::Outbound),
+            PeerInfo::new(
+                PeerId::random(),
+                "127.0.0.1:8002".parse().unwrap(),
+                Direction::Outbound,
+            ),
             send_tx2,
             recv_rx2,
         ));
-        
+
         let peer3 = Arc::new(Peer::new(
-            PeerInfo::new(PeerId::random(), "127.0.0.1:8003".parse().unwrap(), Direction::Inbound),
+            PeerInfo::new(
+                PeerId::random(),
+                "127.0.0.1:8003".parse().unwrap(),
+                Direction::Inbound,
+            ),
             send_tx3,
             recv_rx3,
         ));
-        
+
         // Add first two peers - should succeed
         assert!(manager.add_peer(peer1).await.is_ok());
         assert!(manager.add_peer(peer2).await.is_ok());
-        
+
         // Try to add third peer - should fail (max peers reached)
         assert!(manager.add_peer(peer3).await.is_err());
-        
+
         let (total, inbound, outbound) = manager.get_peer_counts().await;
         assert_eq!(total, 2);
         assert_eq!(inbound, 1);
         assert_eq!(outbound, 1);
     }
-    
+
     #[tokio::test]
     async fn test_peer_scoring_and_ban() {
-        let config = PeerManagerConfig { score_threshold: -10, ..Default::default() };
-        
+        let config = PeerManagerConfig {
+            score_threshold: -10,
+            ..Default::default()
+        };
+
         let manager = PeerManager::new(config);
-        
+
         let (send_tx, recv_rx) = mpsc::channel(10);
         let peer_id = PeerId::random();
         let addr = "127.0.0.1:8001".parse().unwrap();
-        
+
         let peer = Arc::new(Peer::new(
             PeerInfo::new(peer_id.clone(), addr, Direction::Inbound),
             send_tx,
             recv_rx,
         ));
-        
+
         manager.add_peer(peer).await.unwrap();
-        
+
         // Decrease score below threshold
         manager.update_peer_score(&peer_id, -15).await;
-        
+
         // Peer should be removed and banned
         assert!(manager.get_peer(&peer_id).is_none());
         assert!(manager.is_banned(&addr).await);

@@ -1,16 +1,16 @@
-use crate::methods::{ChainApi, StateApi, TransactionApi};
 use crate::eth_tx_decoder;
+use crate::methods::{ChainApi, StateApi, TransactionApi};
+use futures::executor::block_on;
+use hex;
 use jsonrpc_core::{IoHandler, Params, Value};
-use lattice_storage::StorageManager;
-use lattice_sequencer::mempool::{Mempool, TxClass};
+use lattice_consensus::types::{Hash, Transaction};
 use lattice_execution::executor::Executor;
 use lattice_execution::types::Address;
+use lattice_sequencer::mempool::{Mempool, TxClass};
+use lattice_storage::StorageManager;
 use primitive_types::U256;
-use lattice_consensus::types::{Hash, Transaction};
-use std::sync::Arc;
-use futures::executor::block_on;
 use serde_json::json;
-use hex;
+use std::sync::Arc;
 
 /// Add Ethereum-compatible RPC methods to the IoHandler
 pub fn register_eth_methods(
@@ -28,7 +28,7 @@ pub fn register_eth_methods(
             Ok(height) => {
                 // Return as hex string as per Ethereum JSON-RPC spec
                 Ok(Value::String(format!("0x{:x}", height)))
-            },
+            }
             Err(_) => Ok(Value::String("0x0".to_string())),
         }
     });
@@ -395,31 +395,39 @@ pub fn register_eth_methods(
     let executor_bal = executor.clone();
     io_handler.add_sync_method("eth_getBalance", move |params: Params| {
         let state_api = StateApi::new(storage_bal.clone(), executor_bal.clone());
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
         };
-        
+
         if params.is_empty() {
             return Err(jsonrpc_core::Error::invalid_params("Missing address"));
         }
-        
+
         let addr_str = match params[0].as_str() {
             Some(a) if a.starts_with("0x") => &a[2..],
             Some(a) => a,
-            None => return Err(jsonrpc_core::Error::invalid_params("Invalid address format")),
+            None => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid address format",
+                ))
+            }
         };
-        
+
         let addr_bytes = match hex::decode(addr_str) {
             Ok(b) if b.len() == 20 => {
                 let mut arr = [0u8; 20];
                 arr.copy_from_slice(&b);
                 arr
-            },
-            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid address length")),
+            }
+            _ => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid address length",
+                ))
+            }
         };
-        
+
         match block_on(state_api.get_balance(Address(addr_bytes))) {
             Ok(balance) => Ok(Value::String(format!("0x{:x}", balance))),
             Err(_) => Ok(Value::String("0x0".to_string())),
@@ -431,31 +439,39 @@ pub fn register_eth_methods(
     let executor_code = executor.clone();
     io_handler.add_sync_method("eth_getCode", move |params: Params| {
         let state_api = StateApi::new(storage_code.clone(), executor_code.clone());
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
         };
-        
+
         if params.is_empty() {
             return Err(jsonrpc_core::Error::invalid_params("Missing address"));
         }
-        
+
         let addr_str = match params[0].as_str() {
             Some(a) if a.starts_with("0x") => &a[2..],
             Some(a) => a,
-            None => return Err(jsonrpc_core::Error::invalid_params("Invalid address format")),
+            None => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid address format",
+                ))
+            }
         };
-        
+
         let addr_bytes = match hex::decode(addr_str) {
             Ok(b) if b.len() == 20 => {
                 let mut arr = [0u8; 20];
                 arr.copy_from_slice(&b);
                 arr
-            },
-            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid address length")),
+            }
+            _ => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid address length",
+                ))
+            }
         };
-        
+
         match block_on(state_api.get_code(Address(addr_bytes))) {
             Ok(code) => Ok(Value::String(format!("0x{}", hex::encode(code)))),
             Err(_) => Ok(Value::String("0x".to_string())),
@@ -468,35 +484,43 @@ pub fn register_eth_methods(
     let mempool_nonce = mempool.clone();
     io_handler.add_sync_method("eth_getTransactionCount", move |params: Params| {
         let state_api = StateApi::new(storage_nonce.clone(), executor_nonce.clone());
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
         };
-        
+
         if params.is_empty() {
             return Err(jsonrpc_core::Error::invalid_params("Missing address"));
         }
-        
+
         let addr_str = match params[0].as_str() {
             Some(a) if a.starts_with("0x") => &a[2..],
             Some(a) => a,
-            None => return Err(jsonrpc_core::Error::invalid_params("Invalid address format")),
+            None => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid address format",
+                ))
+            }
         };
-        
+
         let addr_bytes = match hex::decode(addr_str) {
             Ok(b) if b.len() == 20 => {
                 let mut arr = [0u8; 20];
                 arr.copy_from_slice(&b);
                 arr
-            },
-            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid address length")),
+            }
+            _ => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid address length",
+                ))
+            }
         };
 
         // Optional second param: block tag ("latest" | "pending" | "earliest")
         let tag = params.get(1).and_then(|v| v.as_str()).unwrap_or("latest");
 
-          let base_nonce = block_on(state_api.get_nonce(Address(addr_bytes))).unwrap_or_default();
+        let base_nonce = block_on(state_api.get_nonce(Address(addr_bytes))).unwrap_or_default();
 
         if tag.eq_ignore_ascii_case("pending") {
             // Include pending mempool transactions from this sender
@@ -533,60 +557,92 @@ pub fn register_eth_methods(
             Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
         };
         if params.is_empty() {
-            return Err(jsonrpc_core::Error::invalid_params("Missing transaction object"));
+            return Err(jsonrpc_core::Error::invalid_params(
+                "Missing transaction object",
+            ));
         }
         let obj = match &params[0] {
             Value::Object(map) => map,
-            _ => return Err(jsonrpc_core::Error::invalid_params("Invalid transaction object")),
+            _ => {
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid transaction object",
+                ))
+            }
         };
 
         // from (required)
-        let from_s = obj.get("from").and_then(|v| v.as_str())
+        let from_s = obj
+            .get("from")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| jsonrpc_core::Error::invalid_params("Missing 'from'"))?;
         let from_hex = from_s.trim().trim_start_matches("0x");
         let from_bytes = hex::decode(from_hex)
             .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from' hex"))?;
-        if from_bytes.len() != 20 { return Err(jsonrpc_core::Error::invalid_params("'from' must be 20 bytes")); }
-        let mut from20 = [0u8; 20]; from20.copy_from_slice(&from_bytes);
+        if from_bytes.len() != 20 {
+            return Err(jsonrpc_core::Error::invalid_params(
+                "'from' must be 20 bytes",
+            ));
+        }
+        let mut from20 = [0u8; 20];
+        from20.copy_from_slice(&from_bytes);
 
         // to (optional)
         let to20_opt = if let Some(to_s) = obj.get("to").and_then(|v| v.as_str()) {
             let to_hex = to_s.trim().trim_start_matches("0x");
             let to_bytes = hex::decode(to_hex)
                 .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'to' hex"))?;
-            if to_bytes.len() != 20 { return Err(jsonrpc_core::Error::invalid_params("'to' must be 20 bytes")); }
-            let mut to20 = [0u8; 20]; to20.copy_from_slice(&to_bytes);
+            if to_bytes.len() != 20 {
+                return Err(jsonrpc_core::Error::invalid_params("'to' must be 20 bytes"));
+            }
+            let mut to20 = [0u8; 20];
+            to20.copy_from_slice(&to_bytes);
             Some(to20)
-        } else { None };
+        } else {
+            None
+        };
 
         // value (hex string) optional
         let value_u256 = if let Some(vs) = obj.get("value").and_then(|v| v.as_str()) {
             let s = vs.trim();
             let s = s.strip_prefix("0x").unwrap_or(s);
             U256::from_str_radix(s, 16).unwrap_or_else(|_| U256::from(0u64))
-        } else { U256::from(0u64) };
+        } else {
+            U256::from(0u64)
+        };
 
         // gas and gasPrice (hex strings) optional
         let gas = if let Some(gs) = obj.get("gas").and_then(|v| v.as_str()) {
-            let s = gs.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            let s = gs.trim();
+            let s = s.strip_prefix("0x").unwrap_or(s);
             u64::from_str_radix(s, 16).unwrap_or(21000)
-        } else { 21000 };
+        } else {
+            21000
+        };
         let gas_price = if let Some(gps) = obj.get("gasPrice").and_then(|v| v.as_str()) {
-            let s = gps.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            let s = gps.trim();
+            let s = s.strip_prefix("0x").unwrap_or(s);
             u64::from_str_radix(s, 16).unwrap_or(1_000_000_000)
-        } else { 1_000_000_000 };
+        } else {
+            1_000_000_000
+        };
 
         // nonce (hex string) optional
         let nonce_opt = if let Some(ns) = obj.get("nonce").and_then(|v| v.as_str()) {
-            let s = ns.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            let s = ns.trim();
+            let s = s.strip_prefix("0x").unwrap_or(s);
             Some(u64::from_str_radix(s, 16).unwrap_or(0))
-        } else { None };
+        } else {
+            None
+        };
 
         // data (hex string) optional
         let data = if let Some(ds) = obj.get("data").and_then(|v| v.as_str()) {
-            let s = ds.trim(); let s = s.strip_prefix("0x").unwrap_or(s);
+            let s = ds.trim();
+            let s = s.strip_prefix("0x").unwrap_or(s);
             hex::decode(s).unwrap_or_default()
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
 
         // Build TransactionRequest
         let req = crate::types::request::TransactionRequest {
@@ -609,72 +665,87 @@ pub fn register_eth_methods(
     let mempool_send = mempool.clone();
     io_handler.add_sync_method("eth_sendRawTransaction", move |params: Params| {
         let mempool = mempool_send.clone();
-        
+
         tracing::info!("eth_sendRawTransaction called");
-        
+
         let params: Vec<Value> = match params.parse() {
             Ok(p) => p,
             Err(e) => {
                 tracing::error!("Failed to parse params: {}", e);
-                return Err(jsonrpc_core::Error::invalid_params(e.to_string()))
-            },
+                return Err(jsonrpc_core::Error::invalid_params(e.to_string()));
+            }
         };
-        
+
         if params.is_empty() {
             tracing::error!("Missing transaction data");
-            return Err(jsonrpc_core::Error::invalid_params("Missing transaction data"));
+            return Err(jsonrpc_core::Error::invalid_params(
+                "Missing transaction data",
+            ));
         }
-        
+
         let tx_data = match params[0].as_str() {
             Some(d) if d.starts_with("0x") => &d[2..],
             Some(d) => d,
             None => {
                 tracing::error!("Invalid transaction format");
-                return Err(jsonrpc_core::Error::invalid_params("Invalid transaction format"))
-            },
+                return Err(jsonrpc_core::Error::invalid_params(
+                    "Invalid transaction format",
+                ));
+            }
         };
-        
-        tracing::debug!("Raw tx data (first 100 bytes): {}", &tx_data[..tx_data.len().min(200)]);
-        
+
+        tracing::debug!(
+            "Raw tx data (first 100 bytes): {}",
+            &tx_data[..tx_data.len().min(200)]
+        );
+
         let tx_bytes = match hex::decode(tx_data) {
             Ok(b) => b,
             Err(e) => {
                 tracing::error!("Failed to decode hex: {}", e);
-                return Err(jsonrpc_core::Error::invalid_params("Invalid hex data"))
-            },
+                return Err(jsonrpc_core::Error::invalid_params("Invalid hex data"));
+            }
         };
-        
+
         tracing::debug!("Decoded {} bytes of transaction data", tx_bytes.len());
-        
+
         // Parse transaction - handles both Ethereum RLP and Lattice bincode formats
         let tx: Transaction = match eth_tx_decoder::decode_eth_transaction(&tx_bytes) {
             Ok(t) => {
                 tracing::info!("Successfully decoded transaction");
                 t
-            },
+            }
             Err(e) => {
                 tracing::error!("Failed to decode transaction: {}", e);
-                return Err(jsonrpc_core::Error::invalid_params(
-                    format!("Failed to parse transaction: {}", e)
-                ))
-            },
+                return Err(jsonrpc_core::Error::invalid_params(format!(
+                    "Failed to parse transaction: {}",
+                    e
+                )));
+            }
         };
-        
+
         // Get transaction hash (now always properly set by decoder)
         let tx_hash = tx.hash;
         tracing::info!("Transaction hash: 0x{}", hex::encode(tx_hash.as_bytes()));
-        
+
         // Submit to mempool using block_on to execute async function
         match block_on(mempool.add_transaction(tx, TxClass::Standard)) {
             Ok(_) => {
-                tracing::info!("✓ Transaction {} successfully added to mempool", hex::encode(tx_hash.as_bytes()));
-                Ok(Value::String(format!("0x{}", hex::encode(tx_hash.as_bytes()))))
-            },
+                tracing::info!(
+                    "✓ Transaction {} successfully added to mempool",
+                    hex::encode(tx_hash.as_bytes())
+                );
+                Ok(Value::String(format!(
+                    "0x{}",
+                    hex::encode(tx_hash.as_bytes())
+                )))
+            }
             Err(e) => {
                 tracing::error!("✗ Failed to submit transaction to mempool: {:?}", e);
-                Err(jsonrpc_core::Error::invalid_params(
-                    format!("Failed to submit transaction: {:?}", e)
-                ))
+                Err(jsonrpc_core::Error::invalid_params(format!(
+                    "Failed to submit transaction: {:?}",
+                    e
+                )))
             }
         }
     });
@@ -720,7 +791,11 @@ pub fn register_eth_methods(
             let fs = from_s.trim().trim_start_matches("0x");
             let fbytes = match hex::decode(fs) {
                 Ok(b) if b.len() == 20 => b,
-                _ => return Err(jsonrpc_core::Error::invalid_params("Invalid 'from' address")),
+                _ => {
+                    return Err(jsonrpc_core::Error::invalid_params(
+                        "Invalid 'from' address",
+                    ))
+                }
             };
             let mut pkb = [0u8; 32];
             pkb[..20].copy_from_slice(&fbytes);
@@ -749,22 +824,32 @@ pub fn register_eth_methods(
             } else {
                 s.parse::<u128>().unwrap_or(0u128)
             }
-        } else { 0u128 };
+        } else {
+            0u128
+        };
 
         // gas and gasPrice (optional)
         let gas_limit: u64 = if let Some(gs) = obj.get("gas").and_then(|v| v.as_str()) {
             let s = gs.trim();
             if let Some(hexs) = s.strip_prefix("0x") {
                 u64::from_str_radix(hexs, 16).unwrap_or(1_000_000)
-            } else { s.parse::<u64>().unwrap_or(1_000_000) }
-        } else { 1_000_000 };
+            } else {
+                s.parse::<u64>().unwrap_or(1_000_000)
+            }
+        } else {
+            1_000_000
+        };
 
         let gas_price: u64 = if let Some(gps) = obj.get("gasPrice").and_then(|v| v.as_str()) {
             let s = gps.trim();
             if let Some(hexs) = s.strip_prefix("0x") {
                 u64::from_str_radix(hexs, 16).unwrap_or(1)
-            } else { s.parse::<u64>().unwrap_or(1) }
-        } else { 1 };
+            } else {
+                s.parse::<u64>().unwrap_or(1)
+            }
+        } else {
+            1
+        };
 
         // Build a lightweight block context
         let blk = Block {
@@ -779,7 +864,10 @@ pub fn register_eth_methods(
                 blue_work: 0,
                 pruning_point: lattice_consensus::types::Hash::default(),
                 proposer_pubkey: PublicKey::new([0u8; 32]),
-                vrf_reveal: VrfProof { proof: vec![], output: lattice_consensus::types::Hash::default() },
+                vrf_reveal: VrfProof {
+                    proof: vec![],
+                    output: lattice_consensus::types::Hash::default(),
+                },
             },
             state_root: lattice_consensus::types::Hash::default(),
             tx_root: lattice_consensus::types::Hash::default(),
@@ -803,7 +891,7 @@ pub fn register_eth_methods(
             signature: Signature::new([0u8; 64]),
             tx_type: None,
         };
-        
+
         // Determine transaction type from data
         tx.determine_type();
 
@@ -814,7 +902,10 @@ pub fn register_eth_methods(
 
         match res {
             Ok(receipt) => Ok(Value::String(format!("0x{}", hex::encode(receipt.output)))),
-            Err(e) => Err(jsonrpc_core::Error::invalid_params(format!("eth_call failed: {}", e))),
+            Err(e) => Err(jsonrpc_core::Error::invalid_params(format!(
+                "eth_call failed: {}",
+                e
+            ))),
         }
     });
 
@@ -834,7 +925,7 @@ pub fn register_eth_methods(
             "gasUsedRatio": [0.5]
         }))
     });
-    
+
     // eth_maxPriorityFeePerGas - Get max priority fee
     io_handler.add_sync_method("eth_maxPriorityFeePerGas", move |_params: Params| {
         // Return 1 gwei max priority fee
@@ -845,47 +936,71 @@ pub fn register_eth_methods(
     let mempool_snapshot = mempool.clone();
     io_handler.add_sync_method("lattice_getMempoolSnapshot", move |_params: Params| {
         let mp = mempool_snapshot.clone();
-        
+
         // Get mempool stats to know how many transactions to fetch
         let stats = block_on(mp.stats());
         let total = stats.total_transactions;
-        
+
         // Get all transactions from mempool
         let txs = block_on(mp.get_transactions(total));
-        
+
         // Convert to JSON format
         let mut tx_list = Vec::new();
         for tx in txs {
             let mut tx_obj = serde_json::Map::new();
-            tx_obj.insert("hash".to_string(), Value::String(format!("0x{}", hex::encode(tx.hash.as_bytes()))));
-            
+            tx_obj.insert(
+                "hash".to_string(),
+                Value::String(format!("0x{}", hex::encode(tx.hash.as_bytes()))),
+            );
+
             // Convert from address
             let from_addr = lattice_execution::types::Address::from_public_key(&tx.from);
-            tx_obj.insert("from".to_string(), Value::String(format!("0x{}", hex::encode(from_addr.0))));
-            
+            tx_obj.insert(
+                "from".to_string(),
+                Value::String(format!("0x{}", hex::encode(from_addr.0))),
+            );
+
             // Convert to address
             if let Some(to_pk) = tx.to {
                 let to_addr = lattice_execution::types::Address::from_public_key(&to_pk);
-                tx_obj.insert("to".to_string(), Value::String(format!("0x{}", hex::encode(to_addr.0))));
+                tx_obj.insert(
+                    "to".to_string(),
+                    Value::String(format!("0x{}", hex::encode(to_addr.0))),
+                );
             } else {
                 tx_obj.insert("to".to_string(), Value::Null);
             }
-            
-            tx_obj.insert("value".to_string(), Value::String(format!("0x{:x}", tx.value)));
-            tx_obj.insert("nonce".to_string(), Value::String(format!("0x{:x}", tx.nonce)));
-            tx_obj.insert("gasPrice".to_string(), Value::String(format!("0x{:x}", tx.gas_price)));
-            tx_obj.insert("gasLimit".to_string(), Value::String(format!("0x{:x}", tx.gas_limit)));
+
+            tx_obj.insert(
+                "value".to_string(),
+                Value::String(format!("0x{:x}", tx.value)),
+            );
+            tx_obj.insert(
+                "nonce".to_string(),
+                Value::String(format!("0x{:x}", tx.nonce)),
+            );
+            tx_obj.insert(
+                "gasPrice".to_string(),
+                Value::String(format!("0x{:x}", tx.gas_price)),
+            );
+            tx_obj.insert(
+                "gasLimit".to_string(),
+                Value::String(format!("0x{:x}", tx.gas_limit)),
+            );
             tx_obj.insert("dataSize".to_string(), Value::Number(tx.data.len().into()));
-            
+
             tx_list.push(Value::Object(tx_obj));
         }
-        
+
         // Return mempool info
         let mut result = serde_json::Map::new();
         result.insert("pending".to_string(), Value::Array(tx_list));
         result.insert("totalTransactions".to_string(), Value::Number(total.into()));
-        result.insert("totalBytes".to_string(), Value::Number(stats.total_size.into()));
-        
+        result.insert(
+            "totalBytes".to_string(),
+            Value::Number(stats.total_size.into()),
+        );
+
         Ok(Value::Object(result))
     });
 }

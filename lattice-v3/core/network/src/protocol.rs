@@ -1,5 +1,5 @@
+use lattice_consensus::types::{Block, BlockHeader, Hash, Transaction};
 use serde::{Deserialize, Serialize};
-use lattice_consensus::types::{Block, BlockHeader, Transaction, Hash};
 use std::fmt;
 
 /// Model metadata for AI network messages
@@ -29,7 +29,7 @@ impl ProtocolVersion {
         minor: 0,
         patch: 0,
     };
-    
+
     pub fn is_compatible(&self, other: &Self) -> bool {
         // Major version must match, minor/patch can differ
         self.major == other.major
@@ -55,84 +55,84 @@ pub enum NetworkMessage {
         head_hash: Hash,
         peer_id: String,
     },
-    
+
     HelloAck {
         version: ProtocolVersion,
         head_height: u64,
         head_hash: Hash,
     },
-    
+
     Disconnect {
         reason: String,
     },
-    
+
     // Ping/Pong for keepalive
     Ping {
         nonce: u64,
     },
-    
+
     Pong {
         nonce: u64,
     },
-    
+
     // Block messages
     NewBlock {
         block: Block,
     },
-    
+
     GetBlocks {
         from: Hash,
         count: u32,
         step: u32, // For sparse download
     },
-    
+
     Blocks {
         blocks: Vec<Block>,
     },
-    
+
     GetHeaders {
         from: Hash,
         count: u32,
     },
-    
+
     Headers {
         headers: Vec<BlockHeader>,
     },
-    
+
     // Transaction messages
     NewTransaction {
         transaction: Transaction,
     },
-    
+
     GetTransactions {
         hashes: Vec<Hash>,
     },
-    
+
     Transactions {
         transactions: Vec<Transaction>,
     },
-    
+
     // AI-specific messages for model and inference data
-    
+
     // Model registration and updates
     ModelAnnounce {
         model_id: Hash,
         model_hash: Hash,
-        owner: Vec<u8>,  // Address bytes
+        owner: Vec<u8>, // Address bytes
         metadata: ModelMetadata,
-        weight_cid: String,  // IPFS CID for weights
+        weight_cid: String, // IPFS CID for weights
     },
-    
+
     GetModel {
         model_id: Hash,
     },
-    
+
     ModelData {
         model_id: Hash,
         weight_cid: String,
         metadata: ModelMetadata,
     },
-    
+
     // Inference requests and results
     InferenceRequest {
         request_id: Hash,
@@ -141,14 +141,14 @@ pub enum NetworkMessage {
         requester: Vec<u8>,
         max_fee: u128,
     },
-    
+
     InferenceResponse {
         request_id: Hash,
         output_hash: Hash,
-        proof: Vec<u8>,  // ZK proof of computation
+        proof: Vec<u8>, // ZK proof of computation
         provider: Vec<u8>,
     },
-    
+
     // Training coordination
     TrainingJobAnnounce {
         job_id: Hash,
@@ -157,14 +157,14 @@ pub enum NetworkMessage {
         participants_needed: u32,
         reward_per_gradient: u128,
     },
-    
+
     GradientSubmission {
         job_id: Hash,
         gradient_hash: Hash,
         epoch: u32,
         participant: Vec<u8>,
     },
-    
+
     // LoRA adapter sharing
     LoraAdapterAnnounce {
         adapter_id: Hash,
@@ -173,23 +173,23 @@ pub enum NetworkMessage {
         rank: u32,
         alpha: f32,
     },
-    
+
     GetLoraAdapter {
         adapter_id: Hash,
     },
-    
+
     // Model weight synchronization
     WeightSync {
         model_id: Hash,
         version: u32,
-        weight_delta: Vec<u8>,  // Compressed weight update
+        weight_delta: Vec<u8>, // Compressed weight update
     },
-    
+
     // AI state synchronization
     GetAIState {
         from_height: u64,
     },
-    
+
     AIStateUpdate {
         height: u64,
         models_root: Hash,
@@ -197,51 +197,51 @@ pub enum NetworkMessage {
         inference_root: Hash,
         lora_root: Hash,
     },
-    
+
     GetMempool,
-    
+
     Mempool {
         tx_hashes: Vec<Hash>,
     },
-    
+
     // Sync messages
     GetBlocksByHeight {
         from_height: u64,
         count: u32,
     },
-    
+
     GetState {
         root: Hash,
         keys: Vec<Vec<u8>>,
     },
-    
+
     StateData {
         root: Hash,
         data: Vec<(Vec<u8>, Vec<u8>)>,
     },
-    
+
     // Discovery messages
     GetPeers,
-    
+
     Peers {
         peers: Vec<PeerAddress>,
     },
-    
+
     // Consensus messages (GhostDAG specific)
     GetBlueSet {
         block: Hash,
     },
-    
+
     BlueSet {
         block: Hash,
         blue_blocks: Vec<Hash>,
         blue_score: u64,
     },
-    
+
     GetDagInfo {
         blocks: Vec<Hash>,
     },
-    
+
     DagInfo {
         info: Vec<DagBlockInfo>,
     },
@@ -275,10 +275,10 @@ pub trait Protocol: Send + Sync {
         peer_id: &str,
         message: NetworkMessage,
     ) -> Result<Option<NetworkMessage>, crate::NetworkError>;
-    
+
     /// Called when a new peer connects
     async fn on_peer_connected(&self, peer_id: &str);
-    
+
     /// Called when a peer disconnects
     async fn on_peer_disconnected(&self, peer_id: &str);
 }
@@ -299,22 +299,22 @@ impl NetworkMessage {
             // Critical priority for handshake and sync
             Self::Hello { .. } | Self::HelloAck { .. } => MessagePriority::Critical,
             Self::GetBlocks { .. } | Self::GetHeaders { .. } => MessagePriority::Critical,
-            
+
             // High priority for new blocks
             Self::NewBlock { .. } => MessagePriority::High,
-            
+
             // Normal priority for transactions and general messages
             Self::NewTransaction { .. } => MessagePriority::Normal,
             Self::GetTransactions { .. } | Self::Transactions { .. } => MessagePriority::Normal,
-            
+
             // Low priority for discovery and stats
             Self::GetPeers | Self::Peers { .. } => MessagePriority::Low,
             Self::Ping { .. } | Self::Pong { .. } => MessagePriority::Low,
-            
+
             _ => MessagePriority::Normal,
         }
     }
-    
+
     /// Check if this message requires a response
     pub fn requires_response(&self) -> bool {
         matches!(
@@ -336,17 +336,29 @@ impl NetworkMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_protocol_version_compatibility() {
-        let v1 = ProtocolVersion { major: 1, minor: 0, patch: 0 };
-        let v2 = ProtocolVersion { major: 1, minor: 1, patch: 0 };
-        let v3 = ProtocolVersion { major: 2, minor: 0, patch: 0 };
-        
+        let v1 = ProtocolVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+        let v2 = ProtocolVersion {
+            major: 1,
+            minor: 1,
+            patch: 0,
+        };
+        let v3 = ProtocolVersion {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        };
+
         assert!(v1.is_compatible(&v2));
         assert!(!v1.is_compatible(&v3));
     }
-    
+
     #[test]
     fn test_message_priority() {
         let hello = NetworkMessage::Hello {
@@ -357,9 +369,9 @@ mod tests {
             head_hash: Hash::default(),
             peer_id: "test".to_string(),
         };
-        
+
         assert_eq!(hello.priority(), MessagePriority::Critical);
-        
+
         // Create a test transaction
         let new_tx = NetworkMessage::NewTransaction {
             transaction: Transaction {
@@ -375,47 +387,56 @@ mod tests {
                 tx_type: None,
             },
         };
-        
+
         assert_eq!(new_tx.priority(), MessagePriority::Normal);
 
         // GetBlocks should be critical
-        let get_blocks = NetworkMessage::GetBlocks { from: Hash::default(), count: 10, step: 1 };
+        let get_blocks = NetworkMessage::GetBlocks {
+            from: Hash::default(),
+            count: 10,
+            step: 1,
+        };
         assert_eq!(get_blocks.priority(), MessagePriority::Critical);
 
         // NewBlock should be high
-        let nb = NetworkMessage::NewBlock { block: Block {
-            header: BlockHeader {
-                version: 1,
-                block_hash: Hash::default(),
-                selected_parent_hash: Hash::default(),
-                merge_parent_hashes: vec![],
-                timestamp: 0,
-                height: 0,
-                blue_score: 0,
-                blue_work: 0,
-                pruning_point: Hash::default(),
-                proposer_pubkey: lattice_consensus::types::PublicKey::new([0; 32]),
-                vrf_reveal: lattice_consensus::types::VrfProof { proof: vec![], output: Hash::default() },
+        let nb = NetworkMessage::NewBlock {
+            block: Block {
+                header: BlockHeader {
+                    version: 1,
+                    block_hash: Hash::default(),
+                    selected_parent_hash: Hash::default(),
+                    merge_parent_hashes: vec![],
+                    timestamp: 0,
+                    height: 0,
+                    blue_score: 0,
+                    blue_work: 0,
+                    pruning_point: Hash::default(),
+                    proposer_pubkey: lattice_consensus::types::PublicKey::new([0; 32]),
+                    vrf_reveal: lattice_consensus::types::VrfProof {
+                        proof: vec![],
+                        output: Hash::default(),
+                    },
+                },
+                state_root: Hash::default(),
+                tx_root: Hash::default(),
+                receipt_root: Hash::default(),
+                artifact_root: Hash::default(),
+                ghostdag_params: Default::default(),
+                transactions: vec![],
+                signature: lattice_consensus::types::Signature::new([0; 64]),
             },
-            state_root: Hash::default(),
-            tx_root: Hash::default(),
-            receipt_root: Hash::default(),
-            artifact_root: Hash::default(),
-            ghostdag_params: Default::default(),
-            transactions: vec![],
-            signature: lattice_consensus::types::Signature::new([0; 64]),
-        }};
+        };
         assert_eq!(nb.priority(), MessagePriority::High);
 
         // GetPeers is low
         assert_eq!(NetworkMessage::GetPeers.priority(), MessagePriority::Low);
     }
-    
+
     #[test]
     fn test_message_requires_response() {
         let ping = NetworkMessage::Ping { nonce: 42 };
         assert!(ping.requires_response());
-        
+
         // Test a message that doesn't require response
         let pong = NetworkMessage::Pong { nonce: 42 };
         assert!(!pong.requires_response());

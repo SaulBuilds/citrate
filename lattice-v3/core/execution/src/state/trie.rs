@@ -38,22 +38,25 @@ impl Trie {
             cache: HashMap::new(),
         }
     }
-    
+
     /// Insert a key-value pair
     pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) {
         let nibbles = to_nibbles(&key);
         self.root = Self::insert_node(self.root.clone(), &nibbles, value.clone());
         self.cache.insert(key, value);
     }
-    
+
     fn insert_node(node: TrieNode, key: &[u8], value: Vec<u8>) -> TrieNode {
         match node {
             TrieNode::Empty => TrieNode::Leaf {
                 key: key.to_vec(),
                 value,
             },
-            
-            TrieNode::Leaf { key: leaf_key, value: leaf_value } => {
+
+            TrieNode::Leaf {
+                key: leaf_key,
+                value: leaf_value,
+            } => {
                 if leaf_key == key {
                     // Update existing leaf
                     TrieNode::Leaf {
@@ -65,8 +68,11 @@ impl Trie {
                     Self::create_branch(leaf_key, leaf_value, key.to_vec(), value)
                 }
             }
-            
-            TrieNode::Branch { mut children, value: branch_value } => {
+
+            TrieNode::Branch {
+                mut children,
+                value: branch_value,
+            } => {
                 if key.is_empty() {
                     // Update branch value
                     TrieNode::Branch {
@@ -86,10 +92,10 @@ impl Trie {
                     }
                 }
             }
-            
+
             TrieNode::Extension { prefix, node } => {
                 let common = common_prefix(&prefix, key);
-                
+
                 if common.len() == prefix.len() {
                     // Entire prefix matches
                     TrieNode::Extension {
@@ -103,30 +109,33 @@ impl Trie {
             }
         }
     }
-    
+
     /// Get a value by key
     pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         // Check cache first
         if let Some(value) = self.cache.get(key) {
             return Some(value.clone());
         }
-        
+
         let nibbles = to_nibbles(key);
         Self::get_node(&self.root, &nibbles)
     }
-    
+
     fn get_node(node: &TrieNode, key: &[u8]) -> Option<Vec<u8>> {
         match node {
             TrieNode::Empty => None,
-            
-            TrieNode::Leaf { key: leaf_key, value } => {
+
+            TrieNode::Leaf {
+                key: leaf_key,
+                value,
+            } => {
                 if leaf_key == key {
                     Some(value.clone())
                 } else {
                     None
                 }
             }
-            
+
             TrieNode::Branch { children, value } => {
                 if key.is_empty() {
                     value.clone()
@@ -135,7 +144,7 @@ impl Trie {
                     Self::get_node(&children[index], &key[1..])
                 }
             }
-            
+
             TrieNode::Extension { prefix, node } => {
                 if key.starts_with(prefix) {
                     Self::get_node(node, &key[prefix.len()..])
@@ -145,27 +154,32 @@ impl Trie {
             }
         }
     }
-    
+
     /// Remove a key
     pub fn remove(&mut self, key: &[u8]) {
         let nibbles = to_nibbles(key);
         self.root = Self::remove_node(self.root.clone(), &nibbles);
         self.cache.remove(key);
     }
-    
+
     fn remove_node(node: TrieNode, key: &[u8]) -> TrieNode {
         match node {
             TrieNode::Empty => TrieNode::Empty,
-            
-            TrieNode::Leaf { key: ref leaf_key, .. } => {
+
+            TrieNode::Leaf {
+                key: ref leaf_key, ..
+            } => {
                 if leaf_key == key {
                     TrieNode::Empty
                 } else {
                     node
                 }
             }
-            
-            TrieNode::Branch { mut children, value } => {
+
+            TrieNode::Branch {
+                mut children,
+                value,
+            } => {
                 if key.is_empty() {
                     // Remove branch value
                     TrieNode::Branch {
@@ -174,16 +188,14 @@ impl Trie {
                     }
                 } else {
                     let index = key[0] as usize;
-                    children[index] = Box::new(Self::remove_node(
-                        *children[index].clone(),
-                        &key[1..],
-                    ));
-                    
+                    children[index] =
+                        Box::new(Self::remove_node(*children[index].clone(), &key[1..]));
+
                     // Check if branch can be simplified
                     Self::simplify_branch(children, value)
                 }
             }
-            
+
             TrieNode::Extension { prefix, node } => {
                 if key.starts_with(&prefix) {
                     let new_node = Self::remove_node(*node, &key[prefix.len()..]);
@@ -201,7 +213,7 @@ impl Trie {
             }
         }
     }
-    
+
     /// Calculate the root hash
     pub fn root_hash(&self) -> Hash {
         let encoded = self.encode_node(&self.root);
@@ -209,17 +221,17 @@ impl Trie {
         hasher.update(&encoded);
         Hash::new(hasher.finalize().into())
     }
-    
+
     #[allow(clippy::only_used_in_recursion)]
     fn encode_node(&self, node: &TrieNode) -> Vec<u8> {
         match node {
             TrieNode::Empty => vec![],
-            
+
             TrieNode::Leaf { key, value } => {
                 let items: [&[u8]; 2] = [key.as_slice(), value.as_slice()];
                 rlp::encode_list::<&[u8], _>(&items).to_vec()
             }
-            
+
             TrieNode::Branch { children, value } => {
                 let mut items: Vec<Vec<u8>> = Vec::new();
                 for child in children.iter() {
@@ -233,7 +245,7 @@ impl Trie {
                 let items_refs: Vec<&[u8]> = items.iter().map(|v| v.as_slice()).collect();
                 rlp::encode_list::<&[u8], _>(&items_refs).to_vec()
             }
-            
+
             TrieNode::Extension { prefix, node } => {
                 let node_encoded = self.encode_node(node);
                 let items: [&[u8]; 2] = [prefix.as_slice(), node_encoded.as_slice()];
@@ -241,12 +253,12 @@ impl Trie {
             }
         }
     }
-    
+
     // Helper functions
-    
+
     fn create_branch(key1: Vec<u8>, value1: Vec<u8>, key2: Vec<u8>, value2: Vec<u8>) -> TrieNode {
         let mut children: [Box<TrieNode>; 16] = default_children();
-        
+
         if key1.is_empty() {
             // key1 goes to branch value
             let index = key2[0] as usize;
@@ -273,7 +285,7 @@ impl Trie {
             // Both go to children
             let index1 = key1[0] as usize;
             let index2 = key2[0] as usize;
-            
+
             if index1 == index2 {
                 children[index1] = Box::new(Self::create_branch(
                     key1[1..].to_vec(),
@@ -291,14 +303,14 @@ impl Trie {
                     value: value2,
                 });
             }
-            
+
             TrieNode::Branch {
                 children,
                 value: None,
             }
         }
     }
-    
+
     fn split_extension(
         prefix: Vec<u8>,
         node: TrieNode,
@@ -309,9 +321,9 @@ impl Trie {
         let common = &prefix[..common_len];
         let remaining_prefix = &prefix[common_len..];
         let remaining_key = &key[common_len..];
-        
+
         let mut children: [Box<TrieNode>; 16] = default_children();
-        
+
         if !remaining_prefix.is_empty() {
             let index = remaining_prefix[0] as usize;
             if remaining_prefix.len() == 1 {
@@ -323,7 +335,7 @@ impl Trie {
                 });
             }
         }
-        
+
         let branch_value = if remaining_key.is_empty() {
             Some(value)
         } else {
@@ -334,12 +346,12 @@ impl Trie {
             });
             None
         };
-        
+
         let branch = TrieNode::Branch {
             children,
             value: branch_value,
         };
-        
+
         if common.is_empty() {
             branch
         } else {
@@ -349,14 +361,14 @@ impl Trie {
             }
         }
     }
-    
+
     fn simplify_branch(children: [Box<TrieNode>; 16], value: Option<Vec<u8>>) -> TrieNode {
         let non_empty: Vec<_> = children
             .iter()
             .enumerate()
             .filter(|(_, child)| !matches!(child.as_ref(), TrieNode::Empty))
             .collect();
-        
+
         if non_empty.len() == 1 && value.is_none() {
             // Only one child - convert to extension or leaf
             let (index, child) = non_empty[0];
@@ -381,7 +393,9 @@ impl Trie {
 }
 
 impl Default for Trie {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Convert bytes to nibbles (4-bit values)
@@ -427,45 +441,45 @@ fn default_children() -> [Box<TrieNode>; 16] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_trie_insert_get() {
         let mut trie = Trie::new();
-        
+
         trie.insert(b"key1".to_vec(), b"value1".to_vec());
         trie.insert(b"key2".to_vec(), b"value2".to_vec());
         trie.insert(b"key3".to_vec(), b"value3".to_vec());
-        
+
         assert_eq!(trie.get(b"key1"), Some(b"value1".to_vec()));
         assert_eq!(trie.get(b"key2"), Some(b"value2".to_vec()));
         assert_eq!(trie.get(b"key3"), Some(b"value3".to_vec()));
         assert_eq!(trie.get(b"key4"), None);
     }
-    
+
     #[test]
     fn test_trie_remove() {
         let mut trie = Trie::new();
-        
+
         trie.insert(b"key1".to_vec(), b"value1".to_vec());
         trie.insert(b"key2".to_vec(), b"value2".to_vec());
-        
+
         trie.remove(b"key1");
-        
+
         assert_eq!(trie.get(b"key1"), None);
         assert_eq!(trie.get(b"key2"), Some(b"value2".to_vec()));
     }
-    
+
     #[test]
     fn test_trie_root_hash() {
         let mut trie1 = Trie::new();
         let mut trie2 = Trie::new();
-        
+
         // Same data should produce same root
         trie1.insert(b"key".to_vec(), b"value".to_vec());
         trie2.insert(b"key".to_vec(), b"value".to_vec());
-        
+
         assert_eq!(trie1.root_hash(), trie2.root_hash());
-        
+
         // Different data should produce different root
         trie2.insert(b"key2".to_vec(), b"value2".to_vec());
         assert_ne!(trie1.root_hash(), trie2.root_hash());

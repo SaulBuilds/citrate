@@ -23,7 +23,7 @@ impl RpcClient {
 
     async fn call(&self, method: &str, params: Value) -> Result<Value> {
         let id = self.request_id.fetch_add(1, Ordering::SeqCst);
-        
+
         let request = json!({
             "jsonrpc": "2.0",
             "method": method,
@@ -31,7 +31,8 @@ impl RpcClient {
             "id": id
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.url)
             .json(&request)
             .send()
@@ -55,11 +56,11 @@ impl RpcClient {
         let chain_id_hex = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid chain ID response"))?;
-        
+
         // Parse hex string (0x prefix)
         let chain_id = u64::from_str_radix(chain_id_hex.trim_start_matches("0x"), 16)
             .map_err(|e| anyhow!("Failed to parse chain ID: {}", e))?;
-        
+
         Ok(chain_id)
     }
 
@@ -68,53 +69,53 @@ impl RpcClient {
         let block_hex = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid block number response"))?;
-        
+
         let block_number = u64::from_str_radix(block_hex.trim_start_matches("0x"), 16)
             .map_err(|e| anyhow!("Failed to parse block number: {}", e))?;
-        
+
         Ok(block_number)
     }
 
     pub async fn get_balance(&self, address: &str) -> Result<String> {
         let params = json!([address, "latest"]);
         let result = self.call("eth_getBalance", params).await?;
-        
+
         let balance_hex = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid balance response"))?;
-        
+
         Ok(balance_hex.to_string())
     }
 
     pub async fn get_transaction_count(&self, address: &str) -> Result<u64> {
         let params = json!([address, "pending"]); // Use pending for correct nonce
         let result = self.call("eth_getTransactionCount", params).await?;
-        
+
         let nonce_hex = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid nonce response"))?;
-        
+
         let nonce = u64::from_str_radix(nonce_hex.trim_start_matches("0x"), 16)
             .map_err(|e| anyhow!("Failed to parse nonce: {}", e))?;
-        
+
         Ok(nonce)
     }
 
     pub async fn send_raw_transaction(&self, tx_data: &str) -> Result<String> {
         let params = json!([tx_data]);
         let result = self.call("eth_sendRawTransaction", params).await?;
-        
+
         let tx_hash = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid transaction hash response"))?;
-        
+
         Ok(tx_hash.to_string())
     }
 
     pub async fn get_transaction_receipt(&self, tx_hash: &str) -> Result<Option<Value>> {
         let params = json!([tx_hash]);
         let result = self.call("eth_getTransactionReceipt", params).await?;
-        
+
         if result.is_null() {
             Ok(None)
         } else {
@@ -122,27 +123,33 @@ impl RpcClient {
         }
     }
 
-    pub async fn estimate_gas(&self, from: &str, to: Option<&str>, value: &str, data: &str) -> Result<u64> {
+    pub async fn estimate_gas(
+        &self,
+        from: &str,
+        to: Option<&str>,
+        value: &str,
+        data: &str,
+    ) -> Result<u64> {
         let mut tx_obj = json!({
             "from": from,
             "value": value,
             "data": data
         });
-        
+
         if let Some(to_addr) = to {
             tx_obj["to"] = json!(to_addr);
         }
-        
+
         let params = json!([tx_obj]);
         let result = self.call("eth_estimateGas", params).await?;
-        
+
         let gas_hex = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid gas estimate response"))?;
-        
+
         let gas = u64::from_str_radix(gas_hex.trim_start_matches("0x"), 16)
             .map_err(|e| anyhow!("Failed to parse gas estimate: {}", e))?;
-        
+
         Ok(gas)
     }
 
@@ -151,10 +158,10 @@ impl RpcClient {
         let price_hex = result
             .as_str()
             .ok_or_else(|| anyhow!("Invalid gas price response"))?;
-        
+
         let gas_price = u64::from_str_radix(price_hex.trim_start_matches("0x"), 16)
             .map_err(|e| anyhow!("Failed to parse gas price: {}", e))?;
-        
+
         Ok(gas_price)
     }
 

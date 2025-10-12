@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a new account (for demo only)
     let account = wallet.create_account("test-password", Some("demo".into()))?;
     println!("Created account: {}", account.address);
-    
+
     println!("=== Example Complete ===");
     Ok(())
 }

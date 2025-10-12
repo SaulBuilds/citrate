@@ -1,9 +1,11 @@
 // Comprehensive tests for the storage module
 
-use lattice_storage::{StorageManager, pruning::PruningConfig};
-use lattice_consensus::types::{Block, BlockHeader, Hash, PublicKey, Signature, VrfProof, GhostDagParams, Transaction};
-use tempfile::TempDir;
+use lattice_consensus::types::{
+    Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, Transaction, VrfProof,
+};
+use lattice_storage::{pruning::PruningConfig, StorageManager};
 use std::time::Duration;
+use tempfile::TempDir;
 
 fn create_test_block(num: u8, height: u64, parent: Option<Hash>) -> Block {
     let mut hash_bytes = [0u8; 32];
@@ -80,9 +82,14 @@ mod storage_tests {
         let storage = StorageManager::new(temp_dir.path(), PruningConfig::default()).unwrap();
 
         let block = create_test_block(1, 100, None);
-        storage.blocks.put_block(&block).expect("Failed to store block");
+        storage
+            .blocks
+            .put_block(&block)
+            .expect("Failed to store block");
 
-        let retrieved = storage.blocks.get_block(&block.hash())
+        let retrieved = storage
+            .blocks
+            .get_block(&block.hash())
             .expect("Failed to get block")
             .expect("Block not found");
 
@@ -113,7 +120,9 @@ mod storage_tests {
         storage.blocks.put_block(&block).unwrap();
 
         // get_block_by_height returns Option<Hash>
-        let hash = storage.blocks.get_block_by_height(50)
+        let hash = storage
+            .blocks
+            .get_block_by_height(50)
             .unwrap()
             .expect("Block at height 50 not found");
 
@@ -224,7 +233,9 @@ mod storage_tests {
         {
             let storage = StorageManager::new(&path, PruningConfig::default()).unwrap();
             let block = create_test_block(88, 888, None);
-            let retrieved = storage.blocks.get_block(&block.hash())
+            let retrieved = storage
+                .blocks
+                .get_block(&block.hash())
                 .unwrap()
                 .expect("Block not persisted");
             assert_eq!(retrieved.header.height, 888);
@@ -254,7 +265,10 @@ mod storage_tests {
         // Get account
         let retrieved = storage.state.get_account(&addr).unwrap();
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().balance, primitive_types::U256::from(1000u128));
+        assert_eq!(
+            retrieved.unwrap().balance,
+            primitive_types::U256::from(1000u128)
+        );
     }
 
     #[test]
@@ -330,9 +344,8 @@ mod storage_tests {
         use std::thread;
 
         let temp_dir = TempDir::new().unwrap();
-        let storage = Arc::new(
-            StorageManager::new(temp_dir.path(), PruningConfig::default()).unwrap()
-        );
+        let storage =
+            Arc::new(StorageManager::new(temp_dir.path(), PruningConfig::default()).unwrap());
 
         let mut handles = vec![];
 

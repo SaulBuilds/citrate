@@ -1,13 +1,13 @@
 //! IPFS integration for distributed model storage
-//! 
+//!
 //! This module provides functionality to store and retrieve AI models
 //! using IPFS (InterPlanetary File System) for decentralized storage.
 
-use anyhow::{Result, anyhow};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::{self, Client};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub mod chunking;
 pub mod pinning;
@@ -91,16 +91,17 @@ impl IPFSService {
         }
 
         // For large models, use chunking
-        if model_data.len() > 256 * 1024 * 1024 { // 256MB
+        if model_data.len() > 256 * 1024 * 1024 {
+            // 256MB
             return self.store_chunked_model(model_data, metadata).await;
         }
 
         // Add to IPFS
         let cid = self.add_to_ipfs(model_data).await?;
-        
+
         // Pin locally
         self.pin_add(&cid).await?;
-        
+
         // Track in local storage
         let metadata_for_record = metadata.clone();
         let pinned_bytes = metadata_for_record.size_bytes;
@@ -111,7 +112,7 @@ impl IPFSService {
             metadata_for_record,
             pinned_bytes,
         );
-        
+
         Ok(cid)
     }
 
@@ -177,17 +178,11 @@ impl IPFSService {
     /// Add data to IPFS
     async fn add_to_ipfs(&self, data: Vec<u8>) -> Result<Cid> {
         let url = format!("{}/api/v0/add", self.api_endpoint);
-        
-        let part = reqwest::multipart::Part::bytes(data)
-            .file_name("model.bin");
-        let form = reqwest::multipart::Form::new()
-            .part("file", part);
 
-        let response = self.client
-            .post(&url)
-            .multipart(form)
-            .send()
-            .await?;
+        let part = reqwest::multipart::Part::bytes(data).file_name("model.bin");
+        let form = reqwest::multipart::Form::new().part("file", part);
+
+        let response = self.client.post(&url).multipart(form).send().await?;
 
         #[derive(Deserialize)]
         struct AddResponse {
@@ -202,7 +197,7 @@ impl IPFSService {
     /// Pin content in IPFS
     async fn pin_add(&self, cid: &Cid) -> Result<()> {
         let url = format!("{}/api/v0/pin/add", self.api_endpoint);
-        
+
         self.client
             .post(&url)
             .query(&[("arg", &cid.0)])
@@ -215,8 +210,9 @@ impl IPFSService {
     /// Get content from IPFS
     async fn get_from_ipfs(&self, cid: &Cid) -> Result<Vec<u8>> {
         let url = format!("{}/api/v0/get", self.api_endpoint);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .query(&[("arg", &cid.0)])
             .send()
@@ -229,8 +225,9 @@ impl IPFSService {
     /// Cat (read) content from IPFS
     async fn cat_from_ipfs(&self, cid: &Cid) -> Result<Vec<u8>> {
         let url = format!("{}/api/v0/cat", self.api_endpoint);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .query(&[("arg", &cid.0)])
             .send()
@@ -271,6 +268,14 @@ impl IPFSService {
         self.pinning_manager.summary(cid)
     }
 
+    /// Fetch raw bytes for a CID without any caching logic.
+    pub async fn fetch_raw(&self, cid: &Cid) -> Result<Vec<u8>> {
+        match self.cat_from_ipfs(cid).await {
+            Ok(bytes) => Ok(bytes),
+            Err(_) => self.get_from_ipfs(cid).await,
+        }
+    }
+
     /// Record pinning information for an external provider.
     pub fn record_external_pin(
         &mut self,
@@ -279,7 +284,9 @@ impl IPFSService {
         metadata: ModelMetadata,
         pinned_bytes: u64,
     ) -> pinning::PinReward {
-        self.pinned_models.entry(cid.clone()).or_insert(metadata.clone());
+        self.pinned_models
+            .entry(cid.clone())
+            .or_insert(metadata.clone());
         self.pinning_manager
             .record_pin(cid, pinner_id, metadata, pinned_bytes)
     }
@@ -310,7 +317,7 @@ impl IPFSOperations for IPFSService {
 
     async fn unpin(&mut self, cid: &Cid) -> Result<()> {
         let url = format!("{}/api/v0/pin/rm", self.api_endpoint);
-        
+
         self.client
             .post(&url)
             .query(&[("arg", &cid.0)])
@@ -355,7 +362,7 @@ mod tests {
     #[test]
     fn test_pin_reward_calculation() {
         let mut service = IPFSService::new("http://localhost:5001".to_string());
-        
+
         let cid = Cid("QmTest".to_string());
         let metadata = ModelMetadata {
             name: "Test Model".to_string(),

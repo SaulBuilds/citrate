@@ -14,4 +14,3 @@ pub static RPC_REQUESTS: Lazy<IntCounterVec> = Lazy::new(|| {
 pub fn rpc_request(method: &str) {
     RPC_REQUESTS.with_label_values(&[method]).inc();
 }
-

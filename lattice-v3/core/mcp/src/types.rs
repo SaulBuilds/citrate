@@ -12,7 +12,7 @@ impl ModelId {
         id.copy_from_slice(hash.as_bytes());
         Self(id)
     }
-    
+
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
@@ -34,9 +34,9 @@ pub struct ModelMetadata {
 /// Compute requirements for a model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputeRequirements {
-    pub min_memory: u64,        // Minimum RAM in bytes
-    pub min_compute: u64,        // Minimum compute units
-    pub gpu_required: bool,      // Whether GPU is required
+    pub min_memory: u64,    // Minimum RAM in bytes
+    pub min_compute: u64,   // Minimum compute units
+    pub gpu_required: bool, // Whether GPU is required
     pub supported_hardware: Vec<HardwareType>,
 }
 
@@ -52,18 +52,18 @@ pub enum HardwareType {
 /// Pricing model for compute
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PricingModel {
-    pub base_price: U256,        // Base price per inference
-    pub per_token_price: U256,   // Price per token (for LLMs)
-    pub per_second_price: U256,  // Price per second of compute
+    pub base_price: U256,       // Base price per inference
+    pub per_token_price: U256,  // Price per token (for LLMs)
+    pub per_second_price: U256, // Price per second of compute
     pub currency: Currency,
 }
 
 /// Supported currencies
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Currency {
-    LAT,    // Native Lattice token
-    ETH,    // Ethereum
-    USDC,   // USD Coin
+    LAT,  // Native Lattice token
+    ETH,  // Ethereum
+    USDC, // USD Coin
 }
 
 /// Provider information
@@ -108,10 +108,10 @@ pub struct RequestId(pub [u8; 32]);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestStatus {
     Pending,
-    Assigned(Address),  // Assigned to provider
+    Assigned(Address), // Assigned to provider
     Executing,
-    Completed(Hash),    // Result hash
-    Failed(String),     // Error message
+    Completed(Hash), // Result hash
+    Failed(String),  // Error message
     Cancelled,
 }
 

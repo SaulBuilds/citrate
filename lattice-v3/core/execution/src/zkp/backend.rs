@@ -1,6 +1,6 @@
 use super::prover::Prover;
+use super::types::{ProofRequest, ProofResponse, ProofType, SerializableProof, ZKPError};
 use super::verifier::Verifier;
-use super::types::{ProofType, ProofRequest, ProofResponse, SerializableProof, ZKPError};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -11,18 +11,17 @@ pub struct ZKPBackend {
 }
 
 impl Default for ZKPBackend {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ZKPBackend {
     pub fn new() -> Self {
         let prover = Arc::new(Prover::new());
         let verifier = Arc::new(Verifier::new());
-        
-        Self {
-            prover,
-            verifier,
-        }
+
+        Self { prover, verifier }
     }
 
     /// Initialize the backend with setup for all proof types
@@ -32,34 +31,34 @@ impl ZKPBackend {
         self.prover.setup(ProofType::GradientSubmission)?;
         self.prover.setup(ProofType::StateTransition)?;
         self.prover.setup(ProofType::DataIntegrity)?;
-        
+
         Ok(())
     }
 
     /// Generate proof based on request
     pub fn generate_proof(&self, request: ProofRequest) -> Result<ProofResponse, ZKPError> {
         let start = Instant::now();
-        
+
         let proof = match request.proof_type {
             ProofType::ModelExecution => {
                 // Parse circuit data for model execution
-                let circuit_data: super::types::ModelExecutionCircuit = 
+                let circuit_data: super::types::ModelExecutionCircuit =
                     bincode::deserialize(&request.circuit_data)
                         .map_err(|_| ZKPError::InvalidCircuit)?;
-                
+
                 self.prover.prove_model_execution(
                     circuit_data.model_hash,
                     circuit_data.input_hash,
                     circuit_data.output_hash,
                     circuit_data.computation_trace,
                 )?
-            },
+            }
             ProofType::GradientSubmission => {
                 // Parse circuit data for gradient submission
-                let circuit_data: super::types::GradientProofCircuit = 
+                let circuit_data: super::types::GradientProofCircuit =
                     bincode::deserialize(&request.circuit_data)
                         .map_err(|_| ZKPError::InvalidCircuit)?;
-                
+
                 self.prover.prove_gradient_submission(
                     circuit_data.model_hash,
                     circuit_data.dataset_hash,
@@ -67,32 +66,32 @@ impl ZKPBackend {
                     circuit_data.loss_value,
                     circuit_data.num_samples,
                 )?
-            },
+            }
             ProofType::StateTransition => {
                 // Parse circuit data for state transition
-                let circuit_data: super::circuits::StateTransitionCircuit = 
+                let circuit_data: super::circuits::StateTransitionCircuit =
                     bincode::deserialize(&request.circuit_data)
                         .map_err(|_| ZKPError::InvalidCircuit)?;
-                
+
                 self.prover.prove_state_transition(
                     circuit_data.old_state_root,
                     circuit_data.new_state_root,
                     circuit_data.transaction_hash,
                 )?
-            },
+            }
             ProofType::DataIntegrity => {
                 // Parse circuit data for data integrity
-                let circuit_data: super::circuits::DataIntegrityCircuit = 
+                let circuit_data: super::circuits::DataIntegrityCircuit =
                     bincode::deserialize(&request.circuit_data)
                         .map_err(|_| ZKPError::InvalidCircuit)?;
-                
+
                 self.prover.prove_data_integrity(
                     circuit_data.data_hash,
                     circuit_data.merkle_path,
                     circuit_data.merkle_root,
                     circuit_data.leaf_index,
                 )?
-            },
+            }
         };
 
         let generation_time_ms = start.elapsed().as_millis() as u64;
@@ -122,36 +121,30 @@ impl ZKPBackend {
         output_tensor: Vec<u8>,
     ) -> Result<SerializableProof, ZKPError> {
         use sha3::{Digest, Sha3_256};
-        
+
         // Hash inputs and output
         let mut hasher = Sha3_256::new();
         for input in &input_tensors {
             hasher.update(input);
         }
         let input_hash = hasher.finalize_reset().to_vec();
-        
+
         hasher.update(&output_tensor);
         let output_hash = hasher.finalize_reset().to_vec();
-        
+
         // Create computation trace
-        let computation_trace = vec![
-            super::types::ComputationStep {
-                operation: operation.to_string(),
-                input_values: vec![input_tensors.len() as f64],
-                output_value: 1.0,
-            }
-        ];
-        
+        let computation_trace = vec![super::types::ComputationStep {
+            operation: operation.to_string(),
+            input_values: vec![input_tensors.len() as f64],
+            output_value: 1.0,
+        }];
+
         // Model hash (for tensor operations, we use operation type as identifier)
         hasher.update(operation.as_bytes());
         let model_hash = hasher.finalize().to_vec();
-        
-        self.prover.prove_model_execution(
-            model_hash,
-            input_hash,
-            output_hash,
-            computation_trace,
-        )
+
+        self.prover
+            .prove_model_execution(model_hash, input_hash, output_hash, computation_trace)
     }
 
     /// Verify tensor computation proof
@@ -163,27 +156,23 @@ impl ZKPBackend {
         output_tensor: Vec<u8>,
     ) -> Result<bool, ZKPError> {
         use sha3::{Digest, Sha3_256};
-        
+
         // Compute expected hashes
         let mut hasher = Sha3_256::new();
-        
+
         hasher.update(operation.as_bytes());
         let model_hash = hasher.finalize_reset().to_vec();
-        
+
         for input in &input_tensors {
             hasher.update(input);
         }
         let input_hash = hasher.finalize_reset().to_vec();
-        
+
         hasher.update(&output_tensor);
         let output_hash = hasher.finalize().to_vec();
-        
-        self.verifier.verify_model_execution(
-            proof,
-            &model_hash,
-            &input_hash,
-            &output_hash,
-        )
+
+        self.verifier
+            .verify_model_execution(proof, &model_hash, &input_hash, &output_hash)
     }
 
     /// Generate proof for model training
@@ -196,11 +185,11 @@ impl ZKPBackend {
         batch_size: u64,
     ) -> Result<SerializableProof, ZKPError> {
         use sha3::{Digest, Sha3_256};
-        
+
         let mut hasher = Sha3_256::new();
         hasher.update(&gradients);
         let gradient_hash = hasher.finalize().to_vec();
-        
+
         self.prover.prove_gradient_submission(
             model_id.to_vec(),
             dataset_id.to_vec(),
@@ -216,12 +205,12 @@ impl ZKPBackend {
         requests: Vec<ProofRequest>,
     ) -> Result<Vec<ProofResponse>, ZKPError> {
         let mut responses = Vec::new();
-        
+
         for request in requests {
             let response = self.generate_proof(request)?;
             responses.push(response);
         }
-        
+
         Ok(responses)
     }
 

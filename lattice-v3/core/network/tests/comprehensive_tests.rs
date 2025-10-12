@@ -1,9 +1,11 @@
 // Comprehensive tests for the network module
 
-use lattice_network::{PeerManager, PeerManagerConfig, PeerId, NetworkMessage, PeerInfo, Peer, peer::Direction};
+use lattice_network::{
+    peer::Direction, NetworkMessage, Peer, PeerId, PeerInfo, PeerManager, PeerManagerConfig,
+};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use std::net::SocketAddr;
 
 #[cfg(test)]
 mod network_tests {

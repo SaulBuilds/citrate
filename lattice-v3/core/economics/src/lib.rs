@@ -1,10 +1,10 @@
-pub mod token;
-pub mod rewards;
 pub mod genesis;
+pub mod rewards;
+pub mod token;
 
-pub use token::{Token, TokenConfig, DECIMALS};
+pub use genesis::{GenesisAccount, GenesisConfig};
 pub use rewards::{BlockReward, RewardCalculator, RewardConfig};
-pub use genesis::{GenesisConfig, GenesisAccount};
+pub use token::{Token, TokenConfig, DECIMALS};
 
 use primitive_types::U256;
 

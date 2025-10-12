@@ -1,16 +1,15 @@
 use crate::types::error::ApiError;
-use lattice_execution::types::{
-    ModelId, ModelState, TrainingJob, JobId, Address, 
-    ModelMetadata, AccessPolicy
-};
-use lattice_storage::StorageManager;
-use lattice_sequencer::{Mempool, TxClass};
+use lattice_consensus::types::{Hash, PublicKey, Signature, Transaction};
 use lattice_execution::executor::Executor;
-use lattice_consensus::types::{Hash, Transaction, PublicKey, Signature};
-use std::sync::Arc;
+use lattice_execution::types::{
+    AccessPolicy, Address, JobId, ModelId, ModelMetadata, ModelState, TrainingJob,
+};
+use lattice_sequencer::{Mempool, TxClass};
+use lattice_storage::StorageManager;
 use primitive_types::U256;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
+use std::sync::Arc;
 
 /// OpenAI-compatible chat completion request
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,11 +175,15 @@ impl AiApi {
         mempool: Arc<Mempool>,
         executor: Arc<Executor>,
     ) -> Self {
-        Self { storage, mempool, executor }
+        Self {
+            storage,
+            mempool,
+            executor,
+        }
     }
-    
+
     // ========== Model Management ==========
-    
+
     /// Deploy a new model to the network
     pub async fn deploy_model(
         &self,
@@ -196,18 +199,18 @@ impl AiApi {
         let mut model_hash_array = [0u8; 32];
         model_hash_array.copy_from_slice(&model_hash_bytes[..32]);
         let _model_hash = Hash::new(model_hash_array);
-        
+
         // We'll encode the model registration data in the transaction data field
-        
+
         // Get current nonce (get_nonce returns u64 directly, not Result)
         let nonce = self.executor.get_nonce(&from);
-        
+
         // Create transaction (Transaction doesn't have a new() constructor, build directly)
         // Convert Address to PublicKey for the from field
         let mut from_pk_bytes = [0u8; 32];
         from_pk_bytes[..20].copy_from_slice(&from.0);
         let from_pk = PublicKey::new(from_pk_bytes);
-        
+
         // Calculate transaction hash
         let mut hasher = Sha3_256::new();
         hasher.update(nonce.to_le_bytes());
@@ -216,7 +219,7 @@ impl AiApi {
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
         hash_array.copy_from_slice(&hash_bytes);
-        
+
         let tx = Transaction {
             hash: Hash::new(hash_array),
             nonce,
@@ -229,17 +232,19 @@ impl AiApi {
             signature: Signature::new([0u8; 64]), // Placeholder - needs proper signing
             tx_type: None, // Will be determined from data
         };
-        
+
         // Clone tx hash before moving tx to mempool
         let tx_hash = tx.hash;
-        
+
         // Submit to mempool (add_transaction is async and takes ownership)
-        self.mempool.add_transaction(tx, TxClass::ModelUpdate).await
+        self.mempool
+            .add_transaction(tx, TxClass::ModelUpdate)
+            .await
             .map_err(|e| ApiError::InternalError(e.to_string()))?;
-        
+
         Ok(tx_hash)
     }
-    
+
     /// Update an existing model
     pub async fn update_model(
         &self,
@@ -251,14 +256,14 @@ impl AiApi {
         gas_price: u64,
     ) -> Result<Hash, ApiError> {
         // We'll encode the model update data in the transaction data field
-        
+
         let nonce = self.executor.get_nonce(&from);
-        
+
         // Convert Address to PublicKey
         let mut from_pk_bytes = [0u8; 32];
         from_pk_bytes[..20].copy_from_slice(&from.0);
         let from_pk = PublicKey::new(from_pk_bytes);
-        
+
         // Calculate transaction hash
         let mut hasher = Sha3_256::new();
         hasher.update(nonce.to_le_bytes());
@@ -267,7 +272,7 @@ impl AiApi {
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
         hash_array.copy_from_slice(&hash_bytes);
-        
+
         let tx = Transaction {
             hash: Hash::new(hash_array),
             nonce,
@@ -280,47 +285,55 @@ impl AiApi {
             signature: Signature::new([0u8; 64]),
             tx_type: None, // Will be determined from data
         };
-        
+
         // Clone tx hash before moving tx to mempool
         let tx_hash = tx.hash;
-        
-        self.mempool.add_transaction(tx, TxClass::ModelUpdate).await
+
+        self.mempool
+            .add_transaction(tx, TxClass::ModelUpdate)
+            .await
             .map_err(|e| ApiError::InternalError(e.to_string()))?;
-        
+
         Ok(tx_hash)
     }
-    
+
     /// Get model information
     pub async fn get_model(&self, model_id: ModelId) -> Result<ModelState, ApiError> {
-        self.storage.state
+        self.storage
+            .state
             .get_model(&model_id)
             .map_err(|e| ApiError::InternalError(e.to_string()))?
             .ok_or_else(|| ApiError::ModelNotFound(format!("{:?}", model_id)))
     }
-    
+
     /// List registered models with optional filtering
-    pub async fn list_models(&self, owner: Option<Address>, limit: Option<usize>) -> Result<Vec<ModelId>, ApiError> {
+    pub async fn list_models(
+        &self,
+        owner: Option<Address>,
+        limit: Option<usize>,
+    ) -> Result<Vec<ModelId>, ApiError> {
         if let Some(addr) = owner {
-            self.storage.state
+            self.storage
+                .state
                 .get_models_by_owner(&addr)
                 .map_err(|e| ApiError::InternalError(e.to_string()))
         } else {
             // Get all models (placeholder implementation)
             // In real implementation, would iterate through state storage
             let mut model_ids = Vec::new();
-            
+
             if let Some(limit) = limit {
                 model_ids.truncate(limit);
             }
-            
+
             Ok(model_ids)
         }
     }
-    
+
     /// Get model statistics
     pub async fn get_model_stats(&self, model_id: ModelId) -> Result<ModelStats, ApiError> {
         let model = self.get_model(model_id).await?;
-        
+
         Ok(ModelStats {
             model_id: hex::encode(model_id.0.as_bytes()),
             total_inferences: model.usage_stats.total_inferences,
@@ -335,9 +348,9 @@ impl AiApi {
             last_used: model.usage_stats.last_used,
         })
     }
-    
+
     // ========== Inference Management ==========
-    
+
     /// Request model inference
     pub async fn request_inference(
         &self,
@@ -348,27 +361,29 @@ impl AiApi {
         // Parse model ID
         let model_id_bytes = hex::decode(&request.model_id)
             .map_err(|_| ApiError::InvalidParams("Invalid model ID format".to_string()))?;
-        
+
         if model_id_bytes.len() != 32 {
-            return Err(ApiError::InvalidParams("Model ID must be 32 bytes".to_string()));
+            return Err(ApiError::InvalidParams(
+                "Model ID must be 32 bytes".to_string(),
+            ));
         }
-        
+
         let mut model_id_array = [0u8; 32];
         model_id_array.copy_from_slice(&model_id_bytes);
         let model_id = ModelId(Hash::new(model_id_array));
-        
+
         // Check if model exists
         self.get_model(model_id).await?;
-        
+
         // We'll encode the inference request data in the transaction data field
-        
+
         let nonce = self.executor.get_nonce(&from);
-        
+
         // Convert Address to PublicKey
         let mut from_pk_bytes = [0u8; 32];
         from_pk_bytes[..20].copy_from_slice(&from.0);
         let from_pk = PublicKey::new(from_pk_bytes);
-        
+
         // Calculate transaction hash
         let mut hasher = Sha3_256::new();
         hasher.update(nonce.to_le_bytes());
@@ -377,7 +392,7 @@ impl AiApi {
         let hash_bytes = hasher.finalize();
         let mut hash_array = [0u8; 32];
         hash_array.copy_from_slice(&hash_bytes);
-        
+
         let tx = Transaction {
             hash: Hash::new(hash_array),
             nonce,
@@ -390,24 +405,31 @@ impl AiApi {
             signature: Signature::new([0u8; 64]),
             tx_type: None,
         };
-        
+
         // Clone tx hash before moving tx to mempool
         let tx_hash = tx.hash;
-        
-        self.mempool.add_transaction(tx, TxClass::Inference).await
+
+        self.mempool
+            .add_transaction(tx, TxClass::Inference)
+            .await
             .map_err(|e| ApiError::InternalError(e.to_string()))?;
-        
+
         Ok(tx_hash)
     }
-    
+
     /// Get inference result
-    pub async fn get_inference_result(&self, request_id: Hash) -> Result<InferenceResult, ApiError> {
+    pub async fn get_inference_result(
+        &self,
+        request_id: Hash,
+    ) -> Result<InferenceResult, ApiError> {
         // Get transaction receipt from transaction store
-        let receipt = self.storage.transactions
+        let receipt = self
+            .storage
+            .transactions
             .get_receipt(&request_id)
             .map_err(|e| ApiError::InternalError(e.to_string()))?
             .ok_or_else(|| ApiError::TransactionNotFound(format!("{:?}", request_id)))?;
-        
+
         // Extract inference data from receipt
         Ok(InferenceResult {
             request_id: hex::encode(request_id.as_bytes()),
@@ -415,13 +437,21 @@ impl AiApi {
             output_data: receipt.output,
             gas_used: receipt.gas_used,
             execution_time_ms: 100, // Placeholder
-            status: if receipt.status { "completed".to_string() } else { "failed".to_string() },
-            error: if !receipt.status { Some("Execution failed".to_string()) } else { None },
+            status: if receipt.status {
+                "completed".to_string()
+            } else {
+                "failed".to_string()
+            },
+            error: if !receipt.status {
+                Some("Execution failed".to_string())
+            } else {
+                None
+            },
         })
     }
-    
+
     // ========== Training Job Management ==========
-    
+
     /// Create a new training job
     pub async fn create_training_job(
         &self,
@@ -433,54 +463,58 @@ impl AiApi {
         // Parse model ID
         let model_id_bytes = hex::decode(&request.model_id)
             .map_err(|_| ApiError::InvalidParams("Invalid model ID format".to_string()))?;
-        
+
         let mut model_id_array = [0u8; 32];
         model_id_array.copy_from_slice(&model_id_bytes);
         let model_id = ModelId(Hash::new(model_id_array));
-        
+
         // Parse dataset hash
         let dataset_hash_bytes = hex::decode(&request.dataset_hash)
             .map_err(|_| ApiError::InvalidParams("Invalid dataset hash format".to_string()))?;
-        
+
         let mut dataset_hash_array = [0u8; 32];
         dataset_hash_array.copy_from_slice(&dataset_hash_bytes);
         let dataset_hash = Hash::new(dataset_hash_array);
-        
+
         // Parse participants
-        let participants: Result<Vec<Address>, ApiError> = request.participants
+        let participants: Result<Vec<Address>, ApiError> = request
+            .participants
             .iter()
             .map(|p| {
-                let addr_bytes = hex::decode(p.trim_start_matches("0x"))
-                    .map_err(|_| ApiError::InvalidParams("Invalid participant address".to_string()))?;
-                
+                let addr_bytes = hex::decode(p.trim_start_matches("0x")).map_err(|_| {
+                    ApiError::InvalidParams("Invalid participant address".to_string())
+                })?;
+
                 if addr_bytes.len() != 20 {
-                    return Err(ApiError::InvalidParams("Address must be 20 bytes".to_string()));
+                    return Err(ApiError::InvalidParams(
+                        "Address must be 20 bytes".to_string(),
+                    ));
                 }
-                
+
                 let mut addr_array = [0u8; 20];
                 addr_array.copy_from_slice(&addr_bytes);
                 Ok(Address(addr_array))
             })
             .collect();
-        
+
         let participants = participants?;
-        
+
         // Parse reward pool
         let reward_pool = U256::from_dec_str(&request.reward_pool)
             .map_err(|_| ApiError::InvalidParams("Invalid reward pool amount".to_string()))?;
-        
+
         // Generate job ID
         let mut hasher = Sha3_256::new();
         hasher.update(model_id.0.as_bytes());
         hasher.update(dataset_hash.as_bytes());
         hasher.update(from.0);
         hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
-        
+
         let job_id_bytes = hasher.finalize();
         let mut job_id_array = [0u8; 32];
         job_id_array.copy_from_slice(&job_id_bytes[..32]);
         let job_id = JobId(Hash::new(job_id_array));
-        
+
         // Create training job
         let training_job = TrainingJob {
             id: job_id,
@@ -495,37 +529,39 @@ impl AiApi {
             created_at: chrono::Utc::now().timestamp() as u64,
             completed_at: None,
         };
-        
+
         // Store training job
-        self.storage.state
+        self.storage
+            .state
             .put_training_job(&training_job)
             .map_err(|e| ApiError::InternalError(e.to_string()))?;
-        
+
         Ok(Hash::new(*job_id.0.as_bytes()))
     }
-    
+
     /// Get training job status
     pub async fn get_training_job(&self, job_id: JobId) -> Result<TrainingJob, ApiError> {
-        self.storage.state
+        self.storage
+            .state
             .get_training_job(&job_id)
             .map_err(|e| ApiError::InternalError(e.to_string()))?
             .ok_or_else(|| ApiError::InternalError(format!("Training job {:?} not found", job_id)))
     }
-    
+
     /// List training jobs
     pub async fn list_training_jobs(
-        &self, 
+        &self,
         _model_id: Option<ModelId>,
         _owner: Option<Address>,
         _status: Option<String>,
-        _limit: Option<usize>
+        _limit: Option<usize>,
     ) -> Result<Vec<JobId>, ApiError> {
         // For production, we need to implement proper indexing for training jobs
         // Currently returning empty list as a placeholder
         // TODO: Implement database iteration and filtering for training jobs
-        
+
         let filtered_jobs: Vec<JobId> = Vec::new();
-        
+
         // The code below would apply filters in production:
         /*
         let mut filtered_jobs: Vec<JobId> = all_jobs
@@ -536,13 +572,13 @@ impl AiApi {
                         return false;
                     }
                 }
-                
+
                 if let Some(owner_filter) = owner {
                     if job.owner != owner_filter {
                         return false;
                     }
                 }
-                
+
                 if let Some(status_filter) = &status {
                     let job_status_str = match job.status {
                         lattice_execution::types::JobStatus::Pending => "pending",
@@ -551,28 +587,28 @@ impl AiApi {
                         lattice_execution::types::JobStatus::Failed => "failed",
                         lattice_execution::types::JobStatus::Cancelled => "cancelled",
                     };
-                    
+
                     if job_status_str != status_filter {
                         return false;
                     }
                 }
-                
+
                 true
             })
             .map(|(job_id, _)| job_id)
             .collect();
         */
-        
+
         // In production implementation would truncate here
         // if let Some(limit) = limit {
         //     filtered_jobs.truncate(limit);
         // }
-        
+
         Ok(filtered_jobs)
     }
-    
+
     // ========== LoRA Adapter Management ==========
-    
+
     /// Create a new LoRA adapter
     pub async fn create_lora(
         &self,
@@ -582,26 +618,26 @@ impl AiApi {
         // Parse base model ID
         let model_id_bytes = hex::decode(&request.base_model_id)
             .map_err(|_| ApiError::InvalidParams("Invalid base model ID format".to_string()))?;
-        
+
         let mut model_id_array = [0u8; 32];
         model_id_array.copy_from_slice(&model_id_bytes);
         let base_model_id = ModelId(Hash::new(model_id_array));
-        
+
         // Verify base model exists
         self.get_model(base_model_id).await?;
-        
+
         // Generate adapter ID
         let mut hasher = Sha3_256::new();
         hasher.update(base_model_id.0.as_bytes());
         hasher.update(from.0);
         hasher.update(&request.adapter_data);
         hasher.update(chrono::Utc::now().timestamp().to_le_bytes());
-        
+
         let adapter_id_bytes = hasher.finalize();
         let mut adapter_id_array = [0u8; 32];
         adapter_id_array.copy_from_slice(&adapter_id_bytes[..32]);
         let adapter_id = Hash::new(adapter_id_array);
-        
+
         // Create LoRA adapter record
         let _lora_info = LoRAInfo {
             adapter_id: hex::encode(adapter_id.as_bytes()),
@@ -613,35 +649,37 @@ impl AiApi {
             size_bytes: request.adapter_data.len() as u64,
             created_at: chrono::Utc::now().timestamp() as u64,
         };
-        
+
         // Store LoRA adapter (simplified - would use proper storage)
         // In real implementation, would store adapter_data to IPFS/Arweave
         // and store metadata in state
-        
+
         Ok(adapter_id)
     }
-    
+
     /// Get LoRA adapter information
     pub async fn get_lora(&self, _adapter_id: Hash) -> Result<LoRAInfo, ApiError> {
         // Placeholder implementation
         // Would retrieve from storage
-        Err(ApiError::InternalError("LoRA retrieval not yet implemented".to_string()))
+        Err(ApiError::InternalError(
+            "LoRA retrieval not yet implemented".to_string(),
+        ))
     }
-    
+
     /// List LoRA adapters for a base model
     pub async fn list_loras(
         &self,
         _base_model_id: Option<ModelId>,
         _owner: Option<Address>,
-        _limit: Option<usize>
+        _limit: Option<usize>,
     ) -> Result<Vec<LoRAInfo>, ApiError> {
         // Placeholder implementation
         // Would retrieve from storage with filtering
         Ok(Vec::new())
     }
-    
+
     // ========== OpenAI/Anthropic Compatible Endpoints ==========
-    
+
     /// OpenAI-compatible chat completions
     pub async fn chat_completions(
         &self,
@@ -652,11 +690,11 @@ impl AiApi {
         // In real implementation, would search through state storage
         // For now, create a mock model ID
         let mock_model_id = ModelId(Hash::new([0u8; 32]));
-        
+
         // Prepare input data (serialize messages)
         let input_data = serde_json::to_vec(&request.messages)
             .map_err(|e| ApiError::InternalError(e.to_string()))?;
-        
+
         // Create inference request
         let inference_req = InferenceRequest {
             model_id: hex::encode(mock_model_id.0.as_bytes()),
@@ -664,19 +702,23 @@ impl AiApi {
             max_gas: 1_000_000, // Default gas limit
             callback_url: None,
         };
-        
+
         // For streaming responses, we'd need WebSocket support
         if request.stream.unwrap_or(false) {
-            return Err(ApiError::InternalError("Streaming not yet implemented".to_string()));
+            return Err(ApiError::InternalError(
+                "Streaming not yet implemented".to_string(),
+            ));
         }
-        
+
         // Submit inference (simplified)
-        let request_hash = self.request_inference(
-            inference_req,
-            from.unwrap_or(Address::zero()),
-            10000, // Default gas price
-        ).await?;
-        
+        let request_hash = self
+            .request_inference(
+                inference_req,
+                from.unwrap_or(Address::zero()),
+                10000, // Default gas price
+            )
+            .await?;
+
         // In real implementation, would wait for result or return async
         Ok(ChatCompletionResponse {
             id: hex::encode(request_hash.as_bytes()),
@@ -692,13 +734,13 @@ impl AiApi {
                 finish_reason: "stop".to_string(),
             }],
             usage: TokenUsage {
-                prompt_tokens: 50, // Placeholder
+                prompt_tokens: 50,     // Placeholder
                 completion_tokens: 20, // Placeholder
                 total_tokens: 70,
             },
         })
     }
-    
+
     /// OpenAI-compatible embeddings
     pub async fn embeddings(
         &self,
@@ -707,9 +749,10 @@ impl AiApi {
     ) -> Result<EmbeddingsResponse, ApiError> {
         // Similar to chat completions but for embeddings (placeholder implementation)
         // In real implementation, would search through state storage for model
-        
+
         // Prepare embeddings data
-        let embeddings_data: Vec<EmbeddingData> = request.input
+        let embeddings_data: Vec<EmbeddingData> = request
+            .input
             .iter()
             .enumerate()
             .map(|(i, _)| EmbeddingData {
@@ -718,7 +761,7 @@ impl AiApi {
                 index: i as u32,
             })
             .collect();
-        
+
         Ok(EmbeddingsResponse {
             object: "list".to_string(),
             data: embeddings_data,

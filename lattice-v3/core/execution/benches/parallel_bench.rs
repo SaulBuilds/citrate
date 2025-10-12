@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion, black_box};
-use lattice_consensus::types::{Transaction, PublicKey, Hash, Signature};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use lattice_consensus::types::{Hash, PublicKey, Signature, Transaction};
 use std::collections::HashMap;
 
 fn mk_tx(sender: u8, nonce: u64) -> Transaction {
@@ -46,7 +46,9 @@ fn plan_round_robin<'a>(groups: &'a [Vec<&'a Transaction>]) -> Vec<&'a Transacti
                 progressed = true;
             }
         }
-        if !progressed { break; }
+        if !progressed {
+            break;
+        }
     }
     out
 }

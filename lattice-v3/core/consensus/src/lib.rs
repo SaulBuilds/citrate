@@ -1,14 +1,14 @@
-pub mod types;
-pub mod crypto;
-pub mod ghostdag;
-pub mod dag_store;
-pub mod tip_selection;
-pub mod vrf;
 pub mod chain_selection;
+pub mod crypto;
+pub mod dag_store;
+pub mod ghostdag;
+pub mod tip_selection;
+pub mod types;
+pub mod vrf;
 
-pub use types::*;
+pub use chain_selection::{ChainSelectionError, ChainSelector, ChainState, ReorgEvent};
+pub use dag_store::{DagStats, DagStore, DagStoreError};
 pub use ghostdag::{GhostDag, GhostDagError};
-pub use dag_store::{DagStore, DagStoreError, DagStats};
-pub use tip_selection::{TipSelector, ParentSelector, SelectionStrategy, TipSelectionError};
-pub use vrf::{VrfProposerSelector, LeaderElection, Validator, VrfError};
-pub use chain_selection::{ChainSelector, ChainState, ReorgEvent, ChainSelectionError};
+pub use tip_selection::{ParentSelector, SelectionStrategy, TipSelectionError, TipSelector};
+pub use types::*;
+pub use vrf::{LeaderElection, Validator, VrfError, VrfProposerSelector};

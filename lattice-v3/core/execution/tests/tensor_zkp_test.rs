@@ -1,7 +1,7 @@
 #[cfg(feature = "ai_zkp")]
 mod ai_zkp_tests {
-    use lattice_execution::tensor::{TensorEngine, TensorOps, Tensor};
-    use lattice_execution::zkp::{ZKPBackend, ProofType};
+    use lattice_execution::tensor::{Tensor, TensorEngine, TensorOps};
+    use lattice_execution::zkp::{ProofType, ZKPBackend};
 
     #[test]
     fn test_tensor_operations() {
@@ -36,19 +36,17 @@ mod ai_zkp_tests {
         backend.initialize().unwrap();
         let estimate = backend.estimate_proving_time(ProofType::ModelExecution);
         assert!(estimate > 0);
-        let proof = backend.prove_tensor_computation(
-            "add",
-            vec![vec![1, 2, 3], vec![4, 5, 6]],
-            vec![5, 7, 9],
-        ).unwrap();
+        let proof = backend
+            .prove_tensor_computation("add", vec![vec![1, 2, 3], vec![4, 5, 6]], vec![5, 7, 9])
+            .unwrap();
         assert!(!proof.proof_bytes.is_empty());
         assert!(!proof.public_inputs.is_empty());
     }
 
     #[test]
     fn test_vm_integration() {
-        use lattice_execution::vm::VM;
         use lattice_execution::vm::ai_opcodes::AIOpcode;
+        use lattice_execution::vm::VM;
         let mut vm = VM::new(1_000_000);
         let opcodes = vec![
             (0xA0, Some(AIOpcode::LOAD_MODEL)),

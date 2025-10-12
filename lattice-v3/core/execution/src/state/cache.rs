@@ -1,9 +1,9 @@
-use crate::types::{Address, AccountState};
+use crate::types::{AccountState, Address};
 use lru::LruCache;
 use parking_lot::RwLock;
+use primitive_types::U256;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use primitive_types::U256;
 
 /// Cache statistics for monitoring
 #[derive(Debug, Clone, Default)]
@@ -56,16 +56,16 @@ pub struct StorageKey {
 pub struct StateCache {
     /// Account cache
     accounts: Arc<RwLock<LruCache<Address, AccountState>>>,
-    
+
     /// Storage cache (address + key -> value)
     storage: Arc<RwLock<LruCache<StorageKey, U256>>>,
-    
+
     /// Code cache
     code: Arc<RwLock<LruCache<Address, Vec<u8>>>>,
-    
+
     /// Cache statistics
     stats: Arc<RwLock<CacheStats>>,
-    
+
     /// Prefetch configuration
     prefetch_enabled: bool,
     prefetch_depth: usize,
@@ -79,13 +79,13 @@ impl StateCache {
     ) -> Self {
         Self {
             accounts: Arc::new(RwLock::new(LruCache::new(
-                NonZeroUsize::new(account_cache_size).unwrap()
+                NonZeroUsize::new(account_cache_size).unwrap(),
             ))),
             storage: Arc::new(RwLock::new(LruCache::new(
-                NonZeroUsize::new(storage_cache_size).unwrap()
+                NonZeroUsize::new(storage_cache_size).unwrap(),
             ))),
             code: Arc::new(RwLock::new(LruCache::new(
-                NonZeroUsize::new(code_cache_size).unwrap()
+                NonZeroUsize::new(code_cache_size).unwrap(),
             ))),
             stats: Arc::new(RwLock::new(CacheStats::default())),
             prefetch_enabled: true,
@@ -97,7 +97,7 @@ impl StateCache {
     pub fn get_account(&self, address: &Address) -> Option<AccountState> {
         let mut cache = self.accounts.write();
         let mut stats = self.stats.write();
-        
+
         if let Some(account) = cache.get(address) {
             stats.account_hits += 1;
             Some(account.clone())
@@ -119,10 +119,10 @@ impl StateCache {
             address: *address,
             key: *key,
         };
-        
+
         let mut cache = self.storage.write();
         let mut stats = self.stats.write();
-        
+
         if let Some(value) = cache.get(&storage_key) {
             stats.storage_hits += 1;
             Some(*value)
@@ -137,7 +137,7 @@ impl StateCache {
         let storage_key = StorageKey { address, key };
         let mut cache = self.storage.write();
         cache.put(storage_key, value);
-        
+
         // Prefetch adjacent keys if enabled
         if self.prefetch_enabled {
             self.prefetch_storage_keys(address, key);
@@ -165,7 +165,7 @@ impl StateCache {
     pub fn get_code(&self, address: &Address) -> Option<Vec<u8>> {
         let mut cache = self.code.write();
         let mut stats = self.stats.write();
-        
+
         if let Some(code) = cache.get(address) {
             stats.code_hits += 1;
             Some(code.clone())
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn test_account_cache() {
         let cache = StateCache::new(10, 100, 10);
-        
+
         let addr = Address([1u8; 20]);
         let account = AccountState {
             nonce: 1,
@@ -232,11 +232,11 @@ mod tests {
             storage_root: Hash::default(),
             model_permissions: vec![],
         };
-        
+
         // Miss on first access
         assert!(cache.get_account(&addr).is_none());
         assert_eq!(cache.stats().account_misses, 1);
-        
+
         // Put and hit
         cache.put_account(addr, account.clone());
         assert_eq!(cache.get_account(&addr), Some(account));
@@ -246,15 +246,15 @@ mod tests {
     #[test]
     fn test_storage_cache() {
         let cache = StateCache::new(10, 100, 10);
-        
+
         let addr = Address([1u8; 20]);
         let key = U256::from(42);
         let value = U256::from(100);
-        
+
         // Miss on first access
         assert!(cache.get_storage(&addr, &key).is_none());
         assert_eq!(cache.stats().storage_misses, 1);
-        
+
         // Put and hit
         cache.put_storage(addr, key, value);
         assert_eq!(cache.get_storage(&addr, &key), Some(value));
@@ -265,26 +265,29 @@ mod tests {
     fn test_hit_rates() {
         let cache = StateCache::new(10, 100, 10);
         let addr = Address([1u8; 20]);
-        
+
         // Initial hit rate is 0
         assert_eq!(cache.stats().account_hit_rate(), 0.0);
-        
+
         // After 1 miss
         cache.get_account(&addr);
         assert_eq!(cache.stats().account_hit_rate(), 0.0);
-        
+
         // After 1 miss and 3 hits
-        cache.put_account(addr, AccountState {
-            nonce: 0,
-            balance: U256::zero(),
-            code_hash: Hash::default(),
-            storage_root: Hash::default(),
-            model_permissions: vec![],
-        });
+        cache.put_account(
+            addr,
+            AccountState {
+                nonce: 0,
+                balance: U256::zero(),
+                code_hash: Hash::default(),
+                storage_root: Hash::default(),
+                model_permissions: vec![],
+            },
+        );
         cache.get_account(&addr);
         cache.get_account(&addr);
         cache.get_account(&addr);
-        
+
         assert_eq!(cache.stats().account_hit_rate(), 0.75); // 3 hits / 4 total
     }
 }

@@ -11,11 +11,8 @@ pub static VM_EXECUTIONS_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
 });
 
 pub static VM_GAS_USED: Lazy<Histogram> = Lazy::new(|| {
-    register_histogram!(
-        "lattice_vm_gas_used",
-        "Gas used by VM execution"
-    )
-    .expect("register lattice_vm_gas_used")
+    register_histogram!("lattice_vm_gas_used", "Gas used by VM execution")
+        .expect("register lattice_vm_gas_used")
 });
 
 pub static PRECOMPILE_CALLS_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
@@ -26,4 +23,3 @@ pub static PRECOMPILE_CALLS_TOTAL: Lazy<CounterVec> = Lazy::new(|| {
     )
     .expect("register lattice_precompile_calls_total")
 });
-

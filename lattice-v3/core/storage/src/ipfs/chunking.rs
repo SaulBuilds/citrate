@@ -2,8 +2,8 @@
 //! Optimized for Apple Silicon and Metal GPU compatibility
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use blake3;
+use serde::{Deserialize, Serialize};
 
 use super::Cid;
 use super::ModelMetadata;
@@ -46,7 +46,7 @@ pub fn chunk_model(model_data: &[u8], chunk_size: usize) -> Result<Vec<Chunk>> {
             }
         })
         .collect();
-    
+
     Ok(chunks)
 }
 
@@ -54,16 +54,16 @@ pub fn chunk_model(model_data: &[u8], chunk_size: usize) -> Result<Vec<Chunk>> {
 pub fn reconstruct_model(mut chunks: Vec<Chunk>) -> Vec<u8> {
     // Sort by index to ensure correct order
     chunks.sort_by_key(|c| c.index);
-    
+
     // Calculate total size
     let total_size: usize = chunks.iter().map(|c| c.size).sum();
     let mut result = Vec::with_capacity(total_size);
-    
+
     // Concatenate chunks
     for chunk in chunks {
         result.extend(chunk.data);
     }
-    
+
     result
 }
 
@@ -95,9 +95,9 @@ mod tests {
     fn test_chunk_and_reconstruct() {
         let original_data = vec![1u8; 1000];
         let chunks = chunk_model(&original_data, 256).unwrap();
-        
+
         assert_eq!(chunks.len(), 4); // 1000 / 256 = 3.9, so 4 chunks
-        
+
         let reconstructed = reconstruct_model(chunks);
         assert_eq!(original_data, reconstructed);
     }
@@ -106,7 +106,7 @@ mod tests {
     fn test_chunk_verification() {
         let data = vec![42u8; 100];
         let chunks = chunk_model(&data, 50).unwrap();
-        
+
         for chunk in &chunks {
             assert!(verify_chunk(chunk));
         }

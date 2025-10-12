@@ -9,7 +9,7 @@ mod commands;
 mod config;
 mod utils;
 
-use commands::{account, contract, governance, model, network};
+use commands::{account, advanced, contract, governance, model, network, wizard};
 
 #[derive(Parser)]
 #[command(
@@ -57,6 +57,14 @@ enum Commands {
     #[command(subcommand)]
     Governance(governance::GovernanceCommands),
 
+    /// Advanced network monitoring and debugging tools
+    #[command(subcommand)]
+    Advanced(advanced::AdvancedCommands),
+
+    /// Interactive wizards for setup and deployment
+    #[command(subcommand)]
+    Wizard(wizard::WizardCommands),
+
     /// Initialize configuration
     Init {
         /// Force overwrite existing config
@@ -93,6 +101,8 @@ async fn main() -> Result<()> {
         Commands::Contract(cmd) => contract::execute(cmd, &config).await?,
         Commands::Network(cmd) => network::execute(cmd, &config).await?,
         Commands::Governance(cmd) => governance::execute(cmd, &config).await?,
+        Commands::Advanced(cmd) => advanced::execute(cmd, &config).await?,
+        Commands::Wizard(cmd) => wizard::execute(cmd, &config).await?,
         Commands::Init { force } => {
             config::Config::init(force)?;
             println!("{}", "✓ Configuration initialized successfully".green());

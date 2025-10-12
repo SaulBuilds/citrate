@@ -70,3 +70,8 @@ class IPFSError(LatticeError):
 class ContractError(LatticeError):
     """Smart contract execution error"""
     pass
+
+
+class IPFSError(LatticeError):
+    """IPFS storage error"""
+    pass

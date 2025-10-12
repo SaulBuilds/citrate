@@ -1,13 +1,15 @@
 //lattice-v3/cli/src/commands/model.rs
 
 use anyhow::{Context, Result};
-use base64::Engine;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use clap::Subcommand;
 use colored::Colorize;
 use serde_json::json;
 use sha3::Digest;
 use std::fs;
-use std::path::PathBuf; // for Keccak256::digest
+use std::path::PathBuf;
+use std::time::Duration;
+use tokio::time::sleep;
 
 use crate::config::Config;
 
@@ -200,8 +202,8 @@ async fn deploy_model(
         serde_json::from_str(&content)?
     } else {
         json!({
-            "name": name.unwrap_or_else(|| "Unnamed Model".to_string()),
-            "version": version.unwrap_or_else(|| "1.0.0".to_string()),
+            "name": name.as_ref().map(|s| s.as_str()).unwrap_or("Unnamed Model"),
+            "version": version.as_ref().map(|s| s.as_str()).unwrap_or("1.0.0"),
             "format": model_format,
             "size": model_data.len(),
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -725,4 +727,38 @@ async fn verify_proof(
     }
 
     Ok(())
+}
+
+async fn wait_for_receipt(config: &Config, tx_hash: &str) -> Result<serde_json::Value> {
+    let client = reqwest::Client::new();
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: usize = 30;
+
+    loop {
+        attempts += 1;
+
+        let response = client
+            .post(&config.rpc_endpoint)
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "method": "eth_getTransactionReceipt",
+                "params": [tx_hash],
+                "id": 1
+            }))
+            .send()
+            .await
+            .context("Failed to connect to RPC endpoint")?;
+
+        let result: serde_json::Value = response.json().await?;
+
+        if let Some(receipt) = result["result"].as_object() {
+            return Ok(serde_json::Value::Object(receipt.clone()));
+        }
+
+        if attempts >= MAX_ATTEMPTS {
+            anyhow::bail!("Transaction receipt not found after {} attempts", MAX_ATTEMPTS);
+        }
+
+        sleep(Duration::from_secs(2)).await;
+    }
 }

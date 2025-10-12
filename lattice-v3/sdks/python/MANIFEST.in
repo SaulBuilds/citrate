@@ -1,0 +1,11 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include requirements.txt
+include pyproject.toml
+recursive-include lattice_sdk *.py *.pyi
+recursive-include lattice_sdk py.typed
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude tests *
+global-exclude .DS_Store

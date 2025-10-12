@@ -40,7 +40,7 @@ impl ExecutionContext {
             gas_limit: tx.gas_limit,
             gas_used: 0,
             gas_price: tx.gas_price,
-            origin: Address::from_public_key(&tx.from),
+            origin: crate::address_utils::normalize_address(&tx.from),
             logs: Vec::new(),
             output: Vec::new(),
         }
@@ -339,7 +339,7 @@ impl Executor {
         tx: &Transaction,
     ) -> Result<TransactionReceipt, ExecutionError> {
         let mut context = ExecutionContext::new(block, tx);
-        let from = Address::from_public_key(&tx.from);
+        let from = crate::address_utils::normalize_address(&tx.from);
 
         // Create snapshot for potential rollback
         let snapshot = self.state_db.snapshot();
@@ -436,7 +436,7 @@ impl Executor {
             })
         } else {
             // Contract call or special operation
-            let to = Address::from_public_key(&tx.to.unwrap());
+            let to = crate::address_utils::normalize_address(&tx.to.unwrap());
 
             // Check first 4 bytes for function selector
             if tx.data.len() >= 4 {

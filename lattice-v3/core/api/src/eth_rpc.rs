@@ -275,8 +275,8 @@ pub fn register_eth_methods(
             Err(_) => {
                 // Fallback: check mempool for pending transaction
                 if let Some(tx) = block_on(mempool_tx_lookup.get_transaction(&h)) {
-                    let from_addr = lattice_execution::types::Address::from_public_key(&tx.from);
-                    let to_addr_opt = tx.to.as_ref().map(lattice_execution::types::Address::from_public_key);
+                    let from_addr = lattice_execution::address_utils::normalize_address(&tx.from);
+                    let to_addr_opt = tx.to.as_ref().map(lattice_execution::address_utils::normalize_address);
                     Ok(json!({
                         "hash": format!("0x{}", hex::encode(tx.hash.as_bytes())),
                         "nonce": format!("0x{:x}", tx.nonce),
@@ -532,7 +532,7 @@ pub fn register_eth_methods(
             let mut max_nonce = None;
             for tx in txs {
                 // Derive sender address from tx.from
-                let sender_addr = Address::from_public_key(&tx.from);
+                let sender_addr = lattice_execution::address_utils::normalize_address(&tx.from);
                 if sender_addr.0 == addr_bytes {
                     max_nonce = Some(max_nonce.map_or(tx.nonce, |m: u64| m.max(tx.nonce)));
                 }
@@ -956,7 +956,7 @@ pub fn register_eth_methods(
             );
 
             // Convert from address
-            let from_addr = lattice_execution::types::Address::from_public_key(&tx.from);
+            let from_addr = lattice_execution::address_utils::normalize_address(&tx.from);
             tx_obj.insert(
                 "from".to_string(),
                 Value::String(format!("0x{}", hex::encode(from_addr.0))),
@@ -964,7 +964,7 @@ pub fn register_eth_methods(
 
             // Convert to address
             if let Some(to_pk) = tx.to {
-                let to_addr = lattice_execution::types::Address::from_public_key(&to_pk);
+                let to_addr = lattice_execution::address_utils::normalize_address(&to_pk);
                 tx_obj.insert(
                     "to".to_string(),
                     Value::String(format!("0x{}", hex::encode(to_addr.0))),
@@ -1004,5 +1004,72 @@ pub fn register_eth_methods(
         );
 
         Ok(Value::Object(result))
+    });
+
+    // lattice_getTransactionStatus - Check if transaction is in mempool or mined
+    let mempool_status = mempool.clone();
+    let storage_status = storage.clone();
+    io_handler.add_sync_method("lattice_getTransactionStatus", move |params: Params| {
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing transaction hash"));
+        }
+
+        let tx_hash_str = match params[0].as_str() {
+            Some(s) => s,
+            None => return Err(jsonrpc_core::Error::invalid_params("Invalid transaction hash")),
+        };
+
+        // Parse transaction hash
+        let tx_hash_hex = tx_hash_str.trim_start_matches("0x");
+        let tx_hash_bytes = match hex::decode(tx_hash_hex) {
+            Ok(b) => b,
+            Err(_) => return Err(jsonrpc_core::Error::invalid_params("Invalid hex format")),
+        };
+
+        if tx_hash_bytes.len() != 32 {
+            return Err(jsonrpc_core::Error::invalid_params("Transaction hash must be 32 bytes"));
+        }
+
+        let mut hash_array = [0u8; 32];
+        hash_array.copy_from_slice(&tx_hash_bytes);
+        let tx_hash = Hash::new(hash_array);
+
+        let mp = mempool_status.clone();
+        let storage = storage_status.clone();
+
+        // Check if transaction is mined
+        if let Ok(Some(_receipt)) = storage.transactions.get_receipt(&tx_hash) {
+            return Ok(json!({
+                "status": "mined",
+                "location": "blockchain",
+                "hash": tx_hash_str
+            }));
+        }
+
+        // Check if transaction is in mempool
+        if let Some(tx) = block_on(mp.get_transaction(&tx_hash)) {
+            let stats = block_on(mp.stats());
+            return Ok(json!({
+                "status": "pending",
+                "location": "mempool",
+                "hash": tx_hash_str,
+                "nonce": tx.nonce,
+                "from": format!("0x{}", hex::encode(lattice_execution::address_utils::normalize_address(&tx.from).0)),
+                "gasPrice": format!("0x{:x}", tx.gas_price),
+                "mempoolSize": stats.total_transactions
+            }));
+        }
+
+        // Transaction not found
+        Ok(json!({
+            "status": "not_found",
+            "location": null,
+            "hash": tx_hash_str
+        }))
     });
 }

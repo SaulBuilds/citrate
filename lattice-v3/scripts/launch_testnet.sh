@@ -31,7 +31,7 @@ echo ""
 # Function to kill all nodes
 cleanup() {
     echo -e "\n${YELLOW}Stopping all nodes...${NC}"
-    pkill -f "lattice-node" || true
+    pkill -f "lattice" || true
     echo -e "${GREEN}All nodes stopped${NC}"
 }
 
@@ -39,9 +39,9 @@ cleanup() {
 trap cleanup EXIT
 
 # Check if binary exists
-if [ ! -f "target/release/lattice-node" ]; then
-    echo -e "${YELLOW}Building lattice-node in release mode...${NC}"
-    cargo build --release --bin lattice-node
+if [ ! -f "target/release/lattice" ]; then
+    echo -e "${YELLOW}Building lattice in release mode...${NC}"
+    cargo build --release --bin lattice
 fi
 
 # Clean up previous testnet data
@@ -148,7 +148,7 @@ EOF
     LOG_FILE="$NODE_DIR/node.log"
 
     # Start the node in background
-    nohup target/release/lattice-node \
+    nohup target/release/lattice \
         --config "$NODE_DIR/config.toml" \
         --data-dir "$NODE_DIR" \
         --rpc-port $RPC_PORT \

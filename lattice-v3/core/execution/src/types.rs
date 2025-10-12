@@ -36,6 +36,16 @@ impl Address {
     pub fn zero() -> Self {
         Address([0u8; 20])
     }
+
+    /// Get the underlying bytes
+    pub fn as_bytes(&self) -> &[u8; 20] {
+        &self.0
+    }
+
+    /// Get the underlying bytes (for compatibility with ethereum-types)
+    pub fn as_fixed_bytes(&self) -> &[u8; 20] {
+        &self.0
+    }
 }
 
 impl std::fmt::Display for Address {

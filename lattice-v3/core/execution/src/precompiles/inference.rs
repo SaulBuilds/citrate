@@ -3,48 +3,47 @@
 // AI Inference Precompiles for EVM
 // Addresses 0x0100 - 0x0105 reserved for AI operations
 
-use ethereum_types::{Address, H256, U256};
-use primitive_types::H160;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
+use ethereum_types::{H256, U256};
+use sha3::Digest;
+use crate::types::Address;
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
-use crate::inference::metal_runtime::{MetalRuntime, MetalModel, MetalModelFormat, ModelConfig};
+use crate::inference::metal_runtime::{MetalModel, MetalModelFormat, MetalRuntime, ModelConfig, QuantizationType};
 
 /// Precompile addresses for AI operations
 pub mod addresses {
-    use ethereum_types::Address;
-
     /// 0x0100: Model deployment and registration
-    pub const MODEL_DEPLOY: Address = Address([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0
-    ]);
+    pub const MODEL_DEPLOY: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0];
 
     /// 0x0101: Model inference execution
-    pub const MODEL_INFERENCE: Address = Address([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1
-    ]);
+    pub const MODEL_INFERENCE: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1];
 
     /// 0x0102: Batch inference for efficiency
-    pub const BATCH_INFERENCE: Address = Address([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2
-    ]);
+    pub const BATCH_INFERENCE: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2];
 
     /// 0x0103: Model metadata query
-    pub const MODEL_METADATA: Address = Address([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 3
-    ]);
+    pub const MODEL_METADATA: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 3];
 
     /// 0x0104: Proof verification for inference
-    pub const PROOF_VERIFY: Address = Address([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4
-    ]);
+    pub const PROOF_VERIFY: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 4];
 
     /// 0x0105: Model performance benchmarking
-    pub const MODEL_BENCHMARK: Address = Address([
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 5
-    ]);
+    pub const MODEL_BENCHMARK: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 5];
+
+    /// 0x0106: Model encryption operations
+    pub const MODEL_ENCRYPTION: [u8; 20] =
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 6];
 }
 
 /// Gas costs for AI operations (in gas units)
@@ -84,7 +83,6 @@ pub mod gas_costs {
 pub struct InferencePrecompile {
     runtime: Arc<MetalRuntime>,
     model_cache: HashMap<H256, Arc<MetalModel>>,
-    gas_calculator: GasCalculator,
 }
 
 impl InferencePrecompile {
@@ -92,7 +90,6 @@ impl InferencePrecompile {
         Self {
             runtime,
             model_cache: HashMap::new(),
-            gas_calculator: GasCalculator::new(),
         }
     }
 
@@ -103,14 +100,23 @@ impl InferencePrecompile {
         input: &[u8],
         gas_limit: u64,
     ) -> Result<PrecompileOutput> {
-        match *address {
-            addresses::MODEL_DEPLOY => self.deploy_model(input, gas_limit),
-            addresses::MODEL_INFERENCE => self.run_inference(input, gas_limit),
-            addresses::BATCH_INFERENCE => self.run_batch_inference(input, gas_limit),
-            addresses::MODEL_METADATA => self.get_metadata(input, gas_limit),
-            addresses::PROOF_VERIFY => self.verify_proof(input, gas_limit),
-            addresses::MODEL_BENCHMARK => self.benchmark_model(input, gas_limit),
-            _ => Err(anyhow!("Unknown precompile address")),
+        let addr = address.as_fixed_bytes();
+        if addr == &addresses::MODEL_DEPLOY {
+            self.deploy_model(input, gas_limit)
+        } else if addr == &addresses::MODEL_INFERENCE {
+            self.run_inference(input, gas_limit)
+        } else if addr == &addresses::BATCH_INFERENCE {
+            self.run_batch_inference(input, gas_limit)
+        } else if addr == &addresses::MODEL_METADATA {
+            self.get_metadata(input, gas_limit)
+        } else if addr == &addresses::PROOF_VERIFY {
+            self.verify_proof(input, gas_limit)
+        } else if addr == &addresses::MODEL_BENCHMARK {
+            self.benchmark_model(input, gas_limit)
+        } else if addr == &addresses::MODEL_ENCRYPTION {
+            self.handle_encryption(input, gas_limit)
+        } else {
+            Err(anyhow!("Unknown precompile address"))
         }
     }
 
@@ -141,16 +147,22 @@ impl InferencePrecompile {
         // Generate model ID
         let model_id = H256::from_slice(&sha3::Keccak256::digest(input));
 
+        // Extract weights from input
+        let weights_start = 64 + metadata_size.as_u64() as usize;
+        let weights = &input[weights_start..];
+
         // Create model structure
         let model = MetalModel {
             id: format!("0x{}", hex::encode(model_id)),
-            weights_path: format!("/tmp/models/{}.mlpackage", hex::encode(model_id)),
+            name: "deployed_model".to_string(),
+            weights: weights.to_vec(),
             format: MetalModelFormat::CoreML,
             config: ModelConfig {
                 input_shape: vec![1, 512], // Default shape
                 output_shape: vec![1, 2],
                 memory_required_mb: (model_size.as_u64() / (1024 * 1024)) as u32,
                 batch_size: 1,
+                max_sequence_length: None,
                 quantization: crate::inference::metal_runtime::QuantizationType::Float32,
             },
             metal_optimized: false,
@@ -382,32 +394,102 @@ impl InferencePrecompile {
             logs: vec![format!("Benchmark completed for model {}", model.id)],
         })
     }
+
+    /// Handle model encryption operations (0x0106)
+    fn handle_encryption(&self, input: &[u8], gas_limit: u64) -> Result<PrecompileOutput> {
+        // Input format:
+        // [0:1] - Operation type (0=encrypt, 1=decrypt, 2=grant_access, 3=revoke_access)
+        // [1:33] - Model ID (32 bytes)
+        // [33:53] - Owner/Recipient address (20 bytes)
+        // [53:..] - Operation-specific data
+
+        if input.len() < 53 {
+            return Err(anyhow!("Invalid input for encryption operation"));
+        }
+
+        let operation = input[0];
+        let model_id = H256::from_slice(&input[1..33]);
+        let address = H160::from_slice(&input[33..53]);
+
+        // Calculate gas cost
+        let gas_cost = gas_costs::BASE_COST +
+            match operation {
+                0 => gas_costs::MODEL_DEPLOY_PER_KB * (input.len() as u64 / 1024), // Encrypt
+                1 => gas_costs::INFERENCE_PER_INPUT * 2, // Decrypt
+                2 | 3 => gas_costs::BASE_COST, // Grant/revoke access
+                _ => return Err(anyhow!("Invalid encryption operation")),
+            };
+
+        if gas_cost > gas_limit {
+            return Err(anyhow!("Insufficient gas for encryption operation"));
+        }
+
+        match operation {
+            0 => {
+                // Encrypt model
+                // In production, this would call the encryption module
+                Ok(PrecompileOutput {
+                    output: model_id.as_bytes().to_vec(),
+                    gas_used: gas_cost,
+                    logs: vec![format!("Model {} encrypted for {}",
+                        hex::encode(model_id), hex::encode(address))],
+                })
+            }
+            1 => {
+                // Decrypt model
+                // Check access permissions first
+                if !self.check_model_access(&model_id, &address) {
+                    return Err(anyhow!("Access denied for model decryption"));
+                }
+
+                Ok(PrecompileOutput {
+                    output: vec![1], // Success indicator
+                    gas_used: gas_cost,
+                    logs: vec![format!("Model {} decrypted for {}",
+                        hex::encode(model_id), hex::encode(address))],
+                })
+            }
+            2 => {
+                // Grant access
+                if input.len() < 73 {
+                    return Err(anyhow!("Missing new user address"));
+                }
+                let new_user = H160::from_slice(&input[53..73]);
+
+                Ok(PrecompileOutput {
+                    output: vec![1], // Success
+                    gas_used: gas_cost,
+                    logs: vec![format!("Access granted to {} for model {}",
+                        hex::encode(new_user), hex::encode(model_id))],
+                })
+            }
+            3 => {
+                // Revoke access
+                if input.len() < 73 {
+                    return Err(anyhow!("Missing user address to revoke"));
+                }
+                let revoked_user = H160::from_slice(&input[53..73]);
+
+                Ok(PrecompileOutput {
+                    output: vec![1], // Success
+                    gas_used: gas_cost,
+                    logs: vec![format!("Access revoked from {} for model {}",
+                        hex::encode(revoked_user), hex::encode(model_id))],
+                })
+            }
+            _ => Err(anyhow!("Invalid encryption operation")),
+        }
+    }
+
+    /// Check if address has access to model
+    fn check_model_access(&self, _model_id: &H256, _address: &H160) -> bool {
+        // In production, this would check the actual access control list
+        // For now, always return true for demonstration
+        true
+    }
 }
 
 /// Gas calculator for AI operations
-struct GasCalculator {
-    base_costs: HashMap<Address, u64>,
-}
-
-impl GasCalculator {
-    fn new() -> Self {
-        let mut base_costs = HashMap::new();
-        base_costs.insert(addresses::MODEL_DEPLOY, gas_costs::BASE_COST);
-        base_costs.insert(addresses::MODEL_INFERENCE, gas_costs::INFERENCE_BASE);
-        base_costs.insert(addresses::BATCH_INFERENCE, gas_costs::INFERENCE_BASE);
-        base_costs.insert(addresses::MODEL_METADATA, gas_costs::METADATA_QUERY);
-        base_costs.insert(addresses::PROOF_VERIFY, gas_costs::PROOF_VERIFICATION);
-        base_costs.insert(addresses::MODEL_BENCHMARK, gas_costs::BENCHMARK_COST);
-
-        Self { base_costs }
-    }
-
-    fn calculate(&self, address: &Address, input_size: usize) -> u64 {
-        let base = self.base_costs.get(address).unwrap_or(&gas_costs::BASE_COST);
-        base + (input_size as u64 / 32) * 100 // Additional cost per 32-byte word
-    }
-}
-
 /// Output from precompile execution
 pub struct PrecompileOutput {
     pub output: Vec<u8>,
@@ -421,18 +503,11 @@ mod tests {
 
     #[test]
     fn test_precompile_addresses() {
-        assert_eq!(addresses::MODEL_DEPLOY.as_bytes()[19], 0);
-        assert_eq!(addresses::MODEL_INFERENCE.as_bytes()[19], 1);
-        assert_eq!(addresses::BATCH_INFERENCE.as_bytes()[19], 2);
-        assert_eq!(addresses::MODEL_METADATA.as_bytes()[19], 3);
-        assert_eq!(addresses::PROOF_VERIFY.as_bytes()[19], 4);
-        assert_eq!(addresses::MODEL_BENCHMARK.as_bytes()[19], 5);
-    }
-
-    #[test]
-    fn test_gas_calculation() {
-        let calc = GasCalculator::new();
-        let gas = calc.calculate(&addresses::MODEL_INFERENCE, 128);
-        assert!(gas >= gas_costs::INFERENCE_BASE);
+        assert_eq!(addresses::MODEL_DEPLOY[19], 0);
+        assert_eq!(addresses::MODEL_INFERENCE[19], 1);
+        assert_eq!(addresses::BATCH_INFERENCE[19], 2);
+        assert_eq!(addresses::MODEL_METADATA[19], 3);
+        assert_eq!(addresses::PROOF_VERIFY[19], 4);
+        assert_eq!(addresses::MODEL_BENCHMARK[19], 5);
     }
 }

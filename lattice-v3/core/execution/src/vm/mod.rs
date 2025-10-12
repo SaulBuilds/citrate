@@ -6,6 +6,9 @@ use primitive_types::U256;
 use std::collections::HashMap;
 use tracing::debug;
 
+pub mod ai_opcodes;
+use ai_opcodes::AIVMExtension;
+
 /// Virtual Machine for executing smart contracts and AI models
 pub struct VM {
     pub stack: Stack,
@@ -14,7 +17,7 @@ pub struct VM {
     pub gas_remaining: u64,
     pub gas_used: u64,
     pub gas_schedule: GasSchedule,
-    pub ai_extension: ai_opcodes::AIVMExtension,
+    pub ai_extension: AIVMExtension,
 }
 
 impl VM {
@@ -26,7 +29,7 @@ impl VM {
             gas_remaining: gas_limit,
             gas_used: 0,
             gas_schedule: GasSchedule::default(),
-            ai_extension: ai_opcodes::AIVMExtension::new(),
+            ai_extension: AIVMExtension::new(),
         }
     }
 
@@ -275,7 +278,7 @@ impl VM {
 /// Check if opcode needs stack transfer
 #[allow(dead_code)]
 fn needs_stack_transfer(opcode: ai_opcodes::AIOpcode) -> bool {
-    use ai_opcodes::AIOpcode;
+    use crate::vm::ai_opcodes::AIOpcode;
     matches!(
         opcode,
         AIOpcode::LOAD_MODEL
@@ -291,7 +294,7 @@ fn needs_stack_transfer(opcode: ai_opcodes::AIOpcode) -> bool {
 
 /// Number of arguments an AI opcode expects to pop from the main stack
 fn ai_required_args(opcode: ai_opcodes::AIOpcode) -> usize {
-    use ai_opcodes::AIOpcode;
+    use crate::vm::ai_opcodes::AIOpcode;
     match opcode {
         AIOpcode::LOAD_MODEL => 1,
         AIOpcode::UNLOAD_MODEL => 1,
@@ -308,7 +311,7 @@ fn ai_required_args(opcode: ai_opcodes::AIOpcode) -> usize {
 
 /// Check if opcode produces output
 fn produces_output(opcode: ai_opcodes::AIOpcode) -> bool {
-    use ai_opcodes::AIOpcode;
+    use crate::vm::ai_opcodes::AIOpcode;
     matches!(
         opcode,
         AIOpcode::LOAD_MODEL

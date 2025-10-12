@@ -10,8 +10,7 @@ use std::sync::Arc;
 use std::path::{Path, PathBuf};
 
 // Import CoreML bridge
-mod coreml_bridge;
-use coreml_bridge::{CoreMLModel, CoreMLInference};
+use super::coreml_bridge::{CoreMLModel, CoreMLInference};
 
 /// Supported model formats for Metal GPU
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +73,7 @@ pub struct ModelConfig {
     pub memory_required_mb: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum QuantizationType {
     Float32,
     Float16,
@@ -212,8 +211,15 @@ impl MetalRuntime {
         model: &MetalModel,
         input: &[f32],
     ) -> Result<Vec<f32>> {
-        // Use the CoreML bridge for actual inference
-        let model_path = Path::new(&model.weights_path);
+        // For CoreML bridge, we need to save weights to a temp file
+        // In production, this would use cached files or direct memory mapping
+        let temp_dir = std::env::temp_dir();
+        let model_path = temp_dir.join(format!("{}.mlpackage", &model.id));
+
+        // Write weights to temp file if needed
+        if !model_path.exists() {
+            std::fs::write(&model_path, &model.weights)?;
+        }
 
         // Convert input shape to i32 for CoreML
         let input_shape: Vec<i32> = model.config.input_shape
@@ -223,14 +229,14 @@ impl MetalRuntime {
 
         // Run inference through CoreML
         let output = CoreMLInference::execute(
-            model_path,
+            &model_path,
             input.to_vec(),
             input_shape,
         ).await?;
 
         // Update performance stats
         let inference_time_ms = 5.0; // TODO: Measure actual time
-        log::info!("CoreML inference completed in {:.2}ms on {:?}",
+        tracing::info!("CoreML inference completed in {:.2}ms on {:?}",
                    inference_time_ms, self.capabilities.chip_type);
 
         Ok(output)

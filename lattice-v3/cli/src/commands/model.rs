@@ -284,17 +284,45 @@ async fn deploy_model(
 
     let result: serde_json::Value = response.json().await?;
 
-    if let Some(model_id) = result["result"]["model_id"].as_str() {
-        println!("{}", "✓ Model deployed successfully".green());
-        println!("Model ID: {}", model_id.cyan());
-        if let Some(cid) = result["result"]["artifact_cid"].as_str() {
+    if let Some(res) = result.get("result").and_then(|v| v.as_object()) {
+        let tx_hash = res
+            .get("tx_hash")
+            .and_then(|v| v.as_str())
+            .context("RPC response missing tx_hash")?;
+
+        println!("{}", "✓ Transaction submitted".green());
+        println!("Transaction: {}", tx_hash.cyan());
+
+        if let Some(model_id) = res.get("model_id").and_then(|v| v.as_str()) {
+            println!("Model ID: {}", model_id.cyan());
+        }
+        if let Some(cid) = res.get("artifact_cid").and_then(|v| v.as_str()) {
             println!("Artifact CID: {}", cid.cyan());
         }
         println!("Model Hash: 0x{}", hex::encode(model_hash));
-        println!(
-            "Transaction: {}",
-            result["result"]["tx_hash"].as_str().unwrap_or("N/A")
-        );
+
+        println!("Waiting for confirmation...");
+        let receipt = wait_for_receipt(config, tx_hash).await?;
+
+        let status = receipt["status"].as_str().unwrap_or_default();
+        if status == "0x1" || status == "0x01" {
+            println!("{}", "✓ Model deployment confirmed".green().bold());
+            if let Some(block) = receipt["blockNumber"].as_str() {
+                println!("Included in block: {}", block);
+            }
+            if let Some(gas_used) = receipt["gasUsed"].as_str() {
+                println!("Gas Used: {}", gas_used);
+            }
+            println!(
+                "{}",
+                "Model registered on-chain. You can query it via `lattice_getModel`."
+                    .italic()
+            );
+        } else {
+            println!("{}", "✗ Model deployment reverted".red().bold());
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
+            anyhow::bail!("Model deployment transaction failed");
+        }
     } else if let Some(error) = result["error"].as_object() {
         anyhow::bail!(
             "Deployment failed: {}",
@@ -567,14 +595,36 @@ async fn update_model(
 
     let result: serde_json::Value = response.json().await?;
 
-    if result["result"]["success"].as_bool() == Some(true) {
-        println!("{}", "✓ Model updated successfully".green());
-        println!(
-            "Transaction: {}",
-            result["result"]["tx_hash"].as_str().unwrap_or("N/A")
-        );
-        if let Some(cid) = result["result"]["artifact_cid"].as_str() {
+    if let Some(res) = result.get("result").and_then(|v| v.as_object()) {
+        let tx_hash = res
+            .get("tx_hash")
+            .and_then(|v| v.as_str())
+            .context("RPC response missing tx_hash")?;
+
+        println!("{}", "✓ Transaction submitted".green());
+        println!("Transaction: {}", tx_hash.cyan());
+        if let Some(cid) = res.get("artifact_cid").and_then(|v| v.as_str()) {
             println!("Artifact CID: {}", cid.cyan());
+        }
+        if let Some(model_hex) = res.get("model_id").and_then(|v| v.as_str()) {
+            println!("Model ID: {}", model_hex.cyan());
+        }
+
+        println!("Waiting for confirmation...");
+        let receipt = wait_for_receipt(config, tx_hash).await?;
+        let status = receipt["status"].as_str().unwrap_or_default();
+        if status == "0x1" || status == "0x01" {
+            println!("{}", "✓ Model update confirmed".green().bold());
+            if let Some(block) = receipt["blockNumber"].as_str() {
+                println!("Included in block: {}", block);
+            }
+            if let Some(gas_used) = receipt["gasUsed"].as_str() {
+                println!("Gas Used: {}", gas_used);
+            }
+        } else {
+            println!("{}", "✗ Model update reverted".red().bold());
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
+            anyhow::bail!("Model update transaction failed");
         }
     } else if let Some(error) = result["error"].as_object() {
         anyhow::bail!(

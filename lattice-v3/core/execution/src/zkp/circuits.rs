@@ -274,10 +274,10 @@ impl ConstraintSynthesizer<Fr> for DataIntegrityCircuit {
             // Combine hashes based on index bit
             if index & 1 == 0 {
                 // Current hash is left child
-                current_hash = hash_pair(&current_hash, &sibling_vars, cs.clone())?;
+                current_hash = hash_pair(&current_hash, &sibling_vars)?;
             } else {
                 // Current hash is right child
-                current_hash = hash_pair(&sibling_vars, &current_hash, cs.clone())?;
+                current_hash = hash_pair(&sibling_vars, &current_hash)?;
             }
 
             index >>= 1;
@@ -290,24 +290,4 @@ impl ConstraintSynthesizer<Fr> for DataIntegrityCircuit {
 
         Ok(())
     }
-}
-
-/// Helper function to hash two values (simplified)
-fn hash_pair(
-    left: &[UInt8<Fr>],
-    right: &[UInt8<Fr>],
-    _cs: ConstraintSystemRef<Fr>,
-) -> Result<Vec<UInt8<Fr>>, SynthesisError> {
-    // In a real implementation, this would use a proper hash function
-    // For now, we just concatenate and return
-    let mut result = left.to_vec();
-    result.extend_from_slice(right);
-
-    // Truncate to 32 bytes (256 bits) for consistency
-    result.truncate(32);
-    while result.len() < 32 {
-        result.push(UInt8::constant(0));
-    }
-
-    Ok(result)
 }

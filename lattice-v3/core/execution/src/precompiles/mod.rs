@@ -5,15 +5,16 @@
 
 pub mod inference;
 
-use ethereum_types::{Address, U256};
+use ethereum_types::U256;
 use anyhow::Result;
 use std::collections::HashMap;
 
+use crate::types::Address;
 use inference::InferencePrecompile;
 
 /// Standard Ethereum precompile addresses
 pub mod standard {
-    use ethereum_types::Address;
+    use crate::types::Address;
 
     /// ECRECOVER
     pub const ECRECOVER: Address = Address([

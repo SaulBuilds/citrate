@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 pub mod chunking;
 pub mod pinning;
+pub mod encrypted_store;
 
 /// IPFS Content Identifier
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]

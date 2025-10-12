@@ -15,7 +15,7 @@ use std::sync::Arc;
 pub fn register_eth_methods(
     io_handler: &mut IoHandler,
     storage: Arc<StorageManager>,
-    _mempool: Arc<Mempool>,
+    mempool: Arc<Mempool>,
     executor: Arc<Executor>,
 ) {
     // eth_blockNumber - Returns the latest block number
@@ -250,6 +250,7 @@ pub fn register_eth_methods(
     // eth_getTransactionCount - Returns account nonce
     let storage_nonce = storage.clone();
     let executor_nonce = executor.clone();
+    let mempool_nonce = mempool.clone();
     io_handler.add_sync_method("eth_getTransactionCount", move |params: Params| {
         let state_api = StateApi::new(storage_nonce.clone(), executor_nonce.clone());
 
@@ -277,10 +278,39 @@ pub fn register_eth_methods(
             _ => return Ok(Value::String("0x0".to_string())),
         };
 
-        match block_on(state_api.get_nonce(Address(addr_bytes))) {
-            Ok(nonce) => Ok(Value::String(format!("0x{:x}", nonce))),
-            Err(_) => Ok(Value::String("0x0".to_string())),
+        // Optional second param: block tag ("latest" | "pending" | "earliest")
+        let tag = params.get(1).and_then(|v| v.as_str()).unwrap_or("latest");
+
+        let base_nonce = match block_on(state_api.get_nonce(Address(addr_bytes))) {
+            Ok(nonce) => nonce,
+            Err(_) => return Ok(Value::String("0x0".to_string())),
+        };
+
+        if tag.eq_ignore_ascii_case("pending") {
+            // Include pending mempool transactions from this sender
+            let mp = mempool_nonce.clone();
+            let stats = block_on(mp.stats());
+            let total = stats.total_transactions;
+            let txs = block_on(mp.get_transactions(total));
+
+            let mut max_pending_nonce = None;
+            for tx in txs {
+                // Derive sender address from tx.from using unified address logic
+                let sender_addr = lattice_execution::address_utils::normalize_address(&tx.from);
+                if sender_addr.0 == addr_bytes {
+                    max_pending_nonce = Some(max_pending_nonce.map_or(tx.nonce, |m: u64| m.max(tx.nonce)));
+                }
+            }
+
+            let pending_nonce = match max_pending_nonce {
+                Some(max_nonce) => (max_nonce + 1).max(base_nonce),
+                None => base_nonce,
+            };
+
+            return Ok(Value::String(format!("0x{:x}", pending_nonce)));
         }
+
+        Ok(Value::String(format!("0x{:x}", base_nonce)))
     });
 
     // eth_sendRawTransaction - Submit signed transaction

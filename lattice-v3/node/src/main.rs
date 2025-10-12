@@ -270,6 +270,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
 
     // Create state DB and executor with persistent storage
     let state_db = Arc::new(StateDB::new());
+    let state_manager = Arc::new(lattice_storage::state_manager::StateManager::new(storage.db.clone()));
     // MCP + inference service
     let vm_for_mcp = Arc::new(lattice_execution::vm::VM::new(10_000_000));
     let mcp = Arc::new(lattice_mcp::MCPService::new(
@@ -321,7 +322,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     };
 
     let storage_bridge: Arc<dyn lattice_execution::executor::AIModelStorage> =
-        Arc::new(adapters::StorageAdapter::new(storage.clone()));
+        Arc::new(adapters::StorageAdapter::new(state_manager.clone()));
     let registry_bridge: Arc<dyn lattice_execution::executor::ModelRegistryAdapter> =
         Arc::new(adapters::MCPRegistryBridge::new(mcp.clone()));
 

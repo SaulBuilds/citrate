@@ -14,6 +14,10 @@ pub mod types;
 pub mod vm;
 pub mod zkp;
 
+// Integration tests
+#[cfg(test)]
+mod address_derivation_integration_test;
+
 pub use types::{
     AccessPolicy, AccountState, Address, ExecutionError, GasSchedule, JobId, JobStatus, Log,
     ModelId, ModelMetadata, ModelState, TrainingJob, TransactionReceipt, TransactionType,

@@ -6,6 +6,7 @@ use crate::metrics::rpc_request;
 use crate::types::{
     error::ApiError,
     request::{BlockId, CallRequest},
+    TransactionRequest,
 };
 use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -14,19 +15,37 @@ use jsonrpc_core::{IoHandler, Params, Value};
 use jsonrpc_http_server::CloseHandle;
 use jsonrpc_http_server::{AccessControlAllowOrigin, DomainsValidation, ServerBuilder};
 use lattice_consensus::types::Hash;
-use lattice_execution::executor::{Executor, InferencePreview};
-use lattice_execution::types::{AccessPolicy, Address, ModelId};
+use lattice_execution::executor::Executor;
+use lattice_execution::types::{AccessPolicy, Address};
 use lattice_network::peer::PeerManager;
 use lattice_sequencer::mempool::Mempool;
 use lattice_storage::StorageManager;
 use once_cell::sync::Lazy;
-use primitive_types::U256;
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use tracing::info;
+
+/// Helper function to parse optional u64 field from JSON Value
+fn parse_optional_u64_field(value: Option<&Value>, field_name: &str) -> Result<Option<u64>, jsonrpc_core::Error> {
+    match value {
+        Some(Value::String(s)) => {
+            let trimmed = s.trim_start_matches("0x");
+            u64::from_str_radix(trimmed, 16)
+                .map(Some)
+                .map_err(|_| jsonrpc_core::Error::invalid_params(format!("Invalid {} format", field_name)))
+        }
+        Some(Value::Number(n)) => {
+            n.as_u64()
+                .map(Some)
+                .ok_or_else(|| jsonrpc_core::Error::invalid_params(format!("Invalid {} number", field_name)))
+        }
+        Some(_) => Err(jsonrpc_core::Error::invalid_params(format!("{} must be string or number", field_name))),
+        None => Ok(None),
+    }
+}
 
 // In-memory verification store (address -> record)
 static VERIFICATIONS: Lazy<StdRwLock<HashMap<String, serde_json::Value>>> =
@@ -1272,7 +1291,7 @@ impl RpcServer {
                 model_bytes = Some(decoded);
             }
 
-            let mut size_bytes = map
+            let size_bytes = map
                 .get("size_bytes")
                 .and_then(|v| v.as_u64())
                 .unwrap_or_else(|| model_bytes.as_ref().map(|b| b.len() as u64).unwrap_or(0));
@@ -1303,9 +1322,6 @@ impl RpcServer {
             metadata_obj
                 .entry("output_shape".to_string())
                 .or_insert(serde_json::json!([1]));
-
-            let metadata_bytes = serde_json::to_vec(&metadata_value)
-                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid metadata"))?;
 
             let from_bytes = hex::decode(from_hex.trim().trim_start_matches("0x"))
                 .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid 'from'"))?;
@@ -1412,6 +1428,11 @@ impl RpcServer {
             let mut data = Vec::new();
             data.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]);
             data.extend_from_slice(model_hash.as_bytes());
+
+            // Serialize metadata after all mutations are complete
+            let metadata_bytes = serde_json::to_vec(&metadata_value)
+                .map_err(|_| jsonrpc_core::Error::invalid_params("Invalid metadata"))?;
+
             data.extend_from_slice(&(metadata_bytes.len() as u32).to_be_bytes());
             data.extend_from_slice(&metadata_bytes);
             data.push(policy_byte);

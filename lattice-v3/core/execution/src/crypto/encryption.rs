@@ -77,6 +77,14 @@ pub struct EncryptedKey {
     pub ephemeral_pubkey: Vec<u8>,
 }
 
+/// Encrypted chunk data for IPFS storage
+#[derive(Debug, Clone)]
+pub struct EncryptedChunkData {
+    pub data: Vec<u8>,
+    pub nonce: [u8; 12],
+    pub auth_tag: [u8; 16],
+}
+
 /// Configuration for model encryption
 #[derive(Debug, Clone)]
 pub struct EncryptionConfig {
@@ -442,6 +450,74 @@ impl ModelEncryption {
             new_access_list,
         )
     }
+
+    /// Encrypt a single chunk of data
+    pub fn encrypt_chunk(
+        &self,
+        chunk: &[u8],
+        key: &[u8; 32],
+        index: usize,
+    ) -> Result<EncryptedChunkData> {
+        use rand::RngCore;
+
+        // Generate unique nonce for this chunk
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+
+        // Include chunk index in nonce for additional uniqueness
+        nonce_bytes[0] = (index & 0xFF) as u8;
+        nonce_bytes[1] = ((index >> 8) & 0xFF) as u8;
+
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let key = Key::<Aes256Gcm>::from_slice(key);
+        let cipher = Aes256Gcm::new(key);
+
+        // Encrypt
+        let ciphertext = cipher
+            .encrypt(nonce, chunk)
+            .map_err(|e| anyhow!("Encryption failed: {}", e))?;
+
+        // Extract auth tag (last 16 bytes)
+        let (encrypted_data, auth_tag) = if ciphertext.len() >= 16 {
+            let split_point = ciphertext.len() - 16;
+            let mut tag = [0u8; 16];
+            tag.copy_from_slice(&ciphertext[split_point..]);
+            (ciphertext[..split_point].to_vec(), tag)
+        } else {
+            return Err(anyhow!("Invalid ciphertext length"));
+        };
+
+        Ok(EncryptedChunkData {
+            data: encrypted_data,
+            nonce: nonce_bytes,
+            auth_tag,
+        })
+    }
+
+    /// Decrypt a single chunk of data
+    pub fn decrypt_chunk(
+        &self,
+        encrypted_data: &[u8],
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        auth_tag: &[u8; 16],
+    ) -> Result<Vec<u8>> {
+        // Reconstruct full ciphertext with auth tag
+        let mut full_ciphertext = encrypted_data.to_vec();
+        full_ciphertext.extend_from_slice(auth_tag);
+
+        let nonce = Nonce::from_slice(nonce);
+        let key = Key::<Aes256Gcm>::from_slice(key);
+        let cipher = Aes256Gcm::new(key);
+
+        // Decrypt
+        let decrypted = cipher
+            .decrypt(nonce, full_ciphertext.as_ref())
+            .map_err(|e| anyhow!("Decryption failed: {}", e))?;
+
+        Ok(decrypted)
+    }
+
 }
 
 /// Public convenience functions

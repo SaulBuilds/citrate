@@ -229,6 +229,6 @@ const char* NSErrorGetLocalizedDescription(NSError* error) {
     }
 }
 
-void NSErrorRelease(NSError* error) {
+void NSErrorRelease(NSError* __unused error) {
     // NSError is autoreleased, no explicit release needed
 }

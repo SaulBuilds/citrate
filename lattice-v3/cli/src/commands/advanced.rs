@@ -1,14 +1,48 @@
 //lattice-v3/cli/src/commands/advanced.rs
 
 use anyhow::{Context, Result};
+use chrono::Utc;
 use clap::Subcommand;
 use colored::Colorize;
+use rand::Rng;
 use serde_json::json;
 use std::collections::HashMap;
+use std::fs;
 use std::time::Duration;
 use tokio::time::{interval, sleep};
 
 use crate::config::Config;
+
+/// Generate a valid test transaction for benchmarking
+fn generate_test_transaction(nonce: u64, to: Option<&str>, value: u64) -> String {
+    // Create a simple transaction JSON that can be sent via eth_sendTransaction
+    // This will be signed by the node if a default account is configured
+    let tx = json!({
+        "nonce": format!("0x{:x}", nonce),
+        "to": to.unwrap_or("0x0000000000000000000000000000000000000000"),
+        "value": format!("0x{:x}", value),
+        "gas": "0x5208", // 21000 gas (minimum for transfer)
+        "gasPrice": "0x3b9aca00", // 1 gwei
+        "data": "0x", // Empty data
+        "chainId": "0x539" // Local testnet chain ID (1337)
+    });
+
+    serde_json::to_string(&tx).unwrap_or_default()
+}
+
+/// Generate random test transaction data for stress testing
+fn generate_random_transaction() -> String {
+    let mut rng = rand::thread_rng();
+    let nonce = rng.gen::<u32>() as u64;
+    let value = rng.gen_range(1..1000); // Random value between 1-1000 wei
+
+    // Generate random recipient address
+    let mut addr_bytes = [0u8; 20];
+    rng.fill(&mut addr_bytes);
+    let to_addr = format!("0x{}", hex::encode(addr_bytes));
+
+    generate_test_transaction(nonce, Some(&to_addr), value)
+}
 
 #[derive(Subcommand)]
 pub enum AdvancedCommands {
@@ -296,38 +330,38 @@ async fn benchmark_network(
     config: &Config,
     tx_count: usize,
     concurrency: usize,
-    tx_size: usize,
+    _tx_size: usize, // Size parameter kept for API compatibility but not used
 ) -> Result<()> {
     println!("{}", "⚡ Network Benchmark".cyan().bold());
     println!("Transactions: {}", tx_count);
     println!("Concurrency: {}", concurrency);
-    println!("Size per tx: {} bytes", tx_size);
+    println!("Note: Using standard transaction format for testing");
     println!();
 
     let start_time = std::time::Instant::now();
-
-    // Create sample transaction data
-    let tx_data = vec![0u8; tx_size];
-    let tx_data_hex = hex::encode(tx_data);
-
     let client = reqwest::Client::new();
     let mut handles = Vec::new();
 
+    println!("🚀 Starting benchmark...");
+
     // Send transactions in batches
     for batch in 0..(tx_count / concurrency) {
-        for _ in 0..concurrency {
+        for tx_index in 0..concurrency {
             let client = client.clone();
             let endpoint = config.rpc_endpoint.clone();
-            let data = tx_data_hex.clone();
+            let nonce = (batch * concurrency + tx_index) as u64;
 
             let handle = tokio::spawn(async move {
+                // Generate a unique test transaction for each request
+                let tx_data = generate_test_transaction(nonce, None, 1);
+
                 client
                     .post(&endpoint)
                     .json(&json!({
                         "jsonrpc": "2.0",
-                        "method": "eth_sendRawTransaction",
-                        "params": [format!("0x{}", data)],
-                        "id": 1
+                        "method": "eth_sendTransaction",
+                        "params": [serde_json::from_str::<serde_json::Value>(&tx_data).unwrap_or_default()],
+                        "id": nonce
                     }))
                     .send()
                     .await
@@ -341,6 +375,9 @@ async fn benchmark_network(
         print!("\rProgress: {}% ", progress);
         use std::io::{self, Write};
         io::stdout().flush().unwrap();
+
+        // Small delay between batches to avoid overwhelming the node
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
     // Wait for all transactions
@@ -375,40 +412,112 @@ async fn analyze_topology(
     println!("{}", "🌐 Network Topology Analysis".cyan().bold());
 
     let client = reqwest::Client::new();
+    let mut peers_data = Vec::new();
+    let mut connections = Vec::new();
 
     // Get peer information
-    if show_peers {
-        if let Ok(response) = client
-            .post(&config.rpc_endpoint)
-            .json(&json!({
-                "jsonrpc": "2.0",
-                "method": "lattice_getPeers",
-                "params": [],
-                "id": 1
-            }))
-            .send()
-            .await
-        {
-            if let Ok(result) = response.json::<serde_json::Value>().await {
-                if let Some(peers) = result["result"].as_array() {
+    if let Ok(response) = client
+        .post(&config.rpc_endpoint)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "method": "lattice_getPeers",
+            "params": [],
+            "id": 1
+        }))
+        .send()
+        .await
+    {
+        if let Ok(result) = response.json::<serde_json::Value>().await {
+            if let Some(peers) = result["result"].as_array() {
+                peers_data = peers.clone();
+
+                if show_peers {
                     println!("Connected Peers: {}", peers.len());
                     for (i, peer) in peers.iter().enumerate() {
                         println!("  Peer {}: {}", i + 1, peer["address"].as_str().unwrap_or("Unknown"));
                     }
                 }
+
+                // Collect connection information
+                for peer in peers {
+                    if let Some(peer_connections) = peer["connections"].as_array() {
+                        connections.extend(peer_connections.iter().cloned());
+                    }
+                }
             }
         }
+    } else {
+        println!("{}", "⚠️  Could not fetch peer information".yellow());
     }
+
+    // Get additional network information
+    let network_info = if let Ok(response) = client
+        .post(&config.rpc_endpoint)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "method": "lattice_getNetworkInfo",
+            "params": [],
+            "id": 2
+        }))
+        .send()
+        .await
+    {
+        response.json::<serde_json::Value>().await.ok()
+            .and_then(|r| r["result"].clone().into())
+    } else {
+        None
+    };
 
     if let Some(format) = export_format {
         match format.as_str() {
             "json" => {
                 println!("Exporting topology to JSON...");
-                // Implementation for JSON export
+                let topology_data = json!({
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "peers": peers_data,
+                    "connections": connections,
+                    "network_info": network_info,
+                    "total_peers": peers_data.len(),
+                    "total_connections": connections.len()
+                });
+
+                let filename = format!("topology_{}.json", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+                fs::write(&filename, serde_json::to_string_pretty(&topology_data)?)?;
+                println!("✅ Topology exported to {}", filename.green());
             }
             "dot" => {
                 println!("Exporting topology to DOT format...");
-                // Implementation for DOT export
+                let mut dot_content = String::from("digraph network_topology {\n");
+                dot_content.push_str("  rankdir=LR;\n");
+                dot_content.push_str("  node [shape=circle, style=filled, fillcolor=lightblue];\n\n");
+
+                // Add nodes (peers)
+                for (i, peer) in peers_data.iter().enumerate() {
+                    let default_id = format!("peer_{}", i);
+                    let peer_id = peer["id"].as_str().unwrap_or(&default_id);
+                    let peer_addr = peer["address"].as_str().unwrap_or("unknown");
+                    dot_content.push_str(&format!("  \"{}\" [label=\"{}\\n{}\"];\n",
+                        peer_id, peer_id, peer_addr));
+                }
+
+                dot_content.push_str("\n");
+
+                // Add edges (connections)
+                for connection in &connections {
+                    if let (Some(from), Some(to)) = (
+                        connection["from"].as_str(),
+                        connection["to"].as_str()
+                    ) {
+                        dot_content.push_str(&format!("  \"{}\" -> \"{}\";\n", from, to));
+                    }
+                }
+
+                dot_content.push_str("}\n");
+
+                let filename = format!("topology_{}.dot", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+                fs::write(&filename, dot_content)?;
+                println!("✅ Topology exported to {}", filename.green());
+                println!("💡 Use 'dot -Tpng {} -o topology.png' to generate visualization", filename);
             }
             _ => {
                 anyhow::bail!("Unsupported export format: {}", format);
@@ -450,14 +559,17 @@ async fn stress_test(
             while std::time::Instant::now() < end_time {
                 interval.tick().await;
 
-                // Send a test transaction
+                // Generate a valid test transaction
+                let tx_data = generate_random_transaction();
+
+                // Send the transaction
                 let _result = client
                     .post(&endpoint)
                     .json(&json!({
                         "jsonrpc": "2.0",
-                        "method": "eth_sendRawTransaction",
-                        "params": ["0x"], // Empty transaction for testing
-                        "id": worker_id
+                        "method": "eth_sendTransaction",
+                        "params": [serde_json::from_str::<serde_json::Value>(&tx_data).unwrap_or_default()],
+                        "id": format!("worker-{}-tx-{}", worker_id, tx_count)
                     }))
                     .send()
                     .await;
@@ -543,8 +655,77 @@ async fn debug_transaction(
         if show_trace {
             println!();
             println!("{}", "Execution Trace:".bold());
-            // Add detailed execution trace here
-            println!("  {} Transaction trace not yet implemented", "⚠️".yellow());
+
+            // Get transaction receipt for execution details
+            let receipt_response = client
+                .post(&config.rpc_endpoint)
+                .json(&json!({
+                    "jsonrpc": "2.0",
+                    "method": "eth_getTransactionReceipt",
+                    "params": [tx_hash],
+                    "id": 2
+                }))
+                .send()
+                .await;
+
+            if let Ok(receipt_response) = receipt_response {
+                if let Ok(receipt_result) = receipt_response.json::<serde_json::Value>().await {
+                    if let Some(receipt) = receipt_result["result"].as_object() {
+                        println!("  Status: {}",
+                            if receipt["status"].as_str().unwrap_or("0x0") == "0x1" {
+                                "Success".green()
+                            } else {
+                                "Failed".red()
+                            });
+                        println!("  Gas Used: {}", receipt["gasUsed"].as_str().unwrap_or("N/A"));
+                        println!("  Block Number: {}", receipt["blockNumber"].as_str().unwrap_or("N/A"));
+
+                        // Show logs if any
+                        if let Some(logs) = receipt["logs"].as_array() {
+                            if !logs.is_empty() {
+                                println!("  Logs:");
+                                for (i, log) in logs.iter().take(5).enumerate() {
+                                    println!("    Log {}: {}", i + 1,
+                                        log["topics"].as_array()
+                                            .and_then(|topics| topics.get(0))
+                                            .and_then(|topic| topic.as_str())
+                                            .unwrap_or("Unknown topic"));
+                                }
+                                if logs.len() > 5 {
+                                    println!("    ... and {} more logs", logs.len() - 5);
+                                }
+                            }
+                        }
+
+                        // Try to get detailed trace if supported
+                        let trace_response = client
+                            .post(&config.rpc_endpoint)
+                            .json(&json!({
+                                "jsonrpc": "2.0",
+                                "method": "debug_traceTransaction",
+                                "params": [tx_hash, {"tracer": "callTracer"}],
+                                "id": 3
+                            }))
+                            .send()
+                            .await;
+
+                        if let Ok(trace_response) = trace_response {
+                            if let Ok(trace_result) = trace_response.json::<serde_json::Value>().await {
+                                if let Some(trace) = trace_result["result"].as_object() {
+                                    println!("  Call Type: {}", trace["type"].as_str().unwrap_or("UNKNOWN"));
+                                    if let Some(calls) = trace["calls"].as_array() {
+                                        println!("  Subcalls: {}", calls.len());
+                                    }
+                                }
+                            }
+                        } else {
+                            println!("  {} Detailed tracing not available on this node", "ℹ️".blue());
+                        }
+                    }
+                }
+            } else {
+                println!("  {} Could not fetch transaction receipt", "⚠️".yellow());
+            }
         }
     } else {
         println!("{}", "Transaction not found".red());
@@ -600,7 +781,47 @@ async fn model_analytics(
         if let Some(csv_path) = csv_output {
             println!();
             println!("Exporting to CSV: {}", csv_path);
-            // CSV export implementation would go here
+
+            // Create CSV content with headers
+            let mut csv_content = String::from("timestamp,model_id,total_inferences,avg_execution_time_ms,total_revenue_wei,success_rate_percent\n");
+
+            // Add the data row
+            let timestamp = Utc::now().to_rfc3339();
+            let model_id_str = model_id.as_deref().unwrap_or("all_models");
+            let total_inferences = stats["total_inferences"].as_u64().unwrap_or(0);
+            let avg_execution_time = stats["avg_execution_time"].as_f64().unwrap_or(0.0);
+            let total_revenue = stats["total_revenue"].as_str().unwrap_or("0");
+            let success_rate = stats["success_rate"].as_f64().unwrap_or(0.0);
+
+            csv_content.push_str(&format!(
+                "{},{},{},{},{},{}\n",
+                timestamp, model_id_str, total_inferences, avg_execution_time, total_revenue, success_rate
+            ));
+
+            // Try to get detailed inference data if available
+            if let Some(inference_history) = stats["inference_history"].as_array() {
+                csv_content.push_str("\n# Detailed inference history\n");
+                csv_content.push_str("inference_timestamp,model_id,execution_time_ms,gas_used,revenue_wei,status\n");
+
+                for inference in inference_history {
+                    let inf_timestamp = inference["timestamp"].as_str().unwrap_or("");
+                    let inf_model_id = inference["model_id"].as_str().unwrap_or(model_id_str);
+                    let inf_exec_time = inference["execution_time"].as_f64().unwrap_or(0.0);
+                    let inf_gas_used = inference["gas_used"].as_u64().unwrap_or(0);
+                    let inf_revenue = inference["revenue"].as_str().unwrap_or("0");
+                    let inf_status = inference["status"].as_str().unwrap_or("unknown");
+
+                    csv_content.push_str(&format!(
+                        "{},{},{},{},{},{}\n",
+                        inf_timestamp, inf_model_id, inf_exec_time, inf_gas_used, inf_revenue, inf_status
+                    ));
+                }
+            }
+
+            fs::write(&csv_path, csv_content)
+                .with_context(|| format!("Failed to write CSV file: {}", csv_path))?;
+
+            println!("✅ Analytics exported to {}", csv_path.green());
         }
     } else {
         println!("{}", "No statistics available".yellow());

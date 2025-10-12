@@ -4,6 +4,7 @@
 
 import { ethers } from 'ethers';
 import { CryptoManager } from './CryptoManager';
+import { splitSecretBytes, reconstructSecretBytes } from './FiniteField';
 import { EncryptionConfig } from '../types/Model';
 
 export interface EncryptedModelResult {
@@ -49,12 +50,9 @@ export class KeyManager {
    * Get public key for ECDH
    */
   getPublicKey(): string {
-    // Derive public key from private key
-    const privateKeyBytes = this.cryptoManager.hexToBytes(this.wallet.privateKey.slice(2));
-    // In production, use proper secp256k1 point multiplication
-    // For now, use a simplified approach
-    const hash = ethers.keccak256(privateKeyBytes);
-    return hash.slice(2, 66); // 32 bytes as hex
+    // Use ethers to derive the proper public key
+    const wallet = new ethers.Wallet(this.wallet.privateKey);
+    return wallet.signingKey.publicKey.slice(2); // Remove 0x prefix
   }
 
   /**
@@ -176,19 +174,26 @@ export class KeyManager {
   }
 
   /**
-   * Derive shared key using simplified ECDH
+   * Derive shared key using proper ECDH
    */
   async deriveSharedKey(peerPublicKey: string): Promise<Uint8Array> {
-    // Simplified ECDH implementation
-    const privateKeyBytes = this.cryptoManager.hexToBytes(this.wallet.privateKey.slice(2));
-    const peerKeyBytes = this.cryptoManager.hexToBytes(peerPublicKey);
+    // Use ethers' built-in ECDH implementation
+    const signingKey = this.wallet.signingKey;
 
-    // Combine keys and hash
-    const combined = new Uint8Array(privateKeyBytes.length + peerKeyBytes.length);
-    combined.set(privateKeyBytes);
-    combined.set(peerKeyBytes, privateKeyBytes.length);
+    // Ensure peer public key has proper format (uncompressed, 04 prefix)
+    let formattedPeerKey = peerPublicKey;
+    if (!formattedPeerKey.startsWith('04')) {
+      formattedPeerKey = '04' + formattedPeerKey;
+    }
 
-    const sharedSecret = await this.cryptoManager.hashData(combined);
+    // Compute ECDH shared point
+    const sharedPoint = signingKey.computeSharedSecret('0x' + formattedPeerKey);
+
+    // Use x-coordinate as shared secret and hash it for key derivation
+    const sharedSecret = await this.cryptoManager.hashData(
+      this.cryptoManager.hexToBytes(sharedPoint.slice(2, 66)) // First 32 bytes (x-coordinate)
+    );
+
     return this.cryptoManager.hexToBytes(sharedSecret);
   }
 
@@ -229,54 +234,41 @@ export class KeyManager {
   }
 
   /**
-   * Create Shamir's secret shares for key (simplified)
+   * Create Shamir's secret shares for key using proper finite field arithmetic
    */
   private createKeyShares(
     key: Uint8Array,
     threshold: number,
     total: number
   ): Array<{ x: string; y: string; threshold: string }> {
-    const shares: Array<{ x: string; y: string; threshold: string }> = [];
+    const sharesTuples = splitSecretBytes(key, threshold, total);
 
-    for (let i = 1; i <= total; i++) {
-      // Simplified share generation - in production use proper finite field arithmetic
-      const combined = new Uint8Array(key.length + 4);
-      combined.set(key);
-      combined.set(new Uint8Array([i, 0, 0, 0]), key.length);
-
-      const shareValue = this.cryptoManager.bytesToHex(combined.slice(0, 32));
-
-      shares.push({
-        x: i.toString(),
-        y: shareValue,
-        threshold: threshold.toString()
-      });
-    }
-
-    return shares;
+    return sharesTuples.map(({ x, y }) => ({
+      x: x.toString(),
+      y: this.cryptoManager.bytesToHex(y),
+      threshold: threshold.toString()
+    }));
   }
 
   /**
-   * Reconstruct key from Shamir's shares (simplified)
+   * Reconstruct key from Shamir's shares using proper Lagrange interpolation
    */
   reconstructKeyFromShares(shares: Array<{ x: string; y: string; threshold: string }>): Uint8Array {
-    const threshold = parseInt(shares[0].threshold);
+    if (!shares.length) {
+      throw new Error('No shares provided');
+    }
 
+    const threshold = parseInt(shares[0].threshold);
     if (shares.length < threshold) {
       throw new Error('Insufficient shares for key reconstruction');
     }
 
-    // Simplified reconstruction - in production use proper Lagrange interpolation
-    const activeShares = shares.slice(0, threshold);
-    let combined = new Uint8Array(32);
+    // Convert shares back to tuples format
+    const sharesTuples = shares.map(share => ({
+      x: parseInt(share.x),
+      y: this.cryptoManager.hexToBytes(share.y)
+    }));
 
-    for (const share of activeShares) {
-      const shareBytes = this.cryptoManager.hexToBytes(share.y);
-      for (let i = 0; i < combined.length; i++) {
-        combined[i] ^= shareBytes[i];
-      }
-    }
-
-    return combined;
+    return reconstructSecretBytes(sharesTuples, threshold);
   }
 }

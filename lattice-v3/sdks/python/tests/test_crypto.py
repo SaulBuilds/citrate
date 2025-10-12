@@ -112,8 +112,8 @@ class TestKeyManager:
 
         assert len(alice_shared) == 32
         assert len(bob_shared) == 32
-        # Note: Due to simplified implementation, these might not match
-        # In production ECDH, they would be identical
+        # With real ECDH implementation, shared keys should be identical
+        assert alice_shared == bob_shared
 
     def test_key_shares_creation(self):
         """Test Shamir's secret sharing key creation"""
@@ -137,8 +137,8 @@ class TestKeyManager:
         shares = key_manager._create_key_shares(original_key, threshold=2, total=3)
         reconstructed_key = key_manager.reconstruct_key_from_shares(shares[:2])
 
-        # Note: Due to simplified implementation, this is a hash-based reconstruction
-        assert len(reconstructed_key) == 32
+        # With real Shamir's Secret Sharing, original key should be perfectly reconstructed
+        assert reconstructed_key == original_key
 
     def test_insufficient_shares_error(self):
         """Test error when insufficient shares provided"""

@@ -3924,6 +3924,7 @@ dependencies = [
 name = "lattice-cli"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "base64 0.21.7",
  "chrono",

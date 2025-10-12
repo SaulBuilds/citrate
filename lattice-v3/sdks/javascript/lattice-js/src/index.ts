@@ -19,6 +19,7 @@ export * from './types/Client';
 // Crypto utilities
 export { CryptoManager } from './crypto/CryptoManager';
 export { KeyManager } from './crypto/KeyManager';
+export { splitSecretBytes, reconstructSecretBytes, GF256, ShamirSecretSharing } from './crypto/FiniteField';
 
 // Error classes
 export * from './errors/LatticeError';

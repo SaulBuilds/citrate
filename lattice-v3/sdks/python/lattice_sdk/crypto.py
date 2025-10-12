@@ -210,29 +210,46 @@ class KeyManager:
             raise LatticeError(f"Key derivation failed: {str(e)}")
 
     def _encrypt_key_for_owner(self, key: bytes) -> str:
-        """Encrypt key for model owner"""
-        # Simple encryption with owner's key
-        # In production, use proper key wrapping
-        owner_key = hashlib.sha256(self.account.key).digest()
-        nonce = secrets.token_bytes(12)
+        """Encrypt key for model owner using proper key wrapping"""
+        # Use HKDF for proper key derivation from account key
+        salt = secrets.token_bytes(32)
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            info=b'lattice-key-wrapping',
+            backend=default_backend()
+        )
+        owner_key = hkdf.derive(self.account.key)
 
+        nonce = secrets.token_bytes(12)
         aesgcm = AESGCM(owner_key)
         encrypted_key = aesgcm.encrypt(nonce, key, None)
 
         return json.dumps({
             "encrypted_key": encrypted_key.hex(),
-            "nonce": nonce.hex()
+            "nonce": nonce.hex(),
+            "salt": salt.hex()
         })
 
     def _decrypt_key_from_owner(self, encrypted_key_package: str) -> bytes:
-        """Decrypt key for model owner"""
+        """Decrypt key for model owner using proper key derivation"""
         package = json.loads(encrypted_key_package)
         encrypted_key = bytes.fromhex(package["encrypted_key"])
         nonce = bytes.fromhex(package["nonce"])
+        salt = bytes.fromhex(package["salt"])
 
-        owner_key = hashlib.sha256(self.account.key).digest()
+        # Derive owner key using same HKDF parameters
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            info=b'lattice-key-wrapping',
+            backend=default_backend()
+        )
+        owner_key = hkdf.derive(self.account.key)
+
         aesgcm = AESGCM(owner_key)
-
         return aesgcm.decrypt(nonce, encrypted_key, None)
 
     def _create_key_shares(self, key: bytes, threshold: int, total: int) -> List[Dict[str, str]]:

@@ -206,6 +206,7 @@ export class LatticeClient {
     };
 
     // Execute inference (call precompile at 0x0101)
+    const startTime = Date.now();
     const tx = await this.wallet.sendTransaction({
       to: '0x0100000000000000000000000000000000000101',
       data: ethers.hexlify(ethers.toUtf8Bytes(JSON.stringify(inferenceData))),
@@ -214,6 +215,8 @@ export class LatticeClient {
 
     // Wait for execution
     const receipt = await tx.wait();
+    const executionTime = Date.now() - startTime;
+
     if (!receipt) {
       throw new LatticeError('Inference execution failed');
     }
@@ -231,7 +234,7 @@ export class LatticeClient {
       modelId: request.modelId,
       outputData,
       gasUsed: receipt.gasUsed,
-      executionTime: 0, // Would be extracted from receipt in real implementation
+      executionTime,
       txHash: tx.hash
     };
   }

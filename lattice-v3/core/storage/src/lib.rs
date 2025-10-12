@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod chain;
 pub mod db;
+pub mod ipfs;
 pub mod pruning;
 pub mod state;
 pub mod state_manager;

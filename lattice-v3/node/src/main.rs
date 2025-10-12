@@ -30,15 +30,48 @@ struct Cli {
     /// Configuration file path
     #[arg(short, long, value_name = "FILE")]
     config: Option<PathBuf>,
-    
+
     /// Data directory
     #[arg(short, long, value_name = "DIR")]
     data_dir: Option<PathBuf>,
-    
+
     /// Enable mining
     #[arg(long)]
     mine: bool,
-    
+
+    /// P2P listen address (e.g., 0.0.0.0:30303)
+    #[arg(long, value_name = "ADDR")]
+    p2p_addr: Option<String>,
+
+    /// Bootstrap nodes (can be specified multiple times)
+    /// Format: peer_id@ip:port or ip:port
+    #[arg(long, value_name = "NODE")]
+    bootstrap_nodes: Vec<String>,
+
+    /// RPC listen address (e.g., 127.0.0.1:8545)
+    #[arg(long, value_name = "ADDR")]
+    rpc_addr: Option<String>,
+
+    /// Maximum number of peers
+    #[arg(long, default_value = "50")]
+    max_peers: usize,
+
+    /// Chain ID
+    #[arg(long, default_value = "1337")]
+    chain_id: u64,
+
+    /// Coinbase address for mining rewards (hex)
+    #[arg(long)]
+    coinbase: Option<String>,
+
+    /// Disable RPC server
+    #[arg(long)]
+    no_rpc: bool,
+
+    /// Run as bootstrap node (no active connections)
+    #[arg(long)]
+    bootstrap: bool,
+
     /// Subcommands
     #[command(subcommand)]
     command: Option<Commands>,
@@ -97,7 +130,7 @@ async fn main() -> Result<()> {
     } else {
         NodeConfig::default()
     };
-    
+
     // Override with CLI args
     let mut config = config;
     if let Some(data_dir) = cli.data_dir {
@@ -105,6 +138,34 @@ async fn main() -> Result<()> {
     }
     if cli.mine {
         config.mining.enabled = true;
+    }
+
+    // Network configuration overrides
+    if let Some(p2p_addr) = cli.p2p_addr {
+        config.network.listen_addr = p2p_addr.parse()
+            .map_err(|e| anyhow::anyhow!("Invalid P2P address: {}", e))?;
+    }
+    if !cli.bootstrap_nodes.is_empty() {
+        config.network.bootstrap_nodes = cli.bootstrap_nodes;
+    }
+    if let Some(rpc_addr) = cli.rpc_addr {
+        config.rpc.listen_addr = rpc_addr.parse()
+            .map_err(|e| anyhow::anyhow!("Invalid RPC address: {}", e))?;
+    }
+    config.network.max_peers = cli.max_peers;
+    config.chain.chain_id = cli.chain_id;
+
+    if let Some(coinbase) = cli.coinbase {
+        config.mining.coinbase = coinbase;
+    }
+    if cli.no_rpc {
+        config.rpc.enabled = false;
+    }
+
+    // If running as bootstrap node, clear bootstrap_nodes list
+    if cli.bootstrap {
+        config.network.bootstrap_nodes.clear();
+        info!("Running as bootstrap node on {}", config.network.listen_addr);
     }
     
     // Start node

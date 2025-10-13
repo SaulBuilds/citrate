@@ -1642,8 +1642,29 @@ impl NodeConfig {
     fn load_or_default() -> Result<Self> {
         let config_path = Self::config_path();
         if config_path.exists() {
-            let config_str = std::fs::read_to_string(config_path)?;
-            Ok(serde_json::from_str(&config_str)?)
+            let config_str = std::fs::read_to_string(&config_path)?;
+
+            // Try to load the config, if it fails due to missing fields, use default and save new format
+            match serde_json::from_str::<Self>(&config_str) {
+                Ok(config) => Ok(config),
+                Err(e) => {
+                    warn!("Failed to parse existing config: {}. Using default config and backing up old one.", e);
+
+                    // Backup the old config
+                    let backup_path = config_path.with_extension("json.backup");
+                    if let Err(backup_err) = std::fs::copy(&config_path, &backup_path) {
+                        warn!("Failed to backup old config: {}", backup_err);
+                    }
+
+                    // Create new default config and save it
+                    let default_config = Self::default();
+                    if let Err(save_err) = default_config.save() {
+                        warn!("Failed to save new default config: {}", save_err);
+                    }
+
+                    Ok(default_config)
+                }
+            }
         } else {
             Ok(Self::default())
         }

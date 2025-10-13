@@ -422,6 +422,10 @@ impl UnifiedEconomicsManager {
     }
 
     /// Getters for external access
+    pub fn get_config(&self) -> &UnifiedEconomicsConfig {
+        &self.config
+    }
+
     pub fn get_token(&self) -> &Token {
         &self.token
     }

@@ -1,6 +1,7 @@
 
 // lattice-v3/core/api/src/lib.rs
 
+pub mod economics_rpc;
 pub mod eip1559_decoder;
 pub mod enhanced_tx_decoder;
 pub mod eth_rpc;

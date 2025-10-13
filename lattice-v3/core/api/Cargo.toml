@@ -23,6 +23,7 @@ lattice-sequencer = { path = "../sequencer" }
 lattice-network = { path = "../network" }
 lattice-execution = { path = "../execution" }
 lattice-storage = { path = "../storage" }
+lattice-economics = { path = "../economics" }
 
 # RPC Server
 jsonrpc-core = "18.0"

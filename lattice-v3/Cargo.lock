@@ -3915,6 +3915,7 @@ dependencies = [
  "jsonrpc-http-server",
  "jsonrpc-ws-server",
  "lattice-consensus",
+ "lattice-economics",
  "lattice-execution",
  "lattice-network",
  "lattice-sequencer",

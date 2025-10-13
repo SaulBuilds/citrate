@@ -1,4 +1,4 @@
-# Dockerfile for Lattice Node
+# Dockerfile for Lattice API Server
 FROM rust:1.75-slim as builder
 
 # Install system dependencies
@@ -7,8 +7,6 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     ca-certificates \
     build-essential \
-    clang \
-    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,8 +14,8 @@ WORKDIR /app
 # Copy workspace files
 COPY . .
 
-# Build the node binary
-RUN cargo build --release --bin lattice-node
+# Build the API server binary
+RUN cargo build --release --bin lattice-api
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -33,24 +31,23 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -m -u 1000 lattice
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/lattice-node /usr/local/bin/lattice-node
+COPY --from=builder /app/target/release/lattice-api /usr/local/bin/lattice-api
 
 # Create data directory
 RUN mkdir -p /data /config && chown -R lattice:lattice /data /config
 
-# Copy default configuration if it exists
-COPY docker/config/node.toml /config/node.toml
+# Copy default configuration
+COPY docker/config/api.toml /config/api.toml
 
 # Switch to lattice user
 USER lattice
 
-# Expose ports (JSON-RPC, WebSocket, P2P)
-EXPOSE 8545 8546 30303
+# Expose ports (REST API, MCP API)
+EXPOSE 3000 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8545 || exit 1
+    CMD curl -f http://localhost:3000/health || exit 1
 
 # Set default command
-CMD ["lattice-node", "--config", "/config/node.toml", "--data-dir", "/data"]
-
+CMD ["lattice-api", "--config", "/config/api.toml"]

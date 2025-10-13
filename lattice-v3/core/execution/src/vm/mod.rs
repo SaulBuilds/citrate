@@ -7,7 +7,13 @@ use std::collections::HashMap;
 use tracing::debug;
 
 pub mod ai_opcodes;
+pub mod evm_opcodes;
+pub mod evm_integration;
+#[cfg(test)]
+mod evm_tests;
+
 use ai_opcodes::AIVMExtension;
+pub use evm_integration::EVMIntegration;
 
 /// Virtual Machine for executing smart contracts and AI models
 pub struct VM {

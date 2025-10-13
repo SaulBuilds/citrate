@@ -8,6 +8,7 @@ use lattice_execution::{address_utils, types::*, Executor, StateDB};
 use primitive_types::U256;
 use std::sync::Arc;
 
+#[allow(dead_code)]
 fn create_test_block(height: u64) -> Block {
     Block {
         header: BlockHeader {
@@ -36,6 +37,7 @@ fn create_test_block(height: u64) -> Block {
     }
 }
 
+#[allow(dead_code)]
 fn create_test_transaction(
     from: PublicKey,
     to: Option<PublicKey>,
@@ -166,7 +168,7 @@ mod execution_tests {
     #[test]
     fn test_storage_operations() {
         let state_db = Arc::new(StateDB::new());
-        let executor = Executor::new(state_db.clone());
+        let _executor = Executor::new(state_db.clone());
 
         let addr = create_test_address(4);
         let key = b"test_key".to_vec();
@@ -245,7 +247,7 @@ mod execution_tests {
     #[test]
     fn test_gas_calculation() {
         let state_db = Arc::new(StateDB::new());
-        let executor = Executor::new(state_db);
+        let _executor = Executor::new(state_db);
 
         // Test basic gas costs
         let base_gas = 21000u64;

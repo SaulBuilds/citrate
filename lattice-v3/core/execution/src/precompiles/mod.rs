@@ -86,10 +86,14 @@ impl PrecompileExecutor {
             && addr_bytes[19] >= 1
             && addr_bytes[19] <= 9;
 
-        // Lattice AI precompiles (0x0100 - 0x0105)
-        let is_ai = addr_bytes[..18].iter().all(|&b| b == 0)
-            && addr_bytes[18] == 1
-            && addr_bytes[19] <= 5;
+        // Lattice AI precompiles (0x0100 - 0x0109)
+        // Address format: [0, 0, ..., 0, 1, 0, x] where x is 0-9
+        let prefix_check = addr_bytes[..17].iter().all(|&b| b == 0);
+        let byte17_check = addr_bytes[17] == 1; // This is the 0x01 part
+        let byte18_check = addr_bytes[18] == 0; // This is the 00 part
+        let byte19_check = addr_bytes[19] <= 9; // This is the function selector (0-9)
+        let is_ai = prefix_check && byte17_check && byte18_check && byte19_check;
+
 
         is_standard || is_ai
     }

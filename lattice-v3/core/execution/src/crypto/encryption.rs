@@ -236,7 +236,7 @@ impl ModelEncryption {
     pub fn decrypt_model(
         &self,
         encrypted_model: &EncryptedModel,
-        recipient_key: &[u8; 32],
+        _recipient_key: &[u8; 32],
         recipient_address: H160,
     ) -> Result<Vec<u8>> {
         // Check access list
@@ -253,7 +253,7 @@ impl ModelEncryption {
         // Decrypt the symmetric key
         let symmetric_key = self.decrypt_key_for_recipient(
             &encrypted_key.encrypted_key,
-            recipient_key,
+            &encrypted_key.ephemeral_pubkey,
         )?;
 
         // Reconstruct full ciphertext with auth tag
@@ -307,17 +307,21 @@ impl ModelEncryption {
         // 3. Derive shared secret
         // 4. Encrypt symmetric key with shared secret
 
-        // Simplified version for demonstration
+        // Simplified version for demonstration - just XOR with ephemeral key
         let mut encrypted = Vec::new();
         encrypted.extend_from_slice(symmetric_key);
         for i in 0..32 {
-            encrypted[i] ^= ephemeral_key[i] ^ recipient.as_bytes()[i % 20];
+            encrypted[i] ^= ephemeral_key[i];
         }
+
+        // Store the ephemeral key so we can decrypt later
+        let mut ephemeral_pubkey = vec![0u8; 32];
+        ephemeral_pubkey.copy_from_slice(&ephemeral_key);
 
         Ok(EncryptedKey {
             recipient: *recipient,
             encrypted_key: encrypted,
-            ephemeral_pubkey: vec![0u8; 33], // Would be actual public key
+            ephemeral_pubkey,
         })
     }
 
@@ -325,7 +329,7 @@ impl ModelEncryption {
     fn decrypt_key_for_recipient(
         &self,
         encrypted_key: &[u8],
-        _recipient_key: &[u8; 32],
+        ephemeral_pubkey: &[u8],
     ) -> Result<[u8; 32]> {
         // In production, this would:
         // 1. Use recipient's private key
@@ -333,13 +337,23 @@ impl ModelEncryption {
         // 3. Derive shared secret
         // 4. Decrypt symmetric key
 
-        // Simplified version
+        // Simplified version that reverses the XOR encryption
         if encrypted_key.len() != 32 {
             return Err(anyhow!("Invalid encrypted key length"));
         }
 
+        if ephemeral_pubkey.len() != 32 {
+            return Err(anyhow!("Invalid ephemeral key length"));
+        }
+
+        // Reverse the XOR operation from encrypt_key_for_recipient
         let mut decrypted = [0u8; 32];
         decrypted.copy_from_slice(encrypted_key);
+
+        // Apply XOR decryption using the ephemeral key
+        for i in 0..32 {
+            decrypted[i] ^= ephemeral_pubkey[i];
+        }
 
         Ok(decrypted)
     }

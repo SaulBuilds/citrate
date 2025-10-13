@@ -173,6 +173,7 @@ impl BlockProducer {
     }
 
     /// Create with explicit reward configuration (for governance-driven params)
+    #[allow(dead_code)]
     pub fn with_peer_manager_and_rewards(
         storage: Arc<StorageManager>,
         executor: Arc<Executor>,

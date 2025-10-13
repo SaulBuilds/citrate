@@ -1,7 +1,6 @@
 // Comprehensive tests for the API module
 
-use lattice_api::eth_tx_decoder;
-use serde_json::{json, Value};
+use serde_json::json;
 
 #[cfg(test)]
 mod api_tests {
@@ -10,7 +9,7 @@ mod api_tests {
     #[test]
     fn test_decode_legacy_transaction() {
         // Test decoding a legacy (type 0) transaction
-        let tx_hex = "0x00"; // Simplified - would be actual RLP in production
+        let _tx_hex = "0x00"; // Simplified - would be actual RLP in production
 
         // Test that decoder can handle legacy transactions
         assert!(true); // Placeholder - actual test would decode and verify
@@ -19,7 +18,7 @@ mod api_tests {
     #[test]
     fn test_decode_eip1559_transaction() {
         // Test decoding an EIP-1559 (type 2) transaction
-        let tx_hex = "0x02"; // Simplified - would be actual RLP in production
+        let _tx_hex = "0x02"; // Simplified - would be actual RLP in production
 
         // Test that decoder can handle EIP-1559 transactions
         assert!(true); // Placeholder - actual test would decode and verify

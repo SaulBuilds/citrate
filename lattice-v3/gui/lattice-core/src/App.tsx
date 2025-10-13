@@ -5,17 +5,23 @@ import { Dashboard } from './components/Dashboard';
 import { Wallet } from './components/Wallet';
 import { DAGVisualization } from './components/DAGVisualization';
 import { Models } from './components/Models';
+import { Marketplace } from './components/Marketplace';
+import { ChatBot } from './components/ChatBot';
+import { IPFS } from './components/IPFS';
 import { Settings as SettingsView } from './components/Settings';
-import { 
+import {
   LayoutDashboard,
   Wallet as WalletIcon,
   Network,
   Brain,
+  ShoppingBag,
+  MessageSquare,
+  Database,
   Settings,
   Github
 } from 'lucide-react';
 
-type View = 'dashboard' | 'wallet' | 'dag' | 'models' | 'settings';
+type View = 'dashboard' | 'wallet' | 'dag' | 'models' | 'marketplace' | 'chat' | 'ipfs' | 'settings';
 
 function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -43,6 +49,12 @@ function App() {
         return <DAGVisualization />;
       case 'models':
         return <Models />;
+      case 'marketplace':
+        return <Marketplace />;
+      case 'chat':
+        return <ChatBot />;
+      case 'ipfs':
+        return <IPFS />;
       case 'settings':
         return <SettingsView />;
       default:
@@ -84,7 +96,7 @@ function App() {
             <span>DAG Explorer</span>
           </button>
 
-          <button 
+          <button
             className={`nav-item ${currentView === 'models' ? 'active' : ''}`}
             onClick={() => setCurrentView('models')}
           >
@@ -92,7 +104,31 @@ function App() {
             <span>AI Models</span>
           </button>
 
-          <button 
+          <button
+            className={`nav-item ${currentView === 'marketplace' ? 'active' : ''}`}
+            onClick={() => setCurrentView('marketplace')}
+          >
+            <ShoppingBag size={20} />
+            <span>Marketplace</span>
+          </button>
+
+          <button
+            className={`nav-item ${currentView === 'chat' ? 'active' : ''}`}
+            onClick={() => setCurrentView('chat')}
+          >
+            <MessageSquare size={20} />
+            <span>AI Chat</span>
+          </button>
+
+          <button
+            className={`nav-item ${currentView === 'ipfs' ? 'active' : ''}`}
+            onClick={() => setCurrentView('ipfs')}
+          >
+            <Database size={20} />
+            <span>IPFS Storage</span>
+          </button>
+
+          <button
             className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
             onClick={() => setCurrentView('settings')}
           >

@@ -194,6 +194,10 @@ impl KeyManager {
                 let idx_str = &component[..component.len() - 1];
                 let idx = idx_str.parse::<u32>()
                     .map_err(|_| anyhow!("Invalid path component"))?;
+                // Check for overflow before adding
+                if idx > 0x7FFFFFFF {
+                    return Err(anyhow!("Path component too large for hardened derivation"));
+                }
                 (idx + 0x80000000, true) // Hardened derivation
             } else {
                 let idx = component.parse::<u32>()
@@ -290,8 +294,16 @@ impl KeyManager {
         }
 
         // Generate secret to share
+        // Use a small numeric hash of the model_id to avoid overflow issues
+        let model_hash = {
+            let mut hasher = sha3::Sha3_256::new();
+            hasher.update(model_id.as_bytes());
+            let result = hasher.finalize();
+            // Use a smaller value to avoid overflow in hardened derivation
+            u32::from_be_bytes([result[0], result[1], result[2], result[3]]) % 1000000 // Limit to 6 digits
+        };
         let secret = self.derive_key(
-            &format!("m/threshold/{}", hex::encode(model_id)),
+            &format!("m/44'/1337'/{}'", model_hash),
             KeyPurpose::ModelEncryption,
         )?;
 

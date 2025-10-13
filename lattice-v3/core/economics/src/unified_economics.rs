@@ -536,7 +536,6 @@ pub struct BlockEconomicUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dynamic_pricing::UtilizationMetrics;
 
     #[test]
     fn test_unified_economics_initialization() {

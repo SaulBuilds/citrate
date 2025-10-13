@@ -379,4 +379,7 @@ pub enum ExecutionError {
 
     #[error("Invalid opcode")]
     InvalidOpcodeGeneric,
+
+    #[error("Invalid jump destination")]
+    InvalidJumpDestination,
 }

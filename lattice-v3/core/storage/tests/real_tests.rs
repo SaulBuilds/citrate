@@ -3,8 +3,9 @@
 use lattice_consensus::types::{
     Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, Transaction, VrfProof,
 };
-use lattice_storage::{PruningConfig, StorageManager};
-use std::sync::Arc;
+use lattice_storage::{pruning::PruningConfig, StorageManager};
+use lattice_execution::types::Address;
+use tempfile::TempDir;
 
 fn create_test_block(num: u8, height: u64) -> Block {
     let mut hash_bytes = [0u8; 32];
@@ -75,8 +76,9 @@ mod storage_manager_tests {
 
     #[test]
     fn test_height_indexing() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         // Store blocks at different heights
         for i in 0..5 {
@@ -91,15 +93,16 @@ mod storage_manager_tests {
 
     #[test]
     fn test_block_by_height() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         let block = create_test_block(5, 50);
         storage.blocks.put_block(&block).unwrap();
 
         let hash = storage
             .blocks
-            .get_block_hash_by_height(50)
+            .get_block_by_height(50)
             .unwrap()
             .expect("Block at height 50 not found");
 
@@ -108,20 +111,26 @@ mod storage_manager_tests {
 
     #[test]
     fn test_transaction_storage() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         let tx = Transaction {
-            version: 1,
-            inputs: vec![],
-            outputs: vec![],
-            timestamp: 123456,
+            hash: Hash::new([1; 32]),
+            nonce: 0,
+            from: PublicKey::new([1; 32]),
+            to: Some(PublicKey::new([2; 32])),
+            value: 1000,
+            gas_limit: 21000,
+            gas_price: 1000000000,
+            data: vec![],
             signature: Signature::new([0u8; 64]),
+            tx_type: None,
         };
 
         storage
             .transactions
-            .put_transactions(&[tx.clone()])
+            .put_transaction(&tx)
             .unwrap();
 
         // Verify transaction was stored
@@ -131,11 +140,15 @@ mod storage_manager_tests {
 
     #[test]
     fn test_pruning_config() {
-        let mut config = StorageConfig::default();
-        config.enable_pruning = true;
-        config.pruning_height = 1000;
-
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig {
+            keep_blocks: 1000,
+            keep_states: 1000,
+            interval: std::time::Duration::from_secs(3600),
+            batch_size: 1000,
+            auto_prune: true,
+        };
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         // Verify pruning is configured
         assert!(storage.blocks.get_latest_height().is_ok());
@@ -148,8 +161,9 @@ mod chain_store_tests {
 
     #[test]
     fn test_genesis_block() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         let genesis = create_test_block(0, 0);
         storage.blocks.put_block(&genesis).unwrap();
@@ -165,8 +179,9 @@ mod chain_store_tests {
 
     #[test]
     fn test_multiple_blocks_same_height() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         // Create two different blocks at same height (fork)
         let block1 = create_test_block(1, 100);
@@ -182,8 +197,9 @@ mod chain_store_tests {
 
     #[test]
     fn test_block_range() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
         // Store blocks 0-10
         for i in 0..11 {
@@ -200,40 +216,43 @@ mod chain_store_tests {
 #[cfg(test)]
 mod state_store_tests {
     use super::*;
-    use primitive_types::U256;
 
     #[test]
     fn test_state_operations() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
+        let address = Address([0u8; 20]);
         // State operations would go here
         // This depends on what methods are exposed
-        assert!(storage.state.get_account_state(&[0u8; 20]).is_ok());
+        assert!(storage.state.get_account(&address).is_ok());
     }
 
     #[test]
     fn test_account_balance() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
-        let address = [1u8; 20];
+        let address = Address([1u8; 20]);
 
-        // Initial balance should be zero
-        let balance = storage.state.get_balance(&address).unwrap_or(U256::zero());
-        assert_eq!(balance, U256::zero());
+        // Initial balance should be zero - check if account exists
+        let account = storage.state.get_account(&address).unwrap();
+        assert!(account.is_none());
     }
 
     #[test]
     fn test_nonce_tracking() {
-        let config = StorageConfig::default();
-        let storage = StorageManager::new(config).expect("Failed to create storage");
+        let temp_dir = TempDir::new().unwrap();
+        let config = PruningConfig::default();
+        let storage = StorageManager::new(temp_dir.path(), config).expect("Failed to create storage");
 
-        let address = [2u8; 20];
+        let address = Address([2u8; 20]);
 
-        // Initial nonce should be zero
-        let nonce = storage.state.get_nonce(&address).unwrap_or(0);
-        assert_eq!(nonce, 0);
+        // Initial nonce should be zero - check if account exists
+        let account = storage.state.get_account(&address).unwrap();
+        assert!(account.is_none());
     }
 }
 
@@ -245,19 +264,18 @@ mod persistence_tests {
     #[test]
     fn test_persistence_across_restart() {
         let temp_dir = TempDir::new().unwrap();
-        let mut config = StorageConfig::default();
-        config.path = temp_dir.path().to_path_buf();
+        let config = PruningConfig::default();
 
         // First instance - store data
         {
-            let storage = StorageManager::new(config.clone()).unwrap();
+            let storage = StorageManager::new(temp_dir.path(), config.clone()).unwrap();
             let block = create_test_block(99, 999);
             storage.blocks.put_block(&block).unwrap();
         }
 
         // Second instance - retrieve data
         {
-            let storage = StorageManager::new(config).unwrap();
+            let storage = StorageManager::new(temp_dir.path(), config).unwrap();
             let block = create_test_block(99, 999);
             let retrieved = storage
                 .blocks

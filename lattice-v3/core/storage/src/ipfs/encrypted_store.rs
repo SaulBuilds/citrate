@@ -515,6 +515,7 @@ trait IPFSOperations {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipfs::{ModelFramework, ModelType};
 
     #[tokio::test]
     async fn test_encrypted_storage() {

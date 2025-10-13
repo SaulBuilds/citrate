@@ -5,7 +5,9 @@ use lattice_consensus::tip_selection::TipSelector;
 use lattice_consensus::types::{
     Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, Transaction, VrfProof,
 };
-use lattice_economics::{RewardCalculator, RewardConfig};
+use lattice_economics::{
+    RewardCalculator, RewardConfig, UnifiedEconomicsManager,
+};
 use lattice_execution::Executor;
 use lattice_network::{NetworkMessage, PeerManager};
 use lattice_sequencer::mempool::Mempool;
@@ -53,6 +55,7 @@ pub struct BlockProducer {
     coinbase: PublicKey,
     target_block_time: u64,
     reward_calculator: RewardCalculator,
+    economics_manager: Option<Arc<UnifiedEconomicsManager>>,
 }
 
 impl BlockProducer {
@@ -108,6 +111,7 @@ impl BlockProducer {
             coinbase,
             target_block_time,
             reward_calculator,
+            economics_manager: None,
         }
     }
 
@@ -164,6 +168,7 @@ impl BlockProducer {
             coinbase,
             target_block_time,
             reward_calculator,
+            economics_manager: None,
         }
     }
 
@@ -210,6 +215,63 @@ impl BlockProducer {
             coinbase,
             target_block_time,
             reward_calculator,
+            economics_manager: None,
+        }
+    }
+
+    /// Create with economics manager for full economic integration
+    pub fn with_economics(
+        storage: Arc<StorageManager>,
+        executor: Arc<Executor>,
+        mempool: Arc<Mempool>,
+        peer_manager: Option<Arc<PeerManager>>,
+        coinbase: PublicKey,
+        target_block_time: u64,
+        economics_manager: Arc<UnifiedEconomicsManager>,
+    ) -> Self {
+        // Create consensus components with a new DAG store
+        let dag_store = Arc::new(DagStore::new());
+        let _chain_store = storage.blocks.clone();
+
+        let ghostdag = Arc::new(GhostDag::new(GhostDagParams::default(), dag_store.clone()));
+        let tip_selector = Arc::new(TipSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            lattice_consensus::tip_selection::SelectionStrategy::HighestBlueScore,
+        ));
+        let chain_selector = Arc::new(ChainSelector::new(
+            dag_store.clone(),
+            ghostdag.clone(),
+            tip_selector.clone(),
+            100, // finality depth
+        ));
+
+        // For backwards compatibility, keep a basic reward calculator
+        let reward_config = RewardConfig {
+            block_reward: 10, // This will be overridden by economics manager
+            halving_interval: 2_100_000,
+            inference_bonus: 1,
+            model_deployment_bonus: 1,
+            treasury_percentage: 10,
+            treasury_address: lattice_execution::types::Address([0x11; 20]),
+        };
+        let reward_calculator = RewardCalculator::new(reward_config);
+        let ai_state_manager = Arc::new(AIStateManager::new(storage.db.clone()));
+
+        Self {
+            storage,
+            executor,
+            mempool,
+            dag_store,
+            ghostdag,
+            tip_selector,
+            chain_selector,
+            ai_state_manager,
+            peer_manager,
+            coinbase,
+            target_block_time,
+            reward_calculator,
+            economics_manager: Some(economics_manager),
         }
     }
 
@@ -342,33 +404,65 @@ impl BlockProducer {
             signature: Signature::new([1; 64]), // Dummy signature for devnet
         };
 
-        // Calculate and distribute block rewards
-        let reward = self.reward_calculator.calculate_reward(&block);
+        // Process economics if available, otherwise use basic rewards
+        if let Some(economics) = &self.economics_manager {
+            // Apply economics-based rewards
+            info!("Economics: Applying enhanced reward system for block {}", block.header.height);
 
-        // Convert PublicKey to Address for coinbase (validator)
-        let validator_address =
-            lattice_execution::types::Address(self.coinbase.0[0..20].try_into().unwrap_or([0; 20]));
-        let treasury_address = lattice_execution::types::Address([0x11; 20]);
+            // Get base reward from economics config
+            let base_reward = economics.get_config().rewards_config.base_block_reward;
 
-        // Apply rewards to state
-        if reward.validator_reward > U256::zero() {
+            // Apply economics-based rewards to validator
+            let validator_address = lattice_execution::types::Address(
+                self.coinbase.0[0..20].try_into().unwrap_or([0; 20])
+            );
+
+            // Calculate rewards based on economics config and network participation
+            let mut total_reward = base_reward;
+
+            // Apply staking bonus if validator has staked tokens
+            let staked_amount = economics.get_staked_balance(&validator_address);
+            if staked_amount > primitive_types::U256::zero() {
+                let staking_bonus = base_reward / primitive_types::U256::from(10); // 10% staking bonus
+                total_reward = total_reward + staking_bonus;
+                info!("Economics: Applied staking bonus of {} wei for staked amount {}", staking_bonus, staked_amount);
+            }
+
+            // Apply reputation bonus based on AI contributions
+            let reputation_score = economics.get_reputation_score(&validator_address);
+            if reputation_score > 0.5 {
+                let reputation_bonus = base_reward * primitive_types::U256::from((reputation_score * 20.0) as u64) / primitive_types::U256::from(100);
+                total_reward = total_reward + reputation_bonus;
+                info!("Economics: Applied reputation bonus of {} wei for score {}", reputation_bonus, reputation_score);
+            }
+
+            // Calculate dynamic gas pricing for future blocks
+            let current_gas_price = economics.get_operation_cost(lattice_economics::OperationType::AIInference { compute_units: 1000 });
+            if current_gas_price > economics.get_config().pricing_config.base_gas_price {
+                // Network is congested, apply congestion bonus
+                let congestion_bonus = base_reward / primitive_types::U256::from(20); // 5% congestion bonus
+                total_reward = total_reward + congestion_bonus;
+                info!("Economics: Applied congestion bonus of {} wei due to high gas prices", congestion_bonus);
+            }
+
+            // Apply the calculated rewards
             let current_balance = self.executor.get_balance(&validator_address);
-            self.executor.set_balance(
-                &validator_address,
-                current_balance + reward.validator_reward,
-            );
-            info!(
-                "Minted {} wei to validator {}",
-                reward.validator_reward,
-                hex::encode(validator_address.0)
-            );
-        }
+            self.executor.set_balance(&validator_address, current_balance + total_reward);
+            info!("Economics: Applied total enhanced reward of {} wei to validator {} (base: {}, bonuses: {})",
+                total_reward, hex::encode(validator_address.0), base_reward, total_reward - base_reward);
 
-        if reward.treasury_reward > U256::zero() {
-            let current_balance = self.executor.get_balance(&treasury_address);
-            self.executor
-                .set_balance(&treasury_address, current_balance + reward.treasury_reward);
-            info!("Minted {} wei to treasury", reward.treasury_reward);
+            // Track economic metrics for the block
+            if let Some(economic_state) = economics.get_economic_state() {
+                info!("Economics: Network state - Gas price: {}, Staked: {}, Treasury: {}",
+                    economic_state.gas_price, economic_state.staked_amount, economic_state.treasury_balance);
+            }
+        } else {
+            // Use basic reward system as fallback
+            let reward = self.reward_calculator.calculate_reward(&block);
+            let validator_address = lattice_execution::types::Address(
+                self.coinbase.0[0..20].try_into().unwrap_or([0; 20])
+            );
+            self.apply_basic_rewards(&reward, &validator_address);
         }
 
         // Persist block and related data
@@ -584,5 +678,32 @@ impl BlockProducer {
         // Simplified calculation: blue_work = blue_score * difficulty
         // In production, this would consider actual proof-of-work
         Ok(blue_score as u128 * 1_000_000)
+    }
+
+    /// Apply basic rewards (fallback when economics system is not available)
+    fn apply_basic_rewards(&self, reward: &lattice_economics::BlockReward, validator_address: &lattice_execution::types::Address) {
+        let treasury_address = lattice_execution::types::Address([0x11; 20]);
+
+        // Apply validator rewards
+        if reward.validator_reward > U256::zero() {
+            let current_balance = self.executor.get_balance(validator_address);
+            self.executor.set_balance(
+                validator_address,
+                current_balance + reward.validator_reward,
+            );
+            info!(
+                "Basic: Minted {} wei to validator {}",
+                reward.validator_reward,
+                hex::encode(validator_address.0)
+            );
+        }
+
+        // Apply treasury rewards
+        if reward.treasury_reward > U256::zero() {
+            let current_balance = self.executor.get_balance(&treasury_address);
+            self.executor
+                .set_balance(&treasury_address, current_balance + reward.treasury_reward);
+            info!("Basic: Minted {} wei to treasury", reward.treasury_reward);
+        }
     }
 }

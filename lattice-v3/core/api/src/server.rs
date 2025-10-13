@@ -1,6 +1,6 @@
 // lattice-v3/core/api/src/server.rs
 
-use crate::eth_rpc;
+use crate::{economics_rpc, eth_rpc};
 use crate::methods::{AiApi, ChainApi, MempoolApi, NetworkApi, StateApi, TransactionApi};
 use crate::metrics::rpc_request;
 use crate::types::{
@@ -292,6 +292,26 @@ impl RpcServer {
         executor: Arc<Executor>,
         chain_id: u64,
     ) -> Self {
+        Self::with_economics(
+            config,
+            storage,
+            mempool,
+            peer_manager,
+            executor,
+            chain_id,
+            None,
+        )
+    }
+
+    pub fn with_economics(
+        config: RpcConfig,
+        storage: Arc<StorageManager>,
+        mempool: Arc<Mempool>,
+        peer_manager: Arc<PeerManager>,
+        executor: Arc<Executor>,
+        chain_id: u64,
+        economics_manager: Option<Arc<lattice_economics::UnifiedEconomicsManager>>,
+    ) -> Self {
         let mut io_handler = IoHandler::new();
 
         // Register Ethereum-compatible RPC methods
@@ -302,6 +322,9 @@ impl RpcServer {
             executor.clone(),
             chain_id,
         );
+
+        // Register economics-related RPC methods
+        economics_rpc::register_economics_methods(&mut io_handler, economics_manager, Some(mempool.clone()));
 
         // ========== Chain Methods ==========
 

@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use lattice_api::{RpcConfig, RpcServer};
 use lattice_consensus::crypto;
 use lattice_execution::{Executor, StateDB};
+use lattice_economics::{UnifiedEconomicsManager, UnifiedEconomicsConfig, StakeholderType};
 use lattice_network::peer::PeerId;
 use lattice_network::peer::{PeerManager, PeerManagerConfig};
 use lattice_sequencer::mempool::{Mempool, MempoolConfig};
@@ -595,6 +596,19 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         }
     }
 
+    // Create unified economics manager for RPC and mining
+    let economics_config = UnifiedEconomicsConfig::default();
+    let mut economics_manager_temp = UnifiedEconomicsManager::new(economics_config);
+
+    // Register initial stakeholders
+    let coinbase_bytes = hex::decode(&config.mining.coinbase).unwrap_or_else(|_| vec![0; 32]);
+    let mut coinbase = [0u8; 32];
+    coinbase.copy_from_slice(&coinbase_bytes[..32.min(coinbase_bytes.len())]);
+    let validator_address = lattice_execution::types::Address(coinbase[0..20].try_into().unwrap_or([0; 20]));
+    let _ = economics_manager_temp.register_stakeholder(validator_address, StakeholderType::Validator);
+
+    let economics_manager = Arc::new(economics_manager_temp);
+
     // Start RPC server if enabled
     let rpc_handle = if config.rpc.enabled {
         info!("Starting RPC server on {}", config.rpc.listen_addr);
@@ -606,13 +620,14 @@ async fn start_node(config: NodeConfig) -> Result<()> {
             threads: 4,
         };
 
-        let rpc_server = RpcServer::new(
+        let rpc_server = RpcServer::with_economics(
             rpc_config,
             storage.clone(),
             mempool.clone(),
             peer_manager.clone(),
             executor.clone(),
             config.chain.chain_id,
+            Some(economics_manager.clone()),
         );
 
         Some(tokio::spawn(async move {
@@ -651,33 +666,25 @@ async fn start_node(config: NodeConfig) -> Result<()> {
         let producer_peer_manager = Some(peer_manager.clone());
 
         // Treasury percentage from governance
-        let mut treasury_percentage = 10u8;
+        let mut _treasury_percentage = 10u8;
         if let Some(bytes) = executor
             .state_db()
             .get_storage(&governance_addr, b"PARAM:treasury_percentage")
         {
             if !bytes.is_empty() {
-                treasury_percentage = bytes[0];
+                _treasury_percentage = bytes[0];
             }
         }
 
-        let reward_config = lattice_economics::rewards::RewardConfig {
-            block_reward: 10,
-            halving_interval: 2_100_000,
-            inference_bonus: 1,
-            model_deployment_bonus: 1,
-            treasury_percentage,
-            treasury_address: lattice_execution::types::Address([0x11; 20]),
-        };
-
-        let producer = Arc::new(BlockProducer::with_peer_manager_and_rewards(
+        // Use the economics manager created earlier
+        let producer = Arc::new(BlockProducer::with_economics(
             storage.clone(),
             executor.clone(),
             mempool.clone(),
             producer_peer_manager,
             lattice_consensus::PublicKey::new(coinbase),
             config.mining.target_block_time,
-            reward_config,
+            economics_manager,
         ));
 
         tokio::spawn(async move {

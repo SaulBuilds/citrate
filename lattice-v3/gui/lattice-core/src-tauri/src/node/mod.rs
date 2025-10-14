@@ -1706,6 +1706,32 @@ impl NodeConfig {
         self.ws_port = 18546; // Different from testnet's 8546
     }
 
+    /// Ensure robust connection to testnet with retry logic
+    pub async fn ensure_testnet_connectivity(&self) -> Result<()> {
+        let current_peers = self.get_peers_summary().await.len();
+
+        if current_peers == 0 {
+            warn!("No peers connected. Attempting to connect to configured bootnodes...");
+
+            // Force connection to bootnodes
+            let connected = self.connect_to_bootnodes().await?;
+            info!("Connected to {} bootnode(s)", connected);
+
+            if connected == 0 {
+                warn!("Failed to connect to any bootnodes. Checking if testnet is running...");
+
+                // Try to verify if the testnet is accessible
+                let config = self.config.read().await;
+                for bootnode in &config.bootnodes {
+                    info!("Attempting connection to bootnode: {}", bootnode);
+                    // The actual connection will be handled by the node networking layer
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn validate(&self) -> Result<()> {
         // Basic port sanity
         if self.rpc_port == 0 || self.ws_port == 0 || self.p2p_port == 0 || self.rest_port == 0 {

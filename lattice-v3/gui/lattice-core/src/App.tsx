@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
 import './App.css';
 import latticeLogo from './assets/lattice_lockup.png';
 import { Dashboard } from './components/Dashboard';
@@ -9,6 +10,7 @@ import { Marketplace } from './components/Marketplace';
 import { ChatBot } from './components/ChatBot';
 import { IPFS } from './components/IPFS';
 import { Settings as SettingsView } from './components/Settings';
+import { FirstTimeSetup } from './components/FirstTimeSetup';
 import {
   LayoutDashboard,
   Wallet as WalletIcon,
@@ -36,8 +38,45 @@ function App() {
       setCurrentView('dag');
     };
     window.addEventListener('open-dag-for-hash' as any, handler);
+
+    // Auto-initialize on app start
+    if (isNativeApp) {
+      initializeApp();
+    }
+
     return () => window.removeEventListener('open-dag-for-hash' as any, handler);
-  }, []);
+  }, [isNativeApp]);
+
+  const initializeApp = async () => {
+    try {
+      console.log('Initializing Lattice app...');
+
+      // Check for first-time setup and handle it
+      const setupResult = await invoke('check_first_time_and_setup_if_needed');
+      if (setupResult) {
+        console.log('First-time setup completed:', setupResult);
+      }
+
+      // Switch to testnet mode and ensure connectivity
+      await invoke('switch_to_testnet');
+
+      // Start the node
+      await invoke('start_node');
+
+      // Ensure connectivity after a brief delay
+      setTimeout(async () => {
+        try {
+          await invoke('ensure_connectivity');
+          console.log('Connectivity check completed');
+        } catch (error) {
+          console.warn('Connectivity check failed:', error);
+        }
+      }, 3000);
+
+    } catch (error) {
+      console.error('App initialization failed:', error);
+    }
+  };
 
   const renderView = () => {
     switch (currentView) {
@@ -253,6 +292,11 @@ function App() {
           overflow-y: auto;
         }
       `}</style>
+
+      <FirstTimeSetup onSetupComplete={() => {
+        // Refresh the current view or trigger any necessary updates
+        setCurrentView('dashboard');
+      }} />
     </div>
   );
 }

@@ -22,6 +22,14 @@ use tracing::info;
 const KEYRING_SERVICE: &str = "lattice-core";
 const KEYRING_USER: &str = "wallet";
 
+/// Result of first-time wallet setup
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirstTimeSetupResult {
+    pub primary_address: String,
+    pub mnemonic: String,
+    pub warning_message: String,
+}
+
 /// Secure wallet manager with OS keychain integration
 pub struct WalletManager {
     accounts: Arc<RwLock<Vec<Account>>>,
@@ -40,6 +48,46 @@ impl WalletManager {
             keystore,
             active_account: Arc::new(RwLock::new(None)),
         })
+    }
+
+    /// Check if this is the first time the wallet is being used
+    pub async fn is_first_time_setup(&self) -> bool {
+        let accounts = self.accounts.read().await;
+        accounts.is_empty()
+    }
+
+    /// Perform first-time setup with secure key generation and reward address configuration
+    pub async fn perform_first_time_setup(&self, password: &str) -> Result<FirstTimeSetupResult> {
+        if !self.is_first_time_setup().await {
+            return Err(anyhow::anyhow!("Wallet already has accounts"));
+        }
+
+        info!("Performing first-time wallet setup");
+
+        // Create the primary account
+        let primary_account = self.create_account("Primary Account".to_string(), password).await?;
+
+        // Set as active account
+        {
+            let mut active_account = self.active_account.write().await;
+            *active_account = Some(0);
+        }
+
+        let setup_result = FirstTimeSetupResult {
+            primary_address: primary_account.address.clone(),
+            mnemonic: primary_account.mnemonic_phrase.clone(),
+            warning_message: "IMPORTANT: Save your recovery phrase securely. This is the ONLY way to recover your wallet if you lose access. Never share it with anyone.".to_string(),
+        };
+
+        info!("First-time setup completed. Primary address: {}", primary_account.address);
+
+        Ok(setup_result)
+    }
+
+    /// Get the primary account address for reward configuration
+    pub async fn get_primary_reward_address(&self) -> Option<String> {
+        let accounts = self.accounts.read().await;
+        accounts.first().map(|account| account.address.clone())
     }
 
     pub async fn create_account(&self, label: String, password: &str) -> Result<Account> {

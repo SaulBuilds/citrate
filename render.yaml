@@ -3,16 +3,13 @@ services:
   # Main Blockchain Node
   - type: web
     name: lattice-node
-    runtime: docker
+    env: docker
     repo: https://github.com/SaulBuilds/lattice-v3.git
     branch: render-deploy
     dockerfilePath: ./Dockerfile
     dockerContext: ./lattice-v3
     region: oregon
     plan: starter
-    autoDeploy: true
-
-    healthCheckPath: /health
 
     envVars:
       - key: NETWORK_MODE

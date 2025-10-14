@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::info;
+use tracing::{info, warn};
 
 mod block_producer;
 mod dag;
@@ -450,14 +450,21 @@ async fn switch_to_testnet(state: State<'_, AppState>) -> Result<String, String>
 
 #[tauri::command]
 async fn ensure_connectivity(state: State<'_, AppState>) -> Result<String, String> {
-    state
-        .node_manager
-        .ensure_testnet_connectivity()
-        .await
-        .map_err(|e| e.to_string())?;
-
+    // Get current peer count
     let peer_count = state.node_manager.get_peers_summary().await.len();
-    Ok(format!("Connectivity check complete. Connected peers: {}", peer_count))
+
+    if peer_count == 0 {
+        warn!("No peers connected. Attempting to connect to bootnodes...");
+
+        // Try to connect to configured bootnodes
+        let connected = state.node_manager.connect_bootnodes_now().await.map_err(|e| e.to_string())?;
+        info!("Connected to {} bootnode(s)", connected);
+
+        let new_peer_count = state.node_manager.get_peers_summary().await.len();
+        Ok(format!("Connectivity check complete. Connected peers: {} (was {})", new_peer_count, peer_count))
+    } else {
+        Ok(format!("Connectivity check complete. Connected peers: {}", peer_count))
+    }
 }
 
 #[tauri::command]

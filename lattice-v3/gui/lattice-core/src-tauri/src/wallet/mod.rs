@@ -64,8 +64,8 @@ impl WalletManager {
 
         info!("Performing first-time wallet setup");
 
-        // Create the primary account
-        let primary_account = self.create_account("Primary Account".to_string(), password).await?;
+        // Create the primary account with credentials to get account and mnemonic
+        let (primary_account, _private_key_hex, mnemonic) = self.create_account_with_credentials("Primary Account".to_string(), password).await?;
 
         // Set as active account
         {
@@ -75,7 +75,7 @@ impl WalletManager {
 
         let setup_result = FirstTimeSetupResult {
             primary_address: primary_account.address.clone(),
-            mnemonic: primary_account.mnemonic_phrase.clone(),
+            mnemonic,
             warning_message: "IMPORTANT: Save your recovery phrase securely. This is the ONLY way to recover your wallet if you lose access. Never share it with anyone.".to_string(),
         };
 

@@ -277,6 +277,7 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     let mcp = Arc::new(lattice_mcp::MCPService::new(
         storage.clone(),
         vm_for_mcp.clone(),
+        None, // Genesis config will be loaded separately if needed
     ));
     // Provider address from config.mining.coinbase (hex 0x...)
     let provider_addr = {

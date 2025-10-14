@@ -40,5 +40,13 @@ docs-portal/build/
 **/gui-data/
 **/.lattice-*/
 
+# AI Models (large files - use IPFS for deployment)
+**/models/**/*.safetensors
+**/models/**/*.onnx
+**/models/**/*.bin
+**/models/**/*.pt
+**/models/**/*.pth
+**/models/**/*.h5
+
 # Tauri bundles (covered by target/, but kept for clarity)
 **/bundle/

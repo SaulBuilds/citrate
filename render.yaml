@@ -6,8 +6,8 @@ services:
     env: docker
     repo: https://github.com/SaulBuilds/lattice-v3.git
     branch: render-deploy
-    dockerfilePath: ./Dockerfile
-    dockerContext: ./lattice-v3
+    dockerfilePath: ./lattice-v3/Dockerfile
+    dockerContext: .
     region: oregon
     plan: starter
 

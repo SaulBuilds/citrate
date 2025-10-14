@@ -13,7 +13,6 @@ services:
     autoDeploy: true
 
     healthCheckPath: /health
-    healthCheckInterval: 30000
 
     envVars:
       - key: NETWORK_MODE

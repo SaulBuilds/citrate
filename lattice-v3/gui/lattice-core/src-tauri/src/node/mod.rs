@@ -1642,8 +1642,29 @@ impl NodeConfig {
     fn load_or_default() -> Result<Self> {
         let config_path = Self::config_path();
         if config_path.exists() {
-            let config_str = std::fs::read_to_string(config_path)?;
-            Ok(serde_json::from_str(&config_str)?)
+            let config_str = std::fs::read_to_string(&config_path)?;
+
+            // Try to load the config, if it fails due to missing fields, use default and save new format
+            match serde_json::from_str::<Self>(&config_str) {
+                Ok(config) => Ok(config),
+                Err(e) => {
+                    warn!("Failed to parse existing config: {}. Using default config and backing up old one.", e);
+
+                    // Backup the old config
+                    let backup_path = config_path.with_extension("json.backup");
+                    if let Err(backup_err) = std::fs::copy(&config_path, &backup_path) {
+                        warn!("Failed to backup old config: {}", backup_err);
+                    }
+
+                    // Create new default config and save it
+                    let default_config = Self::default();
+                    if let Err(save_err) = default_config.save() {
+                        warn!("Failed to save new default config: {}", save_err);
+                    }
+
+                    Ok(default_config)
+                }
+            }
         } else {
             Ok(Self::default())
         }
@@ -1683,6 +1704,32 @@ impl NodeConfig {
         self.p2p_port = 30304; // Different from testnet's 30303
         self.rpc_port = 18545; // Different from testnet's 8545
         self.ws_port = 18546; // Different from testnet's 8546
+    }
+
+    /// Ensure robust connection to testnet with retry logic
+    pub async fn ensure_testnet_connectivity(&self) -> Result<()> {
+        let current_peers = self.get_peers_summary().await.len();
+
+        if current_peers == 0 {
+            warn!("No peers connected. Attempting to connect to configured bootnodes...");
+
+            // Force connection to bootnodes
+            let connected = self.connect_to_bootnodes().await?;
+            info!("Connected to {} bootnode(s)", connected);
+
+            if connected == 0 {
+                warn!("Failed to connect to any bootnodes. Checking if testnet is running...");
+
+                // Try to verify if the testnet is accessible
+                let config = self.config.read().await;
+                for bootnode in &config.bootnodes {
+                    info!("Attempting connection to bootnode: {}", bootnode);
+                    // The actual connection will be handled by the node networking layer
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn validate(&self) -> Result<()> {

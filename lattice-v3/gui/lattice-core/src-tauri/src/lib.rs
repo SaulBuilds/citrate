@@ -26,7 +26,7 @@ use node::TxActivity;
 use node::TxOverview;
 use node::{NodeConfig, NodeManager, NodeStatus};
 use node::{PeerSummary, PendingTx};
-use wallet::{Account, TransactionRequest, WalletManager};
+use wallet::{Account, FirstTimeSetupResult, TransactionRequest, WalletManager};
 
 // Application state
 struct AppState {
@@ -448,6 +448,70 @@ async fn switch_to_testnet(state: State<'_, AppState>) -> Result<String, String>
     ))
 }
 
+#[tauri::command]
+async fn ensure_connectivity(state: State<'_, AppState>) -> Result<String, String> {
+    state
+        .node_manager
+        .ensure_testnet_connectivity()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let peer_count = state.node_manager.get_peers_summary().await.len();
+    Ok(format!("Connectivity check complete. Connected peers: {}", peer_count))
+}
+
+#[tauri::command]
+async fn check_first_time_and_setup_if_needed(
+    state: State<'_, AppState>,
+) -> Result<Option<FirstTimeSetupResult>, String> {
+    // Check if this is first time setup
+    if state.wallet_manager.is_first_time_setup().await {
+        info!("First-time user detected. Performing automatic setup...");
+
+        // Use a default password for automatic setup - in production, this should be user-provided
+        let default_password = "secure_default_password_2024";
+        let setup_result = state
+            .wallet_manager
+            .perform_first_time_setup(default_password)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Automatically set the generated address as the reward address
+        let reward_address = setup_result.primary_address.clone();
+        state
+            .node_manager
+            .set_reward_address(reward_address.clone())
+            .await;
+
+        // Update the node config to persist the reward address
+        let mut config = state.node_manager.get_config().await;
+        config.reward_address = Some(reward_address);
+        let _ = config.save();
+
+        info!(
+            "Automatic first-time setup completed. Reward address: {}",
+            setup_result.primary_address
+        );
+
+        Ok(Some(setup_result))
+    } else {
+        // Not first time - check if we have a reward address set
+        if let Some(primary_address) = state.wallet_manager.get_primary_reward_address().await {
+            let current_reward = state.node_manager.get_reward_address().await;
+            if current_reward != Some(primary_address.clone()) {
+                info!("Setting primary wallet address as reward address: {}", primary_address);
+                state.node_manager.set_reward_address(primary_address.clone()).await;
+
+                let mut config = state.node_manager.get_config().await;
+                config.reward_address = Some(primary_address);
+                let _ = config.save();
+            }
+        }
+
+        Ok(None)
+    }
+}
+
 fn detect_local_ipv4() -> Option<String> {
     use std::net::{IpAddr, UdpSocket};
     if let Ok(s) = UdpSocket::bind("0.0.0.0:0") {
@@ -574,6 +638,42 @@ async fn import_account_from_mnemonic(
 #[tauri::command]
 async fn get_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, String> {
     Ok(state.wallet_manager.get_accounts().await)
+}
+
+#[tauri::command]
+async fn is_first_time_setup(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.wallet_manager.is_first_time_setup().await)
+}
+
+#[tauri::command]
+async fn perform_first_time_setup(
+    state: State<'_, AppState>,
+    password: String,
+) -> Result<FirstTimeSetupResult, String> {
+    let setup_result = state
+        .wallet_manager
+        .perform_first_time_setup(&password)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Automatically set the generated address as the reward address
+    let reward_address = setup_result.primary_address.clone();
+    state
+        .node_manager
+        .set_reward_address(reward_address.clone())
+        .await;
+
+    // Update the node config to persist the reward address
+    let mut config = state.node_manager.get_config().await;
+    config.reward_address = Some(reward_address);
+    let _ = config.save();
+
+    info!(
+        "First-time setup completed. Reward address set to: {}",
+        setup_result.primary_address
+    );
+
+    Ok(setup_result)
 }
 
 #[tauri::command]
@@ -978,6 +1078,8 @@ pub fn run() {
             connect_to_external_testnet,
             disconnect_external_rpc,
             switch_to_testnet,
+            ensure_connectivity,
+            check_first_time_and_setup_if_needed,
             // Network/Bootnode commands
             get_bootnodes,
             add_bootnode,
@@ -999,6 +1101,8 @@ pub fn run() {
             import_account,
             import_account_from_mnemonic,
             get_accounts,
+            is_first_time_setup,
+            perform_first_time_setup,
             get_account,
             send_transaction,
             sign_message,

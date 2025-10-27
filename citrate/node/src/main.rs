@@ -6,7 +6,7 @@ use citrate_execution::{Executor, StateDB};
 use citrate_economics::{UnifiedEconomicsManager, UnifiedEconomicsConfig, StakeholderType};
 use citrate_network::peer::PeerId;
 use citrate_network::peer::{PeerManager, PeerManagerConfig};
-use citrate_network::{NetworkTransport, GossipProtocol, GossipConfig, Discovery, DiscoveryConfig};
+use citrate_network::{NetworkTransport, GossipProtocol, GossipConfig, Discovery, DiscoveryConfig, SyncManager, SyncConfig};
 use citrate_sequencer::mempool::{Mempool, MempoolConfig};
 use citrate_storage::{pruning::PruningConfig, StorageManager};
 use std::path::PathBuf;
@@ -278,7 +278,6 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     let mcp = Arc::new(citrate_mcp::MCPService::new(
         storage.clone(),
         vm_for_mcp.clone(),
-        None, // Genesis config will be loaded separately if needed
     ));
     // Provider address from config.mining.coinbase (hex 0x...)
     let provider_addr = {

@@ -212,9 +212,11 @@ fn register_genesis_model(
         ?;
 
     // Persist to storage manager AI state for RPC visibility
-    let weight_cid = "embedded:genesis".to_string();
-    storage
-        .state
-        .register_model(model_id, executor.state_db().get_model(&model_id).unwrap(), weight_cid)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
+    if let Some(model) = executor.state_db().get_model(&model_id) {
+        storage
+            .state
+            .put_model(&model_id, &model)
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    }
+    Ok(())
 }

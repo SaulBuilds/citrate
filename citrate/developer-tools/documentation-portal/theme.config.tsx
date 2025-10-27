@@ -4,12 +4,12 @@ import { DocsThemeConfig } from 'nextra-theme-docs'
 const config: DocsThemeConfig = {
   logo: <span style={{ fontWeight: 'bold', fontSize: '1.2em' }}>⟡ Citrate AI Docs</span>,
   project: {
-    link: 'https://github.com/lattice-ai/citrate',
+    link: 'https://github.com/citrate-ai-ai/citrate',
   },
   chat: {
     link: 'https://discord.gg/lattice',
   },
-  docsRepositoryBase: 'https://github.com/lattice-ai/citrate/tree/main/developer-tools/documentation-portal',
+  docsRepositoryBase: 'https://github.com/citrate-ai-ai/citrate/tree/main/developer-tools/documentation-portal',
   footer: {
     text: 'Citrate AI Blockchain Documentation © 2024',
   },

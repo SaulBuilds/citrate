@@ -99,25 +99,25 @@ impl OpenAiRestServer {
             // Anthropic-compatible endpoints
             .route("/v1/messages", post(messages))
             // Citrate-specific AI endpoints
-            .route("/v1/lattice/models", get(lattice_list_models))
-            .route("/v1/lattice/models", post(lattice_deploy_model))
-            .route("/v1/lattice/models/:model_id", get(lattice_get_model))
+            .route("/v1/citrate/models", get(citrate_list_models))
+            .route("/v1/citrate/models", post(citrate_deploy_model))
+            .route("/v1/citrate/models/:model_id", get(citrate_get_model))
             .route(
-                "/v1/lattice/models/:model_id/stats",
-                get(lattice_model_stats),
+                "/v1/citrate/models/:model_id/stats",
+                get(citrate_model_stats),
             )
-            .route("/v1/lattice/inference", post(lattice_request_inference))
+            .route("/v1/citrate/inference", post(citrate_request_inference))
             .route(
-                "/v1/lattice/inference/:request_id",
-                get(lattice_get_inference),
+                "/v1/citrate/inference/:request_id",
+                get(citrate_get_inference),
             )
-            .route("/v1/lattice/training", post(lattice_create_training_job))
+            .route("/v1/citrate/training", post(citrate_create_training_job))
             .route(
-                "/v1/lattice/training/:job_id",
-                get(lattice_get_training_job),
+                "/v1/citrate/training/:job_id",
+                get(citrate_get_training_job),
             )
-            .route("/v1/lattice/lora", post(lattice_create_lora))
-            .route("/v1/lattice/lora/:adapter_id", get(lattice_get_lora))
+            .route("/v1/citrate/lora", post(citrate_create_lora))
+            .route("/v1/citrate/lora/:adapter_id", get(citrate_get_lora))
             // Health check
             .route("/health", get(health_check))
             .route("/", get(root))
@@ -351,8 +351,8 @@ async fn messages(
 
 // ========== Citrate-Specific Handlers ==========
 
-/// GET /v1/lattice/models - List Citrate models with detailed info
-async fn lattice_list_models(
+/// GET /v1/citrate/models - List Citrate models with detailed info
+async fn citrate_list_models(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -398,8 +398,8 @@ async fn lattice_list_models(
     }
 }
 
-/// POST /v1/lattice/models - Deploy a new model
-async fn lattice_deploy_model(
+/// POST /v1/citrate/models - Deploy a new model
+async fn citrate_deploy_model(
     State(state): State<AppState>,
     Json(request): Json<DeployModelRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -424,8 +424,8 @@ async fn lattice_deploy_model(
     }
 }
 
-/// GET /v1/lattice/models/:model_id - Get model details
-async fn lattice_get_model(
+/// GET /v1/citrate/models/:model_id - Get model details
+async fn citrate_get_model(
     State(state): State<AppState>,
     Path(model_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -449,8 +449,8 @@ async fn lattice_get_model(
     }
 }
 
-/// GET /v1/lattice/models/:model_id/stats - Get model statistics
-async fn lattice_model_stats(
+/// GET /v1/citrate/models/:model_id/stats - Get model statistics
+async fn citrate_model_stats(
     State(state): State<AppState>,
     Path(model_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -474,8 +474,8 @@ async fn lattice_model_stats(
     }
 }
 
-/// POST /v1/lattice/inference - Request inference
-async fn lattice_request_inference(
+/// POST /v1/citrate/inference - Request inference
+async fn citrate_request_inference(
     State(state): State<AppState>,
     Json(request): Json<InferenceRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -498,8 +498,8 @@ async fn lattice_request_inference(
     }
 }
 
-/// GET /v1/lattice/inference/:request_id - Get inference result
-async fn lattice_get_inference(
+/// GET /v1/citrate/inference/:request_id - Get inference result
+async fn citrate_get_inference(
     State(state): State<AppState>,
     Path(request_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -521,8 +521,8 @@ async fn lattice_get_inference(
     }
 }
 
-/// POST /v1/lattice/training - Create training job
-async fn lattice_create_training_job(
+/// POST /v1/citrate/training - Create training job
+async fn citrate_create_training_job(
     State(state): State<AppState>,
     Json(request): Json<CreateTrainingJobRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -546,8 +546,8 @@ async fn lattice_create_training_job(
     }
 }
 
-/// GET /v1/lattice/training/:job_id - Get training job
-async fn lattice_get_training_job(
+/// GET /v1/citrate/training/:job_id - Get training job
+async fn citrate_get_training_job(
     State(state): State<AppState>,
     Path(job_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -570,8 +570,8 @@ async fn lattice_get_training_job(
     }
 }
 
-/// POST /v1/lattice/lora - Create LoRA adapter
-async fn lattice_create_lora(
+/// POST /v1/citrate/lora - Create LoRA adapter
+async fn citrate_create_lora(
     State(state): State<AppState>,
     Json(request): Json<CreateLoRARequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -589,8 +589,8 @@ async fn lattice_create_lora(
     }
 }
 
-/// GET /v1/lattice/lora/:adapter_id - Get LoRA adapter
-async fn lattice_get_lora(
+/// GET /v1/citrate/lora/:adapter_id - Get LoRA adapter
+async fn citrate_get_lora(
     State(state): State<AppState>,
     Path(adapter_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -640,10 +640,10 @@ async fn root() -> Json<serde_json::Value> {
                 "messages": "/v1/messages"
             },
             "citrate": {
-                "models": "/v1/lattice/models",
-                "inference": "/v1/lattice/inference",
-                "training": "/v1/lattice/training",
-                "lora": "/v1/lattice/lora"
+                "models": "/v1/citrate/models",
+                "inference": "/v1/citrate/inference",
+                "training": "/v1/citrate/training",
+                "lora": "/v1/citrate/lora"
             }
         }
     }))

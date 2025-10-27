@@ -11,7 +11,7 @@ services:
     environment:
       - RUST_LOG=info
     networks:
-      - lattice
+      - citrate
 
   node2:
     build:
@@ -26,7 +26,7 @@ services:
     depends_on:
       - node1
     networks:
-      - lattice
+      - citrate
 
   node-app:
     build:
@@ -41,7 +41,7 @@ services:
     depends_on:
       - node1
     networks:
-      - lattice
+      - citrate
 
   faucet:
     build:
@@ -53,9 +53,9 @@ services:
     environment:
       - RUST_LOG=info
     networks:
-      - lattice
+      - citrate
 
 networks:
-  lattice:
+  citrate:
     driver: bridge
 

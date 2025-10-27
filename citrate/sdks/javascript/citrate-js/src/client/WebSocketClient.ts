@@ -97,13 +97,13 @@ export class WebSocketClient extends EventEmitter {
 
         this.ws.onerror = (error) => {
           this.isConnecting = false;
-          const latticeError = new CitrateError('WebSocket error');
+          const citrateError = new CitrateError('WebSocket error');
           this.emit('error', {
             type: 'error',
-            data: latticeError,
+            data: citrateError,
             timestamp: Date.now()
           });
-          reject(latticeError);
+          reject(citrateError);
         };
 
         // Timeout handling

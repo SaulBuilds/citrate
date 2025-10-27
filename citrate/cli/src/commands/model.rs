@@ -317,7 +317,7 @@ async fn deploy_model(
             }
             println!(
                 "{}",
-                "Model registered on-chain. You can query it via `lattice_getModel`."
+                "Model registered on-chain. You can query it via `citrate_getModel`."
                     .italic()
             );
         } else {

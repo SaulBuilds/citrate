@@ -312,7 +312,7 @@ async fn join_testnet(state: State<'_, AppState>, args: JoinTestnetArgs) -> Resu
     let is_relative = std::path::Path::new(&desired_data_dir).is_relative();
     let under_src_tauri = lower.contains("src-tauri");
     if is_relative || under_src_tauri {
-        // Use OS data dir: e.g., macOS ~/Library/Application Support/lattice-core/testnet
+        // Use OS data dir: e.g., macOS ~/Library/Application Support/citrate-core/testnet
         if let Some(mut base) = dirs::data_dir() {
             base.push("citrate-core");
             base.push("testnet");
@@ -1048,7 +1048,7 @@ async fn setup_node_components(app_handle: tauri::AppHandle) {
 pub fn run() {
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter("info,lattice_core=debug")
+        .with_env_filter("info,citrate_core=debug")
         .init();
 
     // Create managers

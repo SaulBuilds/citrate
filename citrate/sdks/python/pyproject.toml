@@ -65,7 +65,7 @@ Repository = "https://github.com/citrate-ai/citrate"
 Changelog = "https://github.com/citrate-ai/citrate/blob/main/CHANGELOG.md"
 
 [project.scripts]
-lattice = "citrate_sdk.cli:main"
+citrate = "citrate_sdk.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -33,7 +33,7 @@
   "bugs": {
     "url": "https://github.com/citrate-ai/citrate/issues"
   },
-  "homepage": "https://docs.lattice.ai",
+  "homepage": "https://docs.citrate.ai",
   "dependencies": {
     "ethers": "^6.8.0",
     "axios": "^1.5.0",

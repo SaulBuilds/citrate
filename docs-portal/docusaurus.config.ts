@@ -3,7 +3,7 @@ import {Config} from '@docusaurus/types';
 const config: Config = {
   title: 'Citrate Network',
   tagline: 'Decentralized AI + Token Incentives',
-  url: 'https://docs.lattice',
+  url: 'https://docs.citrate.ai',
   baseUrl: '/',
   favicon: 'img/favicon.ico',
   organizationName: 'citrate-network',
@@ -27,11 +27,11 @@ const config: Config = {
   ],
   themeConfig: {
     navbar: {
-      title: 'Lattice',
-      logo: { alt: 'Lattice', src: 'img/logo.svg' },
+      title: 'Citrate',
+      logo: { alt: 'Citrate', src: 'img/logo.svg' },
       items: [
         { to: '/intro', label: 'Docs', position: 'left' },
-        { href: 'https://github.com/lattice', label: 'GitHub', position: 'right' },
+        { href: 'https://github.com/citrate-ai', label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
@@ -39,7 +39,7 @@ const config: Config = {
       links: [
         { title: 'Docs', items: [{ label: 'Intro', to: '/intro' }, { label: 'SDK', to: '/developers/sdk/javascript' }] },
         { title: 'Community', items: [{ label: 'Twitter', href: 'https://x.com' }] },
-        { title: 'More', items: [{ label: 'GitHub', href: 'https://github.com/lattice' }] },
+        { title: 'More', items: [{ label: 'GitHub', href: 'https://github.com/citrate-ai' }] },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} Citrate Network`,
     },

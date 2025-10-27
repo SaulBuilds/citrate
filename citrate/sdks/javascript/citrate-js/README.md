@@ -538,6 +538,6 @@ Apache License 2.0 - see [LICENSE](LICENSE) file for details.
 ## Support
 
 - **Documentation**: https://docs.citrate.ai
-- **GitHub**: https://github.com/lattice-ai/citrate
-- **Discord**: https://discord.gg/lattice-ai
-- **Issues**: https://github.com/lattice-ai/citrate/issues
+- **GitHub**: https://github.com/citrate-ai/citrate
+- **Discord**: https://discord.gg/citrate
+- **Issues**: https://github.com/citrate-ai/citrate/issues

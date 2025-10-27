@@ -438,7 +438,7 @@ export const Settings: React.FC = () => {
             </button>
           </div>
           <div className="row">
-            <input type="text" placeholder="Optional: seed from core chain dir (e.g., /abs/path/.lattice-testnet)"
+            <input type="text" placeholder="Optional: seed from core chain dir (e.g., /abs/path/.citrate-testnet)"
               value={seedPath} onChange={e => setSeedPath(e.target.value)} disabled={netLoading} />
           </div>
           <div className="hint muted">One-click configures testnet, resets GUI chain data, optionally seeds from your core chain dir, starts the node, then you can connect bootnodes.</div>

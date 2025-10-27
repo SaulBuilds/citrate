@@ -89,10 +89,10 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
               <Wallet className="w-8 h-8 text-blue-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Welcome to Lattice!
+              Welcome to Citrate!
             </h2>
             <p className="text-gray-600 mb-6">
-              This is your first time using Lattice. Let's set up your secure wallet
+              This is your first time using Citrate. Let's set up your secure wallet
               and start earning rewards by contributing to the network.
             </p>
             <div className="space-y-3 mb-6">

@@ -180,7 +180,7 @@ async fn main() -> Result<()> {
 async fn init_chain(chain_id: u64) -> Result<()> {
     info!("Initializing new chain with ID {}", chain_id);
 
-    let temp_dir = PathBuf::from(".lattice");
+    let temp_dir = PathBuf::from(".citrate");
     std::fs::create_dir_all(&temp_dir)?;
 
     // Create storage

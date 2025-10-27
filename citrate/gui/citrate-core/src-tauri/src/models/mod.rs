@@ -91,9 +91,9 @@ impl ModelManager {
 
         // Add sample models
         models.insert(
-            "gpt-lattice".to_string(),
+            "gpt-citrate".to_string(),
             ModelInfo {
-                id: "gpt-lattice".to_string(),
+                id: "gpt-citrate".to_string(),
                 name: "GPT-Citrate".to_string(),
                 description: "Language model optimized for Citrate".to_string(),
                 model_type: ModelType::Language,
@@ -110,9 +110,9 @@ impl ModelManager {
         );
 
         models.insert(
-            "stable-lattice".to_string(),
+            "stable-citrate".to_string(),
             ModelInfo {
-                id: "stable-lattice".to_string(),
+                id: "stable-citrate".to_string(),
                 name: "Stable-Citrate".to_string(),
                 description: "Image generation model".to_string(),
                 model_type: ModelType::Image,

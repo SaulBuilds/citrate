@@ -367,9 +367,9 @@ mypy citrate_sdk/
 ## Support
 
 - **Documentation**: https://docs.citrate.ai
-- **GitHub**: https://github.com/lattice-ai/citrate
-- **Discord**: https://discord.gg/lattice-ai
-- **Issues**: https://github.com/lattice-ai/citrate/issues
+- **GitHub**: https://github.com/citrate-ai/citrate
+- **Discord**: https://discord.gg/citrate
+- **Issues**: https://github.com/citrate-ai/citrate/issues
 
 ## License
 

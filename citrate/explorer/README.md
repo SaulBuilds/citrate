@@ -229,7 +229,7 @@ npx prisma studio
 docker ps | grep postgres
 
 # View logs
-docker logs lattice-explorer-db
+docker logs citrate-explorer-db
 ```
 
 ### Indexer Not Syncing
@@ -262,6 +262,6 @@ MIT License - see LICENSE file for details
 
 ## Support
 
-- GitHub Issues: [citrate/issues](https://github.com/lattice/citrate/issues)
-- Documentation: [docs.lattice.xyz](https://docs.lattice.xyz)
-- Discord: [discord.gg/lattice](https://discord.gg/lattice)
+- GitHub Issues: [citrate/issues](https://github.com/citrate-ai/citrate/issues)
+- Documentation: [docs.citrate.ai](https://docs.citrate.ai)
+- Discord: [discord.gg/citrate](https://discord.gg/citrate)

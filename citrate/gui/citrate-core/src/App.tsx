@@ -105,7 +105,7 @@ function App() {
     <div className="app">
       <div className="sidebar">
         <div className="sidebar-header">
-          <img src={latticeLogo} alt="Lattice" className="app-logo" />
+          <img src={latticeLogo} alt="Citrate" className="app-logo" />
           <p className="app-version">v3.0.0</p>
           <p className="app-mode">{isNativeApp ? '🖥️ Native' : '🌐 Web Mode'}</p>
         </div>

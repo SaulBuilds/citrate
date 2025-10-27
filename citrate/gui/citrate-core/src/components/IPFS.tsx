@@ -366,7 +366,7 @@ export const IPFS: React.FC = () => {
               <Server size={20} />
               <div>
                 <strong>Start Local Node</strong>
-                <p>Run IPFS node alongside Lattice</p>
+                <p>Run IPFS node alongside Citrate</p>
               </div>
             </button>
             <button className="setup-btn">

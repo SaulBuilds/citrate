@@ -82,7 +82,7 @@ Create a new PostgreSQL database on Render:
 
 ```yaml
 # render-postgres.yaml
-name: lattice-postgres
+name: citrate-postgres
 plan: standard
 region: oregon
 version: "15"
@@ -103,7 +103,7 @@ POSTGRES_DB=citrate_maindb
 
 ```yaml
 # render-redis.yaml
-name: lattice-redis
+name: citrate-redis
 plan: standard
 region: oregon
 version: "7"
@@ -138,7 +138,7 @@ CMD ["ipfs", "daemon", "--enable-pubsub-experiment", "--enable-namesys-pubsub"]
 **Render Service Config:**
 ```yaml
 # render-ipfs.yaml
-name: lattice-ipfs
+name: citrate-ipfs
 type: web
 env: docker
 dockerfilePath: ./ipfs.Dockerfile
@@ -188,16 +188,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create lattice user
-RUN useradd -m -s /bin/bash lattice
+RUN useradd -m -s /bin/bash citrate
 
 # Copy binary
 COPY --from=builder /app/target/release/citrate-node /usr/local/bin/
 RUN chmod +x /usr/local/bin/citrate-node
 
 # Create data directory
-RUN mkdir -p /data && chown lattice:lattice /data
+RUN mkdir -p /data && chown citrate:citrate /data
 
-USER lattice
+USER citrate
 WORKDIR /data
 
 EXPOSE 8545 30303
@@ -220,7 +220,7 @@ CMD ["citrate-node", \
 **Render Service Config:**
 ```yaml
 # render-rpc-node.yaml
-name: lattice-rpc-node
+name: citrate-rpc-node
 type: web
 env: docker
 dockerfilePath: ./node.Dockerfile
@@ -236,11 +236,11 @@ envVars:
     value: "info"
   - key: DATABASE_URL
     fromDatabase:
-      name: lattice-postgres
+      name: citrate-postgres
       property: connectionString
   - key: IPFS_API_URL
     fromService:
-      name: lattice-ipfs
+      name: citrate-ipfs
       type: web
       property: host
       envVarKey: IPFS_API_URL
@@ -544,7 +544,7 @@ jobs:
 
 Create a separate repository for Homebrew tap:
 
-1. Create repository: `lattice-ai/homebrew-tap`
+1. Create repository: `citrate-ai/homebrew-tap`
 2. Add formula file `Formula/citrate-cli.rb`:
 
 ```ruby
@@ -590,9 +590,9 @@ Create `explorer/vercel.json`:
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "env": {
-    "NEXT_PUBLIC_RPC_URL": "https://lattice-rpc-node.onrender.com",
+    "NEXT_PUBLIC_RPC_URL": "https://citrate-rpc-node.onrender.com",
     "NEXT_PUBLIC_API_URL": "https://citrate-api.onrender.com",
-    "NEXT_PUBLIC_IPFS_GATEWAY": "https://lattice-ipfs.onrender.com",
+    "NEXT_PUBLIC_IPFS_GATEWAY": "https://citrate-ipfs.onrender.com",
     "NEXT_PUBLIC_CHAIN_ID": "1337"
   },
   "rewrites": [
@@ -661,7 +661,7 @@ echo "📦 Creating deployment packages..."
 # Create Docker images for Render
 docker build -f node.Dockerfile -t citrate-node .
 docker build -f api.Dockerfile -t citrate-api .
-docker build -f ipfs.Dockerfile -t lattice-ipfs .
+docker build -f ipfs.Dockerfile -t citrate-ipfs .
 
 echo "✅ All components built successfully!"
 echo ""
@@ -713,7 +713,7 @@ npm install -g @citrate-ai/sdk
 pip install citrate-sdk
 
 # CLI via Homebrew (macOS)
-brew tap lattice-ai/homebrew-tap
+brew tap citrate-ai/homebrew-tap
 brew install citrate-cli
 
 # CLI direct download

@@ -90,7 +90,7 @@ jobs:
     - name: Copy binaries (Unix)
       if: runner.os != 'Windows'
       run: |
-        cp target/${{ matrix.rust-target }}/release/lattice artifacts/${{ matrix.artifact-suffix }}/lattice${{ matrix.binary-suffix }}
+        cp target/${{ matrix.rust-target }}/release/citrate-node artifacts/${{ matrix.artifact-suffix }}/lattice${{ matrix.binary-suffix }}
         cp target/${{ matrix.rust-target }}/release/citrate-cli artifacts/${{ matrix.artifact-suffix }}/citrate-cli${{ matrix.binary-suffix }}
         cp target/${{ matrix.rust-target }}/release/lattice-wallet artifacts/${{ matrix.artifact-suffix }}/lattice-wallet${{ matrix.binary-suffix }}
         cp target/${{ matrix.rust-target }}/release/faucet artifacts/${{ matrix.artifact-suffix }}/faucet${{ matrix.binary-suffix }}

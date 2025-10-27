@@ -53,7 +53,7 @@ export const ChatBot: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('lattice-gpt-4');
+  const [selectedModel, setSelectedModel] = useState<string>('citrate-gpt-4');
   const [isListening, setIsListening] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [chatHistory, setChatHistory] = useState<string[]>([]);
@@ -62,7 +62,7 @@ export const ChatBot: React.FC = () => {
 
   const availableModels: ChatModel[] = [
     {
-      id: 'lattice-gpt-4',
+      id: 'citrate-gpt-4',
       name: 'Citrate GPT-4',
       provider: 'lattice',
       type: 'text',
@@ -71,7 +71,7 @@ export const ChatBot: React.FC = () => {
       available: true
     },
     {
-      id: 'lattice-claude-3',
+      id: 'citrate-claude-3',
       name: 'Citrate Claude-3',
       provider: 'lattice',
       type: 'text',
@@ -80,7 +80,7 @@ export const ChatBot: React.FC = () => {
       available: true
     },
     {
-      id: 'lattice-vision',
+      id: 'citrate-vision',
       name: 'Citrate Vision',
       provider: 'lattice',
       type: 'vision',
@@ -175,7 +175,7 @@ export const ChatBot: React.FC = () => {
         thinking: 'User is asking about AI/blockchain integration. Providing helpful overview.'
       },
       {
-        content: `Here's a code example for deploying an AI model on Lattice:\n\n\`\`\`solidity\npragma solidity ^0.8.19;\n\nimport "./IAIModel.sol";\n\ncontract ModelDeployment {\n    mapping(bytes32 => IAIModel) public models;\n    \n    function deployModel(\n        string memory name,\n        string memory ipfsCid,\n        uint256 price\n    ) external returns (bytes32 modelId) {\n        modelId = keccak256(abi.encode(name, msg.sender, block.timestamp));\n        models[modelId] = IAIModel(address(new ModelContract(name, ipfsCid, price)));\n        emit ModelDeployed(modelId, msg.sender, name);\n    }\n}\n\`\`\`\n\nThis contract allows you to deploy AI models with IPFS storage integration. Would you like me to explain any part of this code?`,
+        content: `Here's a code example for deploying an AI model on Citrate:\n\n\`\`\`solidity\npragma solidity ^0.8.19;\n\nimport "./IAIModel.sol";\n\ncontract ModelDeployment {\n    mapping(bytes32 => IAIModel) public models;\n    \n    function deployModel(\n        string memory name,\n        string memory ipfsCid,\n        uint256 price\n    ) external returns (bytes32 modelId) {\n        modelId = keccak256(abi.encode(name, msg.sender, block.timestamp));\n        models[modelId] = IAIModel(address(new ModelContract(name, ipfsCid, price)));\n        emit ModelDeployed(modelId, msg.sender, name);\n    }\n}\n\`\`\`\n\nThis contract allows you to deploy AI models with IPFS storage integration. Would you like me to explain any part of this code?`,
         tokens: 189,
         cost: 0.00189,
         thinking: 'User wants code example. Providing Solidity smart contract for AI model deployment.'

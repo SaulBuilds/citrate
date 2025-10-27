@@ -167,7 +167,7 @@ impl EnhancedTransactionDecoder {
 
         // Try Citrate native format first
         if let Ok(tx) = bincode::deserialize::<Transaction>(tx_bytes) {
-            return self.handle_lattice_native_transaction(tx);
+            return self.handle_citrate_native_transaction(tx);
         }
 
         // Determine transaction type from first byte
@@ -225,7 +225,7 @@ impl EnhancedTransactionDecoder {
 
     /// Decode EIP-1559 transaction
     fn decode_eip1559_transaction(&self, tx_bytes: &[u8]) -> Result<DecodedTransaction, TransactionDecoderError> {
-        let lattice_tx = self.eip1559_decoder.decode_transaction(tx_bytes)
+        let citrate_tx = self.eip1559_decoder.decode_transaction(tx_bytes)
             .map_err(|e| TransactionDecoderError::Eip1559Error(e.to_string()))?;
 
         // Extract additional metadata for EIP-1559 transactions
@@ -236,7 +236,7 @@ impl EnhancedTransactionDecoder {
         let max_fee_per_gas: EthU256 = rlp.val_at(3).unwrap_or_default();
 
         // Extract sender from lattice transaction
-        let sender = self.extract_sender_from_lattice_tx(&lattice_tx);
+        let sender = self.extract_sender_from_citrate_tx(&citrate_tx);
 
         // Parse access list for size calculation
         let access_list_size = self.calculate_access_list_size(&rlp, 8)?;
@@ -247,7 +247,7 @@ impl EnhancedTransactionDecoder {
         }
 
         Ok(DecodedTransaction {
-            transaction: lattice_tx,
+            transaction: citrate_tx,
             tx_type: TransactionType::Eip1559,
             chain_id: Some(chain_id),
             sender,
@@ -273,7 +273,7 @@ impl EnhancedTransactionDecoder {
         let sender = self.recover_eip2930_sender(&eip2930_tx, rlp_payload)?;
 
         // Convert to Citrate transaction
-        let lattice_tx = self.convert_eip2930_to_lattice(eip2930_tx.clone(), sender, tx_bytes)?;
+        let citrate_tx = self.convert_eip2930_to_citrate(eip2930_tx.clone(), sender, tx_bytes)?;
 
         let mut warnings = Vec::new();
         if eip2930_tx.access_list.len() > 10 {
@@ -281,7 +281,7 @@ impl EnhancedTransactionDecoder {
         }
 
         Ok(DecodedTransaction {
-            transaction: lattice_tx,
+            transaction: citrate_tx,
             tx_type: TransactionType::Eip2930,
             chain_id: Some(eip2930_tx.chain_id),
             sender,
@@ -310,7 +310,7 @@ impl EnhancedTransactionDecoder {
         let sender = self.recover_legacy_sender(&legacy_tx, chain_id)?;
 
         // Convert to Citrate transaction
-        let lattice_tx = self.convert_legacy_to_lattice(legacy_tx.clone(), sender, tx_bytes)?;
+        let citrate_tx = self.convert_legacy_to_citrate(legacy_tx.clone(), sender, tx_bytes)?;
 
         let mut warnings = Vec::new();
         if chain_id.is_none() {
@@ -318,7 +318,7 @@ impl EnhancedTransactionDecoder {
         }
 
         Ok(DecodedTransaction {
-            transaction: lattice_tx,
+            transaction: citrate_tx,
             tx_type: TransactionType::Legacy,
             chain_id,
             sender,
@@ -329,7 +329,7 @@ impl EnhancedTransactionDecoder {
     }
 
     /// Handle Citrate native transaction
-    fn handle_lattice_native_transaction(&self, mut tx: Transaction) -> Result<DecodedTransaction, TransactionDecoderError> {
+    fn handle_citrate_native_transaction(&self, mut tx: Transaction) -> Result<DecodedTransaction, TransactionDecoderError> {
         // Ensure transaction has a proper hash if missing
         if tx.hash == Hash::default() {
             let tx_bytes = bincode::serialize(&tx).unwrap_or_default();
@@ -341,7 +341,7 @@ impl EnhancedTransactionDecoder {
         }
 
         // Extract sender from PublicKey
-        let sender = self.extract_sender_from_lattice_tx(&tx);
+        let sender = self.extract_sender_from_citrate_tx(&tx);
 
         let mut stats = self.stats.lock().unwrap();
         stats.record_successful_decode(self.config.default_chain_id, "citrate_native");
@@ -618,7 +618,7 @@ impl EnhancedTransactionDecoder {
         Ok(stream.out().to_vec())
     }
 
-    fn convert_legacy_to_lattice(&self, tx: LegacyTransaction, sender: H160, original_bytes: &[u8]) -> Result<Transaction, TransactionDecoderError> {
+    fn convert_legacy_to_citrate(&self, tx: LegacyTransaction, sender: H160, original_bytes: &[u8]) -> Result<Transaction, TransactionDecoderError> {
         let hash_bytes = self.calculate_transaction_hash(original_bytes);
 
         let mut from_pk_bytes = [0u8; 32];
@@ -638,7 +638,7 @@ impl EnhancedTransactionDecoder {
         sig_bytes[..32].copy_from_slice(tx.r.as_bytes());
         sig_bytes[32..].copy_from_slice(tx.s.as_bytes());
 
-        let mut lattice_tx = Transaction {
+        let mut citrate_tx = Transaction {
             hash: Hash::new(hash_bytes),
             from: from_pk,
             to: to_pk,
@@ -651,11 +651,11 @@ impl EnhancedTransactionDecoder {
             tx_type: None,
         };
 
-        lattice_tx.determine_type();
-        Ok(lattice_tx)
+        citrate_tx.determine_type();
+        Ok(citrate_tx)
     }
 
-    fn convert_eip2930_to_lattice(&self, tx: Eip2930Transaction, sender: H160, original_bytes: &[u8]) -> Result<Transaction, TransactionDecoderError> {
+    fn convert_eip2930_to_citrate(&self, tx: Eip2930Transaction, sender: H160, original_bytes: &[u8]) -> Result<Transaction, TransactionDecoderError> {
         let hash_bytes = self.calculate_transaction_hash(original_bytes);
 
         let mut from_pk_bytes = [0u8; 32];
@@ -675,7 +675,7 @@ impl EnhancedTransactionDecoder {
         sig_bytes[..32].copy_from_slice(tx.r.as_bytes());
         sig_bytes[32..].copy_from_slice(tx.s.as_bytes());
 
-        let mut lattice_tx = Transaction {
+        let mut citrate_tx = Transaction {
             hash: Hash::new(hash_bytes),
             from: from_pk,
             to: to_pk,
@@ -688,8 +688,8 @@ impl EnhancedTransactionDecoder {
             tx_type: None,
         };
 
-        lattice_tx.determine_type();
-        Ok(lattice_tx)
+        citrate_tx.determine_type();
+        Ok(citrate_tx)
     }
 
     fn calculate_transaction_hash(&self, tx_bytes: &[u8]) -> [u8; 32] {
@@ -700,7 +700,7 @@ impl EnhancedTransactionDecoder {
         hash_bytes
     }
 
-    fn extract_sender_from_lattice_tx(&self, tx: &Transaction) -> H160 {
+    fn extract_sender_from_citrate_tx(&self, tx: &Transaction) -> H160 {
         let pk_bytes = tx.from.as_bytes();
         H160::from_slice(&pk_bytes[..20])
     }

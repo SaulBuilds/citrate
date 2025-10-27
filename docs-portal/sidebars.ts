@@ -7,7 +7,7 @@ export default {
       ]
     },
     { type: 'category', label: 'Users', items: [
-      'users/what-is-lattice', 'users/getting-started-wallet', 'users/rewards'
+      'users/what-is-citrate', 'users/getting-started-wallet', 'users/rewards'
     ]},
     { type: 'category', label: 'Developers', items: [
       'developers/quickstart', 'developers/contracts', 'developers/rpc', 'developers/sdk/javascript', 'developers/testing'

@@ -22,7 +22,7 @@ impl Default for Config {
             chain_id: 1337,
             keystore_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join(".lattice")
+                .join(".citrate")
                 .join("keystore"),
             default_account: None,
             gas_price: 1_000_000_000, // 1 gwei
@@ -95,6 +95,6 @@ impl Config {
     }
 
     fn default_config_path() -> Option<PathBuf> {
-        dirs::home_dir().map(|home| home.join(".lattice").join("config.json"))
+        dirs::home_dir().map(|home| home.join(".citrate").join("config.json"))
     }
 }

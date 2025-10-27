@@ -57,11 +57,11 @@ jobs:
     strategy:
       matrix:
         package:
-          - lattice-consensus
-          - lattice-execution
-          - lattice-sequencer
-          - lattice-storage
-          - lattice-api
+          - citrate-consensus
+          - citrate-execution
+          - citrate-sequencer
+          - citrate-storage
+          - citrate-api
           - citrate-network
     steps:
       - uses: actions/checkout@v4

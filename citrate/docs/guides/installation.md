@@ -43,16 +43,16 @@ curl -L https://github.com/lattice/releases/latest/download/lattice-linux -o lat
 chmod +x lattice
 
 # Verify installation
-./lattice --version
+./citrate-node --version
 ```
 
 ### 2. Run a Node
 ```bash
 # Initialize the chain
-./lattice init --chain-id 1337
+./citrate-node init --chain-id 1337
 
 # Start node with mining
-./lattice --mine --rpc-addr 0.0.0.0:8545
+./citrate-node --mine --rpc-addr 0.0.0.0:8545
 ```
 
 ---
@@ -121,7 +121,7 @@ cargo build --release
 
 # Custom configuration
 ./target/release/lattice \
-    --data-dir ~/.lattice-data \
+    --data-dir ~/.citrate-data \
     --chain-id 1337 \
     --mine \
     --coinbase 0xYOUR_ADDRESS \
@@ -135,7 +135,7 @@ cargo build --release
     --bootstrap \
     --p2p-addr 0.0.0.0:30303 \
     --rpc-addr 0.0.0.0:8545 \
-    --data-dir ~/.lattice-bootstrap \
+    --data-dir ~/.citrate-bootstrap \
     --mine
 ```
 
@@ -143,7 +143,7 @@ cargo build --release
 
 ```bash
 ./target/release/lattice \
-    --bootstrap-nodes "bootstrap.lattice.network:30303" \
+    --bootstrap-nodes "bootstrap.citrate.network:30303" \
     --p2p-addr 0.0.0.0:30303 \
     --rpc-addr 127.0.0.1:8545 \
     --data-dir ~/.citrate-node \
@@ -159,16 +159,16 @@ cargo build --release
 - **Network Name**: Citrate Testnet
 - **Chain ID**: 1337
 - **Bootstrap Nodes**: 
-  - `testnet-1.lattice.network:30303`
-  - `testnet-2.lattice.network:30303`
+  - `testnet-1.citrate.network:30303`
+  - `testnet-2.citrate.network:30303`
 - **Block Explorer**: https://explorer.lattice.network (Coming Soon)
 - **Faucet**: https://faucet.lattice.network (Coming Soon)
 
 ### Connect to Testnet
 
 ```bash
-./lattice \
-    --bootstrap-nodes "testnet-1.lattice.network:30303,testnet-2.lattice.network:30303" \
+./citrate-node \
+    --bootstrap-nodes "testnet-1.citrate.network:30303,testnet-2.citrate.network:30303" \
     --chain-id 1337 \
     --p2p-addr 0.0.0.0:30303 \
     --rpc-addr 0.0.0.0:8545 \
@@ -180,12 +180,12 @@ cargo build --release
 
 ```bash
 # Generate a new keypair
-./lattice keygen
+./citrate-node keygen
 # Save the public key as your coinbase address
 
 # Start mining
-./lattice \
-    --bootstrap-nodes "testnet-1.lattice.network:30303" \
+./citrate-node \
+    --bootstrap-nodes "testnet-1.citrate.network:30303" \
     --mine \
     --coinbase 0xYOUR_GENERATED_ADDRESS \
     --data-dir ~/.citrate-testnet
@@ -209,8 +209,8 @@ ghostdag_k = 18
 [network]
 listen_addr = "0.0.0.0:30303"
 bootstrap_nodes = [
-    "testnet-1.lattice.network:30303",
-    "testnet-2.lattice.network:30303"
+    "testnet-1.citrate.network:30303",
+    "testnet-2.citrate.network:30303"
 ]
 max_peers = 50
 
@@ -220,7 +220,7 @@ listen_addr = "0.0.0.0:8545"
 ws_addr = "0.0.0.0:8546"
 
 [storage]
-data_dir = "~/.lattice-data"
+data_dir = "~/.citrate-data"
 pruning = false
 keep_blocks = 100000
 
@@ -233,7 +233,7 @@ min_gas_price = 1000000000
 
 Run with config:
 ```bash
-./lattice --config config.toml
+./citrate-node --config config.toml
 ```
 
 ### Environment Variables
@@ -263,7 +263,7 @@ Metrics are exposed at `http://localhost:9100/metrics` when enabled.
 
 ```bash
 # Enable metrics
-CITRATE_METRICS=true ./lattice --mine
+CITRATE_METRICS=true ./citrate-node --mine
 ```
 
 ### Grafana Dashboard
@@ -282,13 +282,13 @@ docker-compose up -d
 
 ```bash
 # Follow logs
-tail -f ~/.lattice-data/node.log
+tail -f ~/.citrate-data/node.log
 
 # Filter for errors
-grep ERROR ~/.lattice-data/node.log
+grep ERROR ~/.citrate-data/node.log
 
 # Watch block production
-tail -f ~/.lattice-data/node.log | grep "Produced block"
+tail -f ~/.citrate-data/node.log | grep "Produced block"
 ```
 
 ---
@@ -304,11 +304,11 @@ lsof -i :30303
 lsof -i :8545
 
 # Kill existing processes
-pkill -f lattice
+pkill -f citrate
 
 # Clear data directory
-rm -rf ~/.lattice-data
-./lattice init
+rm -rf ~/.citrate-data
+./citrate-node init
 ```
 
 #### Can't Connect to Peers
@@ -318,7 +318,7 @@ sudo ufw allow 30303/tcp
 sudo ufw allow 8545/tcp
 
 # Test connectivity to bootstrap
-telnet testnet-1.lattice.network 30303
+telnet testnet-1.citrate.network 30303
 
 # Check NAT/router settings
 # Ensure port 30303 is forwarded to your machine
@@ -358,8 +358,8 @@ curl -s http://localhost:8545 -X POST \
   -d '{"jsonrpc":"2.0","method":"net_peerCount","params":[],"id":1}'
 
 # Reset and resync
-rm -rf ~/.lattice-data/blocks
-./lattice --bootstrap-nodes "testnet-1.lattice.network:30303"
+rm -rf ~/.citrate-data/blocks
+./citrate-node --bootstrap-nodes "testnet-1.citrate.network:30303"
 ```
 
 ### Getting Help
@@ -455,7 +455,7 @@ sudo sysctl -w net.core.rmem_max=134217728
 sudo sysctl -w net.core.wmem_max=134217728
 
 # CPU affinity for mining
-taskset -c 0-3 ./lattice --mine
+taskset -c 0-3 ./citrate-node --mine
 ```
 
 ---

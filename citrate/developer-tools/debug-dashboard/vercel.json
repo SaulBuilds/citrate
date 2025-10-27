@@ -23,13 +23,13 @@
     }
   ],
   "env": {
-    "VITE_LATTICE_RPC": "https://rpc.lattice.ai",
-    "VITE_WEBSOCKET_URL": "wss://ws.lattice.ai"
+    "VITE_LATTICE_RPC": "https://rpc.citrate.ai",
+    "VITE_WEBSOCKET_URL": "wss://ws.citrate.ai"
   },
   "build": {
     "env": {
-      "VITE_LATTICE_RPC": "https://rpc.lattice.ai",
-      "VITE_WEBSOCKET_URL": "wss://ws.lattice.ai"
+      "VITE_LATTICE_RPC": "https://rpc.citrate.ai",
+      "VITE_WEBSOCKET_URL": "wss://ws.citrate.ai"
     }
   }
 }

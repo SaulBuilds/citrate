@@ -934,7 +934,7 @@ pub fn register_eth_methods(
         Ok(Value::String("0x3b9aca00".to_string()))
     });
 
-    // lattice_getMempoolSnapshot - Get all pending transactions in mempool
+    // citrate_getMempoolSnapshot - Get all pending transactions in mempool
     let mempool_snapshot = mempool.clone();
     io_handler.add_sync_method("citrate_getMempoolSnapshot", move |_params: Params| {
         let mp = mempool_snapshot.clone();
@@ -1006,7 +1006,7 @@ pub fn register_eth_methods(
         Ok(Value::Object(result))
     });
 
-    // lattice_getTransactionStatus - Check if transaction is in mempool or mined
+    // citrate_getTransactionStatus - Check if transaction is in mempool or mined
     let mempool_status = mempool.clone();
     let storage_status = storage.clone();
     io_handler.add_sync_method("citrate_getTransactionStatus", move |params: Params| {

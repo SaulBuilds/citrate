@@ -6,7 +6,7 @@ services:
     build:
       context: ..
       dockerfile: docker/node.Dockerfile
-    image: lattice/node:latest
+    image: citrate/node:latest
     container_name: citrate-node
     restart: unless-stopped
     ports:
@@ -14,7 +14,7 @@ services:
       - "8546:8546"   # WebSocket
       - "30303:30303" # P2P
     environment:
-      - RUST_LOG=info,lattice=debug
+      - RUST_LOG=info,citrate=debug
     volumes:
       - citrate_data:/data
       - ./config/node.toml:/config/node.toml:ro
@@ -31,7 +31,7 @@ services:
     build:
       context: ..
       dockerfile: docker/api.Dockerfile
-    image: lattice/api:latest
+    image: citrate/api:latest
     container_name: citrate-api
     restart: unless-stopped
     ports:
@@ -53,7 +53,7 @@ services:
     build:
       context: ..
       dockerfile: docker/ipfs.Dockerfile
-    image: lattice/ipfs:latest
+    image: citrate/ipfs:latest
     container_name: citrate-ipfs
     restart: unless-stopped
     ports:
@@ -72,8 +72,8 @@ services:
     container_name: citrate-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: lattice
-      POSTGRES_USER: lattice
+      POSTGRES_DB: citrate
+      POSTGRES_USER: citrate
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-citrate_secure_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -97,7 +97,7 @@ services:
     build:
       context: ..
       dockerfile: docker/faucet.Dockerfile
-    image: lattice/faucet:latest
+    image: citrate/faucet:latest
     container_name: citrate-faucet
     restart: unless-stopped
     ports:

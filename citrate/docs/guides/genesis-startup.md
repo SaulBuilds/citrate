@@ -14,14 +14,14 @@ First, ensure you're starting completely fresh by removing ALL existing data:
 
 ```bash
 # Navigate to citrate directory
-cd /Users/soleilklosowski/Downloads/lattice/citrate
+cd /Users/soleilklosowski/Downloads/citrate/citrate
 
 # Kill any running processes
 pkill -f "citrate" || true
 pkill -f "tauri" || true
 
 # Clean ALL state directories
-rm -rf .lattice*
+rm -rf .citrate*
 rm -rf target/
 rm -rf gui/citrate-core/src-tauri/gui-data
 rm -rf gui/citrate-core/.citrate-gui-temp
@@ -97,7 +97,7 @@ cd gui/citrate-core
 npm run tauri dev
 
 # OR for production build:
-open src-tauri/target/release/bundle/macos/lattice-core.app
+open src-tauri/target/release/bundle/macos/citrate-core.app
 ```
 
 ## Step 6: Configure GUI for Testnet Sync
@@ -265,7 +265,7 @@ If you need to restart everything:
 pkill -f "citrate"
 
 # 2. Clean state (optional for full reset)
-rm -rf .lattice*
+rm -rf .citrate*
 rm -rf gui/citrate-core/src-tauri/gui-data
 
 # 3. Start core node

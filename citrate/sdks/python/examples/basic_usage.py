@@ -21,7 +21,7 @@ def main():
 
     # Configuration
     RPC_URL = os.getenv("LATTICE_RPC_URL", "http://localhost:8545")
-    PRIVATE_KEY = os.getenv("LATTICE_PRIVATE_KEY")
+    PRIVATE_KEY = os.getenv("CITRATE_PRIVATE_KEY")
 
     if not PRIVATE_KEY:
         print("Generating new private key...")

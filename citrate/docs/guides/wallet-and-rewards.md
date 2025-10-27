@@ -36,7 +36,7 @@ RewardConfig {
 ### For Core Node (Immediate Fix)
 ```bash
 # Stop current node
-pkill -f lattice
+pkill -f citrate
 
 # Start with a real coinbase address (your wallet)
 # Replace with your actual wallet address from GUI
@@ -71,7 +71,7 @@ min_gas_price = 1000000000
 EOF
 
 # Restart with proper address
-./target/release/lattice --config testnet-config-fixed.toml --data-dir .citrate-testnet --mine
+./target/release/citrate-node --config testnet-config-fixed.toml --data-dir .citrate-testnet --mine
 ```
 
 ### For GUI Node
@@ -264,7 +264,7 @@ curl -X POST http://localhost:8545 -H "Content-Type: application/json" \
 ### DAG Explorer Issues
 If DAG shows no blocks:
 1. Ensure GUI node is started (not just compiled)
-2. Check storage location: `~/Library/Application Support/lattice-core/testnet/chain/`
+2. Check storage location: `~/Library/Application Support/citrate-core/testnet/chain/`
 3. Verify sync: `tail -f /tmp/citrate_gui.log | grep "Stored block"`
 
 ## Summary of Required Actions

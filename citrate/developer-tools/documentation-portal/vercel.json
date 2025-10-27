@@ -16,13 +16,13 @@
     }
   ],
   "env": {
-    "NEXT_PUBLIC_LATTICE_RPC": "https://rpc.lattice.ai",
-    "NEXT_PUBLIC_IPFS_URL": "https://ipfs.lattice.ai"
+    "NEXT_PUBLIC_LATTICE_RPC": "https://rpc.citrate.ai",
+    "NEXT_PUBLIC_IPFS_URL": "https://ipfs.citrate.ai"
   },
   "build": {
     "env": {
-      "NEXT_PUBLIC_LATTICE_RPC": "https://rpc.lattice.ai",
-      "NEXT_PUBLIC_IPFS_URL": "https://ipfs.lattice.ai"
+      "NEXT_PUBLIC_LATTICE_RPC": "https://rpc.citrate.ai",
+      "NEXT_PUBLIC_IPFS_URL": "https://ipfs.citrate.ai"
     }
   },
   "headers": [

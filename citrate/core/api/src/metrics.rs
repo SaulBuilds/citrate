@@ -9,7 +9,7 @@ pub static RPC_REQUESTS: Lazy<IntCounterVec> = Lazy::new(|| {
         "Total JSON-RPC requests by method",
         &["method"]
     )
-    .expect("register lattice_rpc_requests_total")
+    .expect("register citrate_rpc_requests_total")
 });
 
 #[inline]

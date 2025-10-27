@@ -23,15 +23,15 @@
     }
   ],
   "env": {
-    "REACT_APP_LATTICE_RPC": "https://rpc.lattice.ai",
-    "REACT_APP_IPFS_URL": "https://ipfs.lattice.ai",
-    "REACT_APP_WEBSOCKET_URL": "wss://ws.lattice.ai"
+    "REACT_APP_LATTICE_RPC": "https://rpc.citrate.ai",
+    "REACT_APP_IPFS_URL": "https://ipfs.citrate.ai",
+    "REACT_APP_WEBSOCKET_URL": "wss://ws.citrate.ai"
   },
   "build": {
     "env": {
-      "REACT_APP_LATTICE_RPC": "https://rpc.lattice.ai",
-      "REACT_APP_IPFS_URL": "https://ipfs.lattice.ai",
-      "REACT_APP_WEBSOCKET_URL": "wss://ws.lattice.ai"
+      "REACT_APP_LATTICE_RPC": "https://rpc.citrate.ai",
+      "REACT_APP_IPFS_URL": "https://ipfs.citrate.ai",
+      "REACT_APP_WEBSOCKET_URL": "wss://ws.citrate.ai"
     }
   },
   "functions": {

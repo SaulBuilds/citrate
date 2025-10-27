@@ -339,7 +339,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_updateModel
+        // citrate_updateModel
         let executor_ai_update = executor.clone();
         let mempool_ai_update = mempool.clone();
         io_handler.add_sync_method("citrate_updateModel", move |params: Params| {
@@ -819,7 +819,7 @@ impl RpcServer {
         // web3_clientVersion
         io_handler.add_sync_method("web3_clientVersion", |_params: Params| {
             rpc_request("web3_clientVersion");
-            Ok(Value::String("lattice/v0.1.0".to_string()))
+            Ok(Value::String("citrate/v0.1.0".to_string()))
         });
 
         // eth_chainId (compatibility)
@@ -831,7 +831,7 @@ impl RpcServer {
 
         // ========== AI/ML Methods ==========
 
-        // lattice_verifyContract: verifies runtime bytecode matches on-chain code for address
+        // citrate_verifyContract: verifies runtime bytecode matches on-chain code for address
         let storage_v = storage.clone();
         let executor_v = executor.clone();
         io_handler.add_sync_method("citrate_verifyContract", move |params: Params| {
@@ -1009,7 +1009,7 @@ impl RpcServer {
             Ok(json!({"verified": equal, "verification_id": verification_id}))
         });
 
-        // lattice_getVerification: return stored verification record
+        // citrate_getVerification: return stored verification record
         let storage_get = storage.clone();
         io_handler.add_sync_method("citrate_getVerification", move |params: Params| {
             rpc_request("citrate_getVerification");
@@ -1033,7 +1033,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_listVerifications: return all verification records
+        // citrate_listVerifications: return all verification records
         let storage_list = storage.clone();
         io_handler.add_sync_method("citrate_listVerifications", move |params: Params| {
             rpc_request("citrate_listVerifications");
@@ -1086,7 +1086,7 @@ impl RpcServer {
             Ok(Value::Array(out))
         });
 
-        // lattice_listVerificationsByStatus [bool]
+        // citrate_listVerificationsByStatus [bool]
         let storage_list_status = storage.clone();
         io_handler.add_sync_method(
             "citrate_listVerificationsByStatus",
@@ -1128,7 +1128,7 @@ impl RpcServer {
             },
         );
 
-        // lattice_listVerificationsByAddressPrefix [string]
+        // citrate_listVerificationsByAddressPrefix [string]
         let storage_list_prefix = storage.clone();
         io_handler.add_sync_method(
             "citrate_listVerificationsByAddressPrefix",
@@ -1175,7 +1175,7 @@ impl RpcServer {
             },
         );
 
-        // lattice_pruneVerifications: optional GC to prune by age or count
+        // citrate_pruneVerifications: optional GC to prune by age or count
         let storage_gc = storage.clone();
         io_handler.add_sync_method("citrate_pruneVerifications", move |params: Params| {
             rpc_request("citrate_pruneVerifications");
@@ -1244,7 +1244,7 @@ impl RpcServer {
             Ok(json!({"removed": removed}))
         });
 
-        // lattice_getVerificationById: fetch by verification_id
+        // citrate_getVerificationById: fetch by verification_id
         let storage_by_id = storage.clone();
         io_handler.add_sync_method("citrate_getVerificationById", move |params: Params| {
             rpc_request("citrate_getVerificationById");
@@ -1268,7 +1268,7 @@ impl RpcServer {
             Ok(Value::Null)
         });
 
-        // lattice_deployModel: register a model via model precompile
+        // citrate_deployModel: register a model via model precompile
         let executor_ai_deploy = executor.clone();
         io_handler.add_sync_method("citrate_deployModel", move |params: Params| {
             rpc_request("citrate_deployModel");
@@ -1335,7 +1335,7 @@ impl RpcServer {
                 .or_insert(serde_json::json!("1.0.0"));
             metadata_obj
                 .entry("description".to_string())
-                .or_insert(serde_json::json!("Registered via lattice_deployModel"));
+                .or_insert(serde_json::json!("Registered via citrate_deployModel"));
             metadata_obj
                 .entry("framework".to_string())
                 .or_insert(serde_json::json!("Unknown"));
@@ -1571,7 +1571,7 @@ impl RpcServer {
             Ok(Value::Array(arr))
         });
 
-        // lattice_getModel
+        // citrate_getModel
         let storage_ai_get = storage.clone();
         let mempool_ai_get = mempool.clone();
         let executor_ai_get = executor.clone();
@@ -1632,7 +1632,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_listModels
+        // citrate_listModels
         let executor_ai_list = executor.clone();
         io_handler.add_sync_method("citrate_listModels", move |params: Params| {
             rpc_request("citrate_listModels");
@@ -1668,7 +1668,7 @@ impl RpcServer {
             Ok(serde_json::to_value(ids).unwrap_or(Value::Array(vec![])))
         });
 
-        // lattice_getModels (alias for lattice_listModels)
+        // citrate_getModels (alias for citrate_listModels)
         let executor_ai_list_alias = executor.clone();
         io_handler.add_sync_method("citrate_getModels", move |params: Params| {
             rpc_request("citrate_getModels");
@@ -1703,7 +1703,7 @@ impl RpcServer {
             Ok(serde_json::to_value(ids).unwrap_or(Value::Array(vec![])))
         });
 
-        // lattice_requestInference
+        // citrate_requestInference
         let storage_ai_inf = storage.clone();
         let mempool_ai_inf = mempool.clone();
         let executor_ai_inf = executor.clone();
@@ -1728,7 +1728,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_runInference (synchronous preview via Executor)
+        // citrate_runInference (synchronous preview via Executor)
         let executor_ai_preview = executor.clone();
         io_handler.add_sync_method("citrate_runInference", move |params: Params| {
             rpc_request("citrate_runInference");
@@ -1830,7 +1830,7 @@ impl RpcServer {
             }))
         });
 
-        // lattice_getInferenceResult
+        // citrate_getInferenceResult
         let storage_ai_result = storage.clone();
         let mempool_ai_result = mempool.clone();
         let executor_ai_result = executor.clone();
@@ -1864,7 +1864,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_createTrainingJob
+        // citrate_createTrainingJob
         let storage_ai_job = storage.clone();
         let mempool_ai_job = mempool.clone();
         let executor_ai_job = executor.clone();
@@ -1888,7 +1888,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_getTrainingJob
+        // citrate_getTrainingJob
         let storage_ai_job_get = storage.clone();
         let mempool_ai_job_get = mempool.clone();
         let executor_ai_job_get = executor.clone();
@@ -1923,7 +1923,7 @@ impl RpcServer {
         });
 
         // ========= Artifacts ==========
-        // lattice_pinArtifact [cid, replicas]
+        // citrate_pinArtifact [cid, replicas]
         let executor_art_pin = executor.clone();
         io_handler.add_sync_method("citrate_pinArtifact", move |params: Params| {
             rpc_request("citrate_pinArtifact");
@@ -1937,7 +1937,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_getArtifactStatus [cid]
+        // citrate_getArtifactStatus [cid]
         let executor_art_status = executor.clone();
         io_handler.add_sync_method("citrate_getArtifactStatus", move |params: Params| {
             rpc_request("citrate_getArtifactStatus");
@@ -1952,7 +1952,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_listModelArtifacts [modelIdHex]
+        // citrate_listModelArtifacts [modelIdHex]
         let executor_art_list = executor.clone();
         io_handler.add_sync_method("citrate_listModelArtifacts", move |params: Params| {
             rpc_request("citrate_listModelArtifacts");
@@ -1974,7 +1974,7 @@ impl RpcServer {
             }
         });
 
-        // lattice_listProofArtifacts [modelIdHex]
+        // citrate_listProofArtifacts [modelIdHex]
         let executor_proof_list = executor.clone();
         io_handler.add_sync_method("citrate_listProofArtifacts", move |params: Params| {
             rpc_request("citrate_listProofArtifacts");

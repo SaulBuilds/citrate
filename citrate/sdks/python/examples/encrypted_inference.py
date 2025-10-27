@@ -21,10 +21,10 @@ def main():
 
     # Configuration
     RPC_URL = os.getenv("LATTICE_RPC_URL", "http://localhost:8545")
-    PRIVATE_KEY = os.getenv("LATTICE_PRIVATE_KEY")
+    PRIVATE_KEY = os.getenv("CITRATE_PRIVATE_KEY")
 
     if not PRIVATE_KEY:
-        print("Please set LATTICE_PRIVATE_KEY environment variable")
+        print("Please set CITRATE_PRIVATE_KEY environment variable")
         return
 
     # Connect to Citrate

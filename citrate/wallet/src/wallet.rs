@@ -31,7 +31,7 @@ pub struct WalletConfig {
 impl Default for WalletConfig {
     fn default() -> Self {
         let mut keystore_path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        keystore_path.push(".lattice");
+        keystore_path.push(".citrate");
         keystore_path.push("keystore.json");
 
         Self {

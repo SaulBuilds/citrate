@@ -143,16 +143,16 @@ impl Eip1559Decoder {
         let sender = self.recover_sender(&eip1559_tx, rlp_payload)?;
 
         // Convert to Citrate transaction format
-        let lattice_tx = self.convert_to_lattice_transaction(eip1559_tx, sender, tx_bytes)?;
+        let citrate_tx = self.convert_to_citrate_transaction(eip1559_tx, sender, tx_bytes)?;
 
         info!(
             "Successfully decoded EIP-1559 transaction: hash=0x{}, from=0x{}, nonce={}",
-            hex::encode(lattice_tx.hash.as_bytes()),
+            hex::encode(citrate_tx.hash.as_bytes()),
             hex::encode(&sender.as_bytes()),
-            lattice_tx.nonce
+            citrate_tx.nonce
         );
 
-        Ok(lattice_tx)
+        Ok(citrate_tx)
     }
 
     /// Parse EIP-1559 RLP structure
@@ -432,7 +432,7 @@ impl Eip1559Decoder {
     }
 
     /// Convert EIP-1559 transaction to Citrate transaction format
-    fn convert_to_lattice_transaction(
+    fn convert_to_citrate_transaction(
         &self,
         tx: Eip1559Transaction,
         sender: H160,
@@ -474,7 +474,7 @@ impl Eip1559Decoder {
         sig_bytes[..32].copy_from_slice(tx.r.as_bytes());
         sig_bytes[32..].copy_from_slice(tx.s.as_bytes());
 
-        let mut lattice_tx = Transaction {
+        let mut citrate_tx = Transaction {
             hash: Hash::new(hash_bytes),
             from: from_pk,
             to: to_pk,
@@ -488,16 +488,16 @@ impl Eip1559Decoder {
         };
 
         // Determine transaction type from data
-        lattice_tx.determine_type();
+        citrate_tx.determine_type();
 
         debug!(
             "Converted EIP-1559 transaction: hash=0x{}, gas_price={}, gas_limit={}",
-            hex::encode(lattice_tx.hash.as_bytes()),
-            lattice_tx.gas_price,
-            lattice_tx.gas_limit
+            hex::encode(citrate_tx.hash.as_bytes()),
+            citrate_tx.gas_price,
+            citrate_tx.gas_limit
         );
 
-        Ok(lattice_tx)
+        Ok(citrate_tx)
     }
 }
 

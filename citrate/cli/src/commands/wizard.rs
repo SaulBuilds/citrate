@@ -273,7 +273,7 @@ async fn dev_setup_wizard(_config: &Config) -> Result<()> {
 
     let project_name: String = Input::with_theme(&theme)
         .with_prompt("Project name")
-        .with_initial_text("my-lattice-project")
+        .with_initial_text("my-citrate-project")
         .interact()?;
 
     let use_templates = Confirm::with_theme(&theme)
@@ -371,8 +371,8 @@ async fn network_wizard(_config: &Config) -> Result<()> {
 
     let rpc_url = match network_selection {
         0 => "http://localhost:8545".to_string(),
-        1 => "https://testnet-rpc.lattice.network".to_string(),
-        2 => "https://rpc.lattice.network".to_string(),
+        1 => "https://testnet-rpc.citrate.network".to_string(),
+        2 => "https://rpc.citrate.network".to_string(),
         3 => {
             Input::with_theme(&theme)
                 .with_prompt("Custom RPC URL")

@@ -188,10 +188,10 @@ jobs:
       run: |
         cd artifacts
         if [ -d "javascript-sdk" ]; then
-          tar -czf "lattice-javascript-sdk-${GITHUB_REF_NAME#sdk-v}.tar.gz" -C javascript-sdk .
+          tar -czf "citrate-javascript-sdk-${GITHUB_REF_NAME#sdk-v}.tar.gz" -C javascript-sdk .
         fi
         if [ -d "python-sdk" ]; then
-          tar -czf "lattice-python-sdk-${GITHUB_REF_NAME#sdk-v}.tar.gz" -C python-sdk .
+          tar -czf "citrate-python-sdk-${GITHUB_REF_NAME#sdk-v}.tar.gz" -C python-sdk .
         fi
 
     - name: Create GitHub Release
@@ -209,12 +209,12 @@ jobs:
 
           **JavaScript/TypeScript:**
           ```bash
-          npm install @lattice-ai/sdk@${GITHUB_REF_NAME#sdk-v}
+          npm install @citrate-ai/sdk@${GITHUB_REF_NAME#sdk-v}
           ```
 
           **Python:**
           ```bash
-          pip install lattice-sdk==${GITHUB_REF_NAME#sdk-v}
+          pip install citrate-sdk==${GITHUB_REF_NAME#sdk-v}
           ```
 
           ### Changes

@@ -179,8 +179,8 @@ jobs:
     - name: Start test network
       run: |
         cargo build --release -p citrate-node
-        ./target/release/lattice init --chain test
-        ./target/release/lattice devnet &
+        ./target/release/citrate-node init --chain test
+        ./target/release/citrate-node devnet &
         sleep 5
     
     - name: Run integration tests

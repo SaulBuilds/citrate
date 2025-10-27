@@ -13,7 +13,7 @@ pub fn register_economics_methods(
     economics_manager: Option<Arc<UnifiedEconomicsManager>>,
     mempool: Option<Arc<Mempool>>,
 ) {
-    // lattice_gasPrice - Returns current dynamic gas price
+    // citrate_gasPrice - Returns current dynamic gas price
     let economics_gp = economics_manager.clone();
     io_handler.add_sync_method("citrate_gasPrice", move |_params: Params| {
         if let Some(economics) = &economics_gp {
@@ -27,7 +27,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getEconomicState - Returns current economic metrics
+    // citrate_getEconomicState - Returns current economic metrics
     let economics_es = economics_manager.clone();
     io_handler.add_sync_method("citrate_getEconomicState", move |_params: Params| {
         if let Some(economics) = &economics_es {
@@ -54,7 +54,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getVotingPower - Returns voting power for an address
+    // citrate_getVotingPower - Returns voting power for an address
     let economics_vp = economics_manager.clone();
     io_handler.add_sync_method("citrate_getVotingPower", move |params: Params| {
         if let Some(economics) = &economics_vp {
@@ -104,7 +104,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getStakeholderInfo - Returns revenue sharing info for an address
+    // citrate_getStakeholderInfo - Returns revenue sharing info for an address
     let economics_si = economics_manager.clone();
     io_handler.add_sync_method("citrate_getStakeholderInfo", move |params: Params| {
         if let Some(economics) = &economics_si {
@@ -155,7 +155,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getRevenueHistory - Returns revenue distribution history
+    // citrate_getRevenueHistory - Returns revenue distribution history
     let economics_rh = economics_manager.clone();
     io_handler.add_sync_method("citrate_getRevenueHistory", move |_params: Params| {
         if let Some(economics) = &economics_rh {
@@ -176,7 +176,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getMempoolSnapshot - Get current mempool status (economics related)
+    // citrate_getMempoolSnapshot - Get current mempool status (economics related)
     let mempool_snap = mempool.clone();
     io_handler.add_sync_method("citrate_getMempoolSnapshot", move |_params: Params| {
         if let Some(mempool) = &mempool_snap {
@@ -231,7 +231,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getToken - Get token information
+    // citrate_getToken - Get token information
     let economics_token = economics_manager.clone();
     io_handler.add_sync_method("citrate_getToken", move |_params: Params| {
         if let Some(economics) = &economics_token {
@@ -254,7 +254,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getStakedBalance - Get staked balance for an address
+    // citrate_getStakedBalance - Get staked balance for an address
     let economics_sb = economics_manager.clone();
     io_handler.add_sync_method("citrate_getStakedBalance", move |params: Params| {
         if let Some(economics) = &economics_sb {
@@ -294,7 +294,7 @@ pub fn register_economics_methods(
         }
     });
 
-    // lattice_getReputationScore - Get reputation score for an address
+    // citrate_getReputationScore - Get reputation score for an address
     let economics_rs = economics_manager.clone();
     io_handler.add_sync_method("citrate_getReputationScore", move |params: Params| {
         if let Some(economics) = &economics_rs {

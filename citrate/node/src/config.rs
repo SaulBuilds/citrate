@@ -109,7 +109,7 @@ impl Default for NodeConfig {
             storage: StorageConfig {
                 data_dir: dirs::home_dir()
                     .unwrap_or_else(|| PathBuf::from("."))
-                    .join(".lattice"),
+                    .join(".citrate"),
                 pruning: false,
                 keep_blocks: 100000,
             },

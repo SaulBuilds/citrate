@@ -37,7 +37,7 @@ impl NetworkApi {
         let (peer_count, _, _) = self.peer_manager.get_peer_counts().await;
 
         Ok(NodeInfo {
-            version: "lattice/v0.1.0".to_string(),
+            version: "citrate/v0.1.0".to_string(),
             network_id: 1,
             chain_id: 1337,
             genesis_hash: Hash::default(),

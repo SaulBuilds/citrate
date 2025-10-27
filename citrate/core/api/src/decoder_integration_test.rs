@@ -64,11 +64,11 @@ mod tests {
 
     /// Test Citrate native transaction
     #[test]
-    fn test_lattice_native_transaction() {
+    fn test_citrate_native_transaction() {
         let decoder = DecoderFactory::testing();
 
         // Create a valid Citrate transaction
-        let lattice_tx = Transaction {
+        let citrate_tx = Transaction {
             hash: citrate_consensus::types::Hash::new([1u8; 32]),
             from: citrate_consensus::types::PublicKey::new([2u8; 32]),
             to: Some(citrate_consensus::types::PublicKey::new([3u8; 32])),
@@ -82,15 +82,15 @@ mod tests {
         };
 
         // Serialize it
-        let tx_bytes = bincode::serialize(&lattice_tx).expect("Failed to serialize transaction");
+        let tx_bytes = bincode::serialize(&citrate_tx).expect("Failed to serialize transaction");
 
         // Decode it
         match decoder.decode_eth_transaction(&tx_bytes) {
             Ok(decoded_tx) => {
                 println!("Successfully decoded Citrate native transaction");
-                assert_eq!(decoded_tx.hash, lattice_tx.hash);
-                assert_eq!(decoded_tx.nonce, lattice_tx.nonce);
-                assert_eq!(decoded_tx.value, lattice_tx.value);
+                assert_eq!(decoded_tx.hash, citrate_tx.hash);
+                assert_eq!(decoded_tx.nonce, citrate_tx.nonce);
+                assert_eq!(decoded_tx.value, citrate_tx.value);
             }
             Err(e) => {
                 panic!("Failed to decode valid Citrate transaction: {}", e);

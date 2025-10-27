@@ -40,7 +40,7 @@ export function Footer() {
             </h4>
             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <li><a href="/api-docs" className="hover:text-blue-500">API Docs</a></li>
-              <li><a href="https://github.com/lattice" className="hover:text-blue-500">GitHub</a></li>
+              <li><a href="https://github.com/citrate-ai" className="hover:text-blue-500">GitHub</a></li>
               <li><a href="/status" className="hover:text-blue-500">Status</a></li>
             </ul>
           </div>

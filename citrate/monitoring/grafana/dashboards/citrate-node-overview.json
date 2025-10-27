@@ -31,7 +31,7 @@
   ],
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["lattice"],
+  "tags": ["citrate"],
   "templating": {"list": []},
   "time": {"from": "now-15m", "to": "now"},
   "timezone": "browser",

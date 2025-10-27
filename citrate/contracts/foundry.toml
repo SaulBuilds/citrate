@@ -12,10 +12,10 @@ gas_reports = ["*"]
 lattice = "http://localhost:8545"
 
 [etherscan]
-lattice = { key = "${ETHERSCAN_API_KEY}" }
+citrate = { key = "${ETHERSCAN_API_KEY}" }
 
 # Citrate-specific configurations
-[profile.lattice]
+[profile.citrate]
 via_ir = true
 optimizer = true
 optimizer_runs = 10000

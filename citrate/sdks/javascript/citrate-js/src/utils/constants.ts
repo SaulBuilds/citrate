@@ -10,14 +10,14 @@ export const CHAIN_IDS = {
 } as const;
 
 export const DEFAULT_RPC_URLS = {
-  [CHAIN_IDS.MAINNET]: 'https://mainnet.lattice.ai',
-  [CHAIN_IDS.TESTNET]: 'https://testnet.lattice.ai',
+  [CHAIN_IDS.MAINNET]: 'https://mainnet.citrate.ai',
+  [CHAIN_IDS.TESTNET]: 'https://testnet.citrate.ai',
   [CHAIN_IDS.LOCAL]: 'http://localhost:8545'
 } as const;
 
 export const DEFAULT_WS_URLS = {
-  [CHAIN_IDS.MAINNET]: 'wss://mainnet.lattice.ai/ws',
-  [CHAIN_IDS.TESTNET]: 'wss://testnet.lattice.ai/ws',
+  [CHAIN_IDS.MAINNET]: 'wss://mainnet.citrate.ai/ws',
+  [CHAIN_IDS.TESTNET]: 'wss://testnet.citrate.ai/ws',
   [CHAIN_IDS.LOCAL]: 'ws://localhost:8546'
 } as const;
 

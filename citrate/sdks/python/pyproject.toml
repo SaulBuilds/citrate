@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Citrate Team", email = "developers@lattice.ai"}
+    {name = "Citrate Team", email = "developers@citrate.ai"}
 ]
 maintainers = [
-    {name = "Citrate Team", email = "developers@lattice.ai"}
+    {name = "Citrate Team", email = "developers@citrate.ai"}
 ]
 keywords = ["citrate", "blockchain", "ai", "dag", "web3", "machine-learning"]
 classifiers = [
@@ -58,8 +58,8 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://lattice.ai"
-Documentation = "https://docs.lattice.ai"
+Homepage = "https://citrate.ai"
+Documentation = "https://docs.citrate.ai"
 Repository = "https://github.com/citrate-ai/citrate"
 "Bug Tracker" = "https://github.com/citrate-ai/citrate/issues"
 Changelog = "https://github.com/citrate-ai/citrate/blob/main/CHANGELOG.md"

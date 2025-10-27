@@ -70,7 +70,7 @@ citrate/
 ├── SDKs
 │   ├── sdk/javascript/          # Official TypeScript SDK (@citrate-ai/sdk)
 │   └── sdks/
-│       ├── javascript/lattice-js/ # Alternative JS SDK
+│       ├── javascript/citrate-js/ # Alternative JS SDK
 │       └── python/              # Python SDK
 │
 ├── Documentation & Sites
@@ -117,7 +117,7 @@ cargo test -p citrate-execution
 cargo test test_blue_set_calculation -- --nocapture
 
 # Run specific node
-cargo run --bin citrate-node -- --data-dir .lattice-devnet
+cargo run --bin citrate-node -- --data-dir .citrate-devnet
 cargo run --bin citrate-node -- devnet
 
 # Run wallet CLI
@@ -199,8 +199,8 @@ npm run build
 npm test
 npm run lint
 
-# Alternative lattice-js SDK
-cd sdks/javascript/lattice-js
+# Alternative citrate-js SDK
+cd sdks/javascript/citrate-js
 npm install
 npm run build
 npm test
@@ -484,7 +484,7 @@ forge coverage
 7. **Storage**: Artifacts stored off-chain (IPFS/Arweave), referenced by CID
 8. **SDK Paths**:
    - Use `sdk/javascript/` for the official `@citrate-ai/sdk` (published to npm)
-   - Alternative `sdks/javascript/lattice-js/` and `sdks/python/` are available
+   - Alternative `sdks/javascript/citrate-js/` and `sdks/python/` are available
 9. **Developer Tools**: Citrate Studio provides visual IDE at port 3001, Debug Dashboard for monitoring
 10. **Transaction Types**: Full support for legacy, EIP-2930, and EIP-1559 transactions via RLP decoding
 11. **Mempool Visibility**: Use `citrate_getMempoolSnapshot` RPC method for debugging transaction status
@@ -640,7 +640,7 @@ scripts/lattice.sh testnet up
 | Genesis setup | genesis-startup.md | `/citrate/docs/guides/genesis-startup.md` |
 | Wallet guide | wallet-and-rewards.md | `/citrate/docs/guides/wallet-and-rewards.md` |
 | User docs portal | docs-portal/docs/ | `/docs-portal/docs/` |
-| Whitepaper | lattice-whitepaper-final.md | `/lattice-docs-v3/lattice-whitepaper-final.md` |
+| Whitepaper | lattice-whitepaper-final.md | `/citrate-docs-v3/lattice-whitepaper-final.md` |
 
 ### Prohibited Practices
 

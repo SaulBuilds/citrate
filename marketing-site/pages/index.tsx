@@ -5,12 +5,12 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Lattice Network</title>
+        <title>Citrate Network</title>
         <meta name="description" content="Decentralized AI + Token Incentives" />
       </Head>
       <main style={{fontFamily:'Inter,ui-sans-serif', padding:'2rem'}}>
         <header style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h1>Lattice Network</h1>
+          <h1>Citrate Network</h1>
           <nav style={{display:'flex',gap:'1rem'}}>
             <Link href="/sandbox">Sandbox</Link>
             <Link href="/downloads">Downloads</Link>

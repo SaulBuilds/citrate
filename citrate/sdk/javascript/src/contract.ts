@@ -1,11 +1,11 @@
 import { AxiosInstance } from 'axios';
 import { ethers } from 'ethers';
-import { LatticeConfig, ContractInfo } from './types';
+import { CitrateConfig, ContractInfo } from './types';
 
 export class ContractManager {
   constructor(
     private rpcClient: AxiosInstance,
-    private config: LatticeConfig
+    private config: CitrateConfig
   ) {}
   
   /**

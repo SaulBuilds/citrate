@@ -124,7 +124,7 @@ class CitrateModel:
 
 ### **deploy.js** - Deployment Script
 ```javascript
-const { CitrateClient } = require('lattice-js');
+const { CitrateClient } = require('citrate-js');
 // Automated deployment script
 ```
 
@@ -189,7 +189,7 @@ The `CitrateService` class provides a unified interface for:
 Citrate Studio integrates seamlessly with the Citrate JavaScript SDK:
 
 ```javascript
-import { CitrateClient } from 'lattice-js';
+import { CitrateClient } from 'citrate-js';
 
 const client = new CitrateClient('http://localhost:8545');
 const result = await client.deployModel(modelData);
@@ -272,7 +272,7 @@ MIT License - see LICENSE file for details
 
 ## Support
 
-- Documentation: [Citrate Docs](https://docs.lattice.ai)
+- Documentation: [Citrate Docs](https://docs.citrate.ai)
 - Discord: [Citrate Community](https://discord.gg/lattice)
 - GitHub Issues: [Report Bugs](https://github.com/lattice/issues)
 

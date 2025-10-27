@@ -22,7 +22,7 @@ pip install citrate-sdk
 from citrate_sdk import CitrateClient, ModelConfig
 
 # Connect to Citrate network
-client = CitrateClient("https://mainnet.lattice.ai")
+client = CitrateClient("https://mainnet.citrate.ai")
 
 # Deploy encrypted model
 model = client.deploy_model(
@@ -53,7 +53,7 @@ from citrate_sdk import CitrateClient
 
 # Initialize with private key
 client = CitrateClient(
-    rpc_url="https://mainnet.lattice.ai",
+    rpc_url="https://mainnet.citrate.ai",
     private_key="0x1234..."
 )
 ```
@@ -225,7 +225,7 @@ except InferenceError as e:
 client = CitrateClient("http://localhost:8545")
 
 # Connect to testnet
-client = CitrateClient("https://testnet.lattice.ai")
+client = CitrateClient("https://testnet.citrate.ai")
 ```
 
 ### Advanced Configuration
@@ -234,7 +234,7 @@ client = CitrateClient("https://testnet.lattice.ai")
 from citrate_sdk import CitrateClient
 
 client = CitrateClient(
-    rpc_url="https://mainnet.lattice.ai",
+    rpc_url="https://mainnet.citrate.ai",
     private_key="0x1234...",
 )
 
@@ -366,7 +366,7 @@ mypy citrate_sdk/
 
 ## Support
 
-- **Documentation**: https://docs.lattice.ai
+- **Documentation**: https://docs.citrate.ai
 - **GitHub**: https://github.com/lattice-ai/citrate
 - **Discord**: https://discord.gg/lattice-ai
 - **Issues**: https://github.com/lattice-ai/citrate/issues

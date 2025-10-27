@@ -172,7 +172,7 @@ cargo build --release
     --chain-id 1337 \
     --p2p-addr 0.0.0.0:30303 \
     --rpc-addr 0.0.0.0:8545 \
-    --data-dir ~/.lattice-testnet \
+    --data-dir ~/.citrate-testnet \
     --max-peers 50
 ```
 
@@ -188,7 +188,7 @@ cargo build --release
     --bootstrap-nodes "testnet-1.lattice.network:30303" \
     --mine \
     --coinbase 0xYOUR_GENERATED_ADDRESS \
-    --data-dir ~/.lattice-testnet
+    --data-dir ~/.citrate-testnet
 ```
 
 ---

@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const prisma = new PrismaClient();
 
-interface LatticeBlock {
+interface CitrateBlock {
   number: string;
   hash: string;
   parentHash: string;
@@ -24,7 +24,7 @@ interface LatticeBlock {
   transactions: any[];
 }
 
-class LatticeIndexer {
+class CitrateIndexer {
   private provider: ethers.JsonRpcProvider;
   private rpcClient = axios.create({
     baseURL: process.env.RPC_ENDPOINT || 'http://localhost:8545',
@@ -142,7 +142,7 @@ class LatticeIndexer {
     }
   }
 
-  private async indexTransaction(tx: any, block: LatticeBlock) {
+  private async indexTransaction(tx: any, block: CitrateBlock) {
     try {
       // Get transaction receipt
       const receipt = await this.getTransactionReceipt(tx.hash);
@@ -225,7 +225,7 @@ class LatticeIndexer {
     }
   }
 
-  private async indexModelDeployment(tx: any, receipt: any, block: LatticeBlock) {
+  private async indexModelDeployment(tx: any, receipt: any, block: CitrateBlock) {
     try {
       // Parse model deployment data
       const modelData = this.parseModelDeployment(tx.input);
@@ -273,7 +273,7 @@ class LatticeIndexer {
     }
   }
 
-  private async indexInference(tx: any, receipt: any, block: LatticeBlock) {
+  private async indexInference(tx: any, receipt: any, block: CitrateBlock) {
     try {
       // Parse inference data
       const inferenceData = this.parseInference(tx.input);
@@ -447,7 +447,7 @@ class LatticeIndexer {
     }
   }
 
-  private async getBlock(blockNumber: bigint): Promise<LatticeBlock> {
+  private async getBlock(blockNumber: bigint): Promise<CitrateBlock> {
     const response = await this.rpcCall('eth_getBlockByNumber', [
       `0x${blockNumber.toString(16)}`,
       true
@@ -557,7 +557,7 @@ class LatticeIndexer {
 }
 
 // Start indexer
-const indexer = new LatticeIndexer();
+const indexer = new CitrateIndexer();
 
 indexer.start().catch(error => {
   console.error('Fatal error:', error);

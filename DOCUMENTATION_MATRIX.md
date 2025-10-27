@@ -22,7 +22,7 @@ This matrix provides a quick reference for finding the authoritative document on
 | **Current Roadmap (P0)** | roadmap-p0.md | `/citrate/docs/roadmap-p0.md` |
 | **Contributing** | CONTRIBUTING.md | `/CONTRIBUTING.md` |
 | **Code of Conduct** | CODE_OF_CONDUCT.md | `/CODE_OF_CONDUCT.md` |
-| **Whitepaper** | lattice-whitepaper-final.md | `/lattice-docs-v3/lattice-whitepaper-final.md` |
+| **Whitepaper** | lattice-whitepaper-final.md | `/citrate-docs-v3/lattice-whitepaper-final.md` |
 | **Changelog** | CHANGELOG.md | `/citrate/CHANGELOG.md` |
 | **Genesis Setup** | genesis-startup.md | `/citrate/docs/guides/genesis-startup.md` |
 | **Wallet Guide** | wallet-and-rewards.md | `/citrate/docs/guides/wallet-and-rewards.md` |
@@ -34,7 +34,7 @@ This matrix provides a quick reference for finding the authoritative document on
 
 | Resource | Location |
 |----------|----------|
-| **JavaScript SDK** | `/citrate/sdks/javascript/lattice-js/README.md` |
+| **JavaScript SDK** | `/citrate/sdks/javascript/citrate-js/README.md` |
 | **Python SDK** | `/citrate/sdks/python/README.md` |
 | **RPC API Reference** | `/docs-portal/docs/developers/rpc.md` |
 | **Smart Contracts** | `/citrate/contracts/README.md` |

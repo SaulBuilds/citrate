@@ -1,13 +1,13 @@
 import { AxiosInstance } from 'axios';
 import { ethers } from 'ethers';
-import { LatticeConfig } from './types';
+import { CitrateConfig } from './types';
 
 export class AccountManager {
   private wallet?: ethers.Wallet | ethers.HDNodeWallet;
   
   constructor(
     private rpcClient: AxiosInstance,
-    private config: LatticeConfig
+    private config: CitrateConfig
   ) {}
   
   /**

@@ -70,7 +70,7 @@ chain_id = 1337
 network = "devnet"
 
 [storage]
-data_dir = ".lattice-devnet"
+data_dir = ".citrate-devnet"
 
 [network]
 listen_addr = "/ip4/127.0.0.1/tcp/30303"
@@ -113,7 +113,7 @@ Run with config:
 pkill -f lattice
 
 # Clean data directory
-rm -rf .lattice-devnet
+rm -rf .citrate-devnet
 
 # Restart
 ./scripts/start_devnet.sh
@@ -128,7 +128,7 @@ ps aux | grep lattice
 lsof -i :8545
 
 # Check logs
-tail -f .lattice-devnet/node.log
+tail -f .citrate-devnet/node.log
 ```
 
 ### Low Block Production
@@ -172,7 +172,7 @@ tail -f .lattice-devnet/node.log
 ## ⚠️ Important Notes
 
 1. **Development Only**: This devnet is for development and testing only
-2. **No Persistence**: Data is stored in `.lattice-devnet` and can be deleted
+2. **No Persistence**: Data is stored in `.citrate-devnet` and can be deleted
 3. **Single Node**: Current implementation runs as a single node
 4. **Mining Rewards**: Validator receives rewards for each block
 
@@ -181,7 +181,7 @@ tail -f .lattice-devnet/node.log
 ## 🤝 Support
 
 For issues:
-1. Check the logs in `.lattice-devnet/`
+1. Check the logs in `.citrate-devnet/`
 2. Run `./scripts/test_devnet.sh` to diagnose
 3. Ensure all dependencies are installed
 4. Try rebuilding with `cargo build --release`

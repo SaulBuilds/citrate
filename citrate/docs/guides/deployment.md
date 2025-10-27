@@ -290,9 +290,9 @@ Create `package.json`:
     "web3",
     "machine-learning"
   ],
-  "author": "Citrate Team <developers@lattice.ai>",
+  "author": "Citrate Team <developers@citrate.ai>",
   "license": "MIT",
-  "homepage": "https://lattice.ai",
+  "homepage": "https://citrate.ai",
   "repository": {
     "type": "git",
     "url": "https://github.com/lattice-ai/citrate.git",
@@ -338,7 +338,7 @@ setup(
     name="citrate-sdk",
     version="1.0.0",
     author="Citrate Team",
-    author_email="developers@lattice.ai",
+    author_email="developers@citrate.ai",
     description="Official Python SDK for Citrate AI blockchain",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -550,7 +550,7 @@ Create a separate repository for Homebrew tap:
 ```ruby
 class CitrateCli < Formula
   desc "Command-line interface for Citrate AI blockchain"
-  homepage "https://lattice.ai"
+  homepage "https://citrate.ai"
   version "1.0.0"
   license "MIT"
 

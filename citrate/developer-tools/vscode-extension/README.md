@@ -276,10 +276,10 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-- 📚 [Documentation](https://docs.lattice.ai/vscode)
+- 📚 [Documentation](https://docs.citrate.ai/vscode)
 - 💬 [Discord Community](https://discord.gg/lattice)
 - 🐛 [Report Issues](https://github.com/lattice/vscode-extension/issues)
-- 📧 [Email Support](mailto:support@lattice.ai)
+- 📧 [Email Support](mailto:support@citrate.ai)
 
 ## Changelog
 

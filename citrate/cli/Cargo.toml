@@ -2,7 +2,7 @@
 name = "citrate-cli"
 version = "0.1.0"
 edition = "2021"
-authors = ["Lattice Team"]
+authors = ["Citrate Team"]
 license = "MIT"
 
 [[bin]]

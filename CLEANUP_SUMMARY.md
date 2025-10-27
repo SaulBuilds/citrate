@@ -146,7 +146,7 @@
 | Wallet & Rewards | wallet-and-rewards.md | `/citrate/docs/guides/wallet-and-rewards.md` |
 | Current Roadmap | roadmap-p0.md | `/citrate/docs/roadmap-p0.md` |
 | Genesis Model (Technical) | genesis-model.md | `/citrate/docs/technical/genesis-model.md` |
-| Whitepaper | lattice-whitepaper-final.md | `/lattice-docs-v3/lattice-whitepaper-final.md` |
+| Whitepaper | lattice-whitepaper-final.md | `/citrate-docs-v3/lattice-whitepaper-final.md` |
 | Transaction Pipeline | CLAUDE.md §Transaction Pipeline | `/CLAUDE.md` (section) |
 | Documentation Governance | DOCUMENTATION.md | `/DOCUMENTATION.md` |
 
@@ -187,7 +187,7 @@ citrate/
 ├── DOCUMENTATION.md            # ✨ NEW - Documentation governance
 ├── DOCUMENTATION_MATRIX.md     # ✨ NEW - Quick doc lookup
 ├── Dockerfile                  # Root container
-├── lattice-docs-v3/            # ✅ Only final whitepaper remains
+├── citrate-docs-v3/            # ✅ Only final whitepaper remains
 │   └── lattice-whitepaper-final.md
 ├── citrate/                 # ✅ Main codebase (clean, organized docs/)
 │   └── docs/                   # ✨ NEW - Organized documentation structure
@@ -248,8 +248,8 @@ citrate/
 
 ### Immediate Actions (Optional)
 1. **SDK Consolidation** (Manual Review Required)
-   - Compare `citrate/sdk/javascript/` vs `citrate/sdks/javascript/lattice-js/`
-   - Merge best features into `sdks/javascript/lattice-js/`
+   - Compare `citrate/sdk/javascript/` vs `citrate/sdks/javascript/citrate-js/`
+   - Merge best features into `sdks/javascript/citrate-js/`
    - Update all references in code and docs
    - Test SDK functionality
    - Delete `sdk/` directory after verification

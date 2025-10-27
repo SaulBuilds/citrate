@@ -3,20 +3,20 @@ import axios, { AxiosInstance } from 'axios';
 import { ModelRegistry } from './model';
 import { ContractManager } from './contract';
 import { AccountManager } from './account';
-import { LatticeConfig, NetworkInfo, BlockInfo, ArtifactProviderStatus, ArtifactPinResult } from './types';
+import { CitrateConfig, NetworkInfo, BlockInfo, ArtifactProviderStatus, ArtifactPinResult } from './types';
 
 /**
  * Main Citrate SDK class
  */
-export class LatticeSDK extends EventEmitter {
+export class CitrateSDK extends EventEmitter {
   private rpcClient: AxiosInstance;
-  private config: LatticeConfig;
+  private config: CitrateConfig;
   
   public models: ModelRegistry;
   public contracts: ContractManager;
   public accounts: AccountManager;
   
-  constructor(config: LatticeConfig) {
+  constructor(config: CitrateConfig) {
     super();
     
     const rpcEndpoint = config.rpcEndpoint ?? 'http://localhost:8545';

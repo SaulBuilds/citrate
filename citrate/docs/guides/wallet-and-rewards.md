@@ -58,7 +58,7 @@ listen_addr = "0.0.0.0:8545"
 ws_addr = "0.0.0.0:8546"
 
 [storage]
-data_dir = ".lattice-testnet"
+data_dir = ".citrate-testnet"
 pruning = false
 keep_blocks = 10000
 
@@ -71,7 +71,7 @@ min_gas_price = 1000000000
 EOF
 
 # Restart with proper address
-./target/release/lattice --config testnet-config-fixed.toml --data-dir .lattice-testnet --mine
+./target/release/lattice --config testnet-config-fixed.toml --data-dir .citrate-testnet --mine
 ```
 
 ### For GUI Node

@@ -1,4 +1,4 @@
-export interface LatticeConfig {
+export interface CitrateConfig {
   rpcEndpoint: string;
   chainId: number;
   defaultAccount?: string;

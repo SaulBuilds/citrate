@@ -226,7 +226,7 @@ git clone https://github.com/lattice-ai/citrate
 cd citrate/developer-tools
 
 # Start Citrate node (in separate terminal)
-cargo run --bin citrate-node -- --data-dir .lattice-devnet
+cargo run --bin citrate-node -- --data-dir .citrate-devnet
 
 # Install and start all tools
 ./start-ecosystem.sh
@@ -530,7 +530,7 @@ contract ModelMarketplace {
 ### Real-time Analytics Dashboard
 ```javascript
 // Custom dashboard component
-import { CitrateClient } from 'lattice-js';
+import { CitrateClient } from 'citrate-js';
 
 function ModelAnalytics({ modelId }) {
     const [metrics, setMetrics] = useState({});
@@ -574,10 +574,10 @@ function ModelAnalytics({ modelId }) {
 ## 🆘 **Support & Community**
 
 ### Getting Help
-- 📚 **Documentation**: https://docs.lattice.ai
+- 📚 **Documentation**: https://docs.citrate.ai
 - 💬 **Discord**: https://discord.gg/lattice
 - 🐛 **GitHub Issues**: https://github.com/lattice-ai/citrate/issues
-- 📧 **Email**: developers@lattice.ai
+- 📧 **Email**: developers@citrate.ai
 
 ### Community Resources
 - **Developer Forum**: Community discussions and Q&A

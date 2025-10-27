@@ -83,7 +83,7 @@ Downloads (prebuilt)
   - `citrate/sdk/javascript` — TypeScript SDK
 - Documentation
   - `docs-portal` — Docusaurus site (developer docs, RPC, guides)
-  - `lattice-docs-v3` — whitepaper and archival docs
+  - `citrate-docs-v3` — whitepaper and archival docs
 - Scripts
   - `scripts/lattice.sh` — single entrypoint for setup/build/dev/docker/logs
 
@@ -402,7 +402,7 @@ This monorepo follows strict **documentation governance** to maintain a single s
 - **🔧 [citrate/docs/guides/installation.md](./citrate/docs/guides/installation.md)** - Installation guide
 - **💰 [citrate/docs/guides/wallet-and-rewards.md](./citrate/docs/guides/wallet-and-rewards.md)** - Wallet guide
 - **🌱 [citrate/docs/guides/genesis-startup.md](./citrate/docs/guides/genesis-startup.md)** - Genesis setup
-- **📄 [lattice-docs-v3/lattice-whitepaper-final.md](./lattice-docs-v3/lattice-whitepaper-final.md)** - Whitepaper
+- **📄 [citrate-docs-v3/lattice-whitepaper-final.md](./citrate-docs-v3/lattice-whitepaper-final.md)** - Whitepaper
 
 ### Documentation Rules
 **Before creating any new documentation**:
@@ -417,4 +417,4 @@ This monorepo follows strict **documentation governance** to maintain a single s
 MIT — see `LICENSE` (if absent, workspace `Cargo.toml` declares MIT for crates).
 
 ---
-For deeper developer docs and RPC reference, see `docs-portal` (buildable locally) and the whitepaper in `lattice-docs-v3/`.
+For deeper developer docs and RPC reference, see `docs-portal` (buildable locally) and the whitepaper in `citrate-docs-v3/`.

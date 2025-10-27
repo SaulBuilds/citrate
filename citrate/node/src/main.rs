@@ -214,7 +214,7 @@ async fn run_devnet() -> Result<()> {
     info!("Starting devnet...");
 
     let mut config = NodeConfig::devnet();
-    config.storage.data_dir = PathBuf::from(".lattice-devnet");
+    config.storage.data_dir = PathBuf::from(".citrate-devnet");
 
     // Initialize chain if needed
     if !config.storage.data_dir.exists() {

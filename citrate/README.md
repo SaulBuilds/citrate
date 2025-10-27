@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/lattice-logo.svg" alt="Lattice" width="400"/>
+  <img src="docs/assets/citrate-logo.svg" alt="Citrate" width="400"/>
 
   # Citrate V3 - AI-Native BlockDAG
 
@@ -12,7 +12,7 @@
 
   **High-Performance BlockDAG with Native AI Inference on Apple Silicon**
 
-  [Documentation](docs/) | [Quick Start](#quick-start) | [Architecture](#architecture) | [Live Demo](https://lattice-explorer.vercel.app)
+  [Documentation](docs/) | [Quick Start](#quick-start) | [Architecture](#architecture) | [Live Demo](https://citrate-explorer.vercel.app)
 </div>
 
 ---
@@ -35,10 +35,10 @@ Citrate is an AI-native Layer-1 BlockDAG blockchain that combines **GhostDAG con
 ## Live Deployments
 
 ### Production Services
-- **🌐 Block Explorer**: [lattice-explorer.vercel.app](https://lattice-explorer.vercel.app)
-- **🔗 Testnet RPC**: `https://rpc.testnet.lattice.ai`
-- **📊 Status Page**: [status.lattice.ai](https://status.lattice.ai)
-- **📖 Documentation**: [docs.lattice.ai](https://docs.lattice.ai)
+- **🌐 Block Explorer**: [citrate-explorer.vercel.app](https://citrate-explorer.vercel.app)
+- **🔗 Testnet RPC**: `https://rpc.testnet.citrate.ai`
+- **📊 Status Page**: [status.citrate.ai](https://status.citrate.ai)
+- **📖 Documentation**: [docs.citrate.ai](https://docs.citrate.ai)
 
 ### SDKs & Tools
 - **📦 JavaScript SDK**: [`@citrate-ai/sdk`](https://www.npmjs.com/package/@citrate-ai/sdk)
@@ -128,7 +128,7 @@ graph TB
 
 ```bash
 # Clone repository
-git clone https://github.com/lattice-ai/citrate.git
+git clone https://github.com/citrate-ai/citrate.git
 cd citrate
 
 # Install system dependencies
@@ -175,7 +175,7 @@ IPFS environment variables used by the node:
 
 ```bash
 # Connect to public testnet
-export CITRATE_RPC_URL="https://rpc.testnet.lattice.ai"
+export CITRATE_RPC_URL="https://rpc.testnet.citrate.ai"
 export CITRATE_CHAIN_ID=1337
 
 # Create development wallet
@@ -183,7 +183,7 @@ cargo run --bin citrate-wallet -- create-account
 # Save the private key securely!
 
 # Request testnet tokens
-curl -X POST https://faucet.testnet.lattice.ai/request \
+curl -X POST https://faucet.testnet.citrate.ai/request \
   -H "Content-Type: application/json" \
   -d '{"address": "YOUR_ADDRESS"}'
 
@@ -196,7 +196,7 @@ cargo run --bin citrate-wallet -- balance
 ```bash
 # Start local development node
 cargo run --bin citrate-node -- \
-  --data-dir ~/.lattice-devnet \
+  --data-dir ~/.citrate-devnet \
   --rpc-addr 127.0.0.1:8545 \
   --p2p-addr 127.0.0.1:30303 \
   --chain-id 1338 \
@@ -233,9 +233,9 @@ curl http://localhost:8545 -X POST \
 ```bash
 # Fork from specific block height
 cargo run --bin citrate-node -- \
-  --fork-url https://rpc.testnet.lattice.ai \
+  --fork-url https://rpc.testnet.citrate.ai \
   --fork-block 1000000 \
-  --data-dir ~/.lattice-fork \
+  --data-dir ~/.citrate-fork \
   --chain-id 1339
 
 # All existing state and contracts will be available
@@ -340,11 +340,11 @@ On production/testnet RPC endpoints, `eth_sendTransaction` may be rejected; use 
 
 ```bash
 # Initialize new DApp project
-mkdir my-lattice-dapp && cd my-lattice-dapp
+mkdir my-citrate-dapp && cd my-citrate-dapp
 forge init
 
 # Add Citrate dependencies
-echo '@citrate-ai/contracts = "github:lattice-ai/citrate/contracts"' >> remappings.txt
+echo '@citrate-ai/contracts = "github:citrate-ai/citrate/contracts"' >> remappings.txt
 
 # Example: AI-powered smart contract
 cat > src/AIOracle.sol << 'EOF'
@@ -421,8 +421,8 @@ function ModelInterface() {
 # - Static IP address
 
 # 2. Create validator configuration
-mkdir -p ~/.lattice-validator
-cat > ~/.lattice-validator/config.toml << 'EOF'
+mkdir -p ~/.citrate-validator
+cat > ~/.citrate-validator/config.toml << 'EOF'
 [network]
 chain_id = 1337
 p2p_port = 30303
@@ -434,7 +434,7 @@ validator_key = "path/to/validator.key"
 staking_amount = "32000000000000000000000"  # 32,000 LAT
 
 [storage]
-data_dir = "/var/lib/lattice"
+data_dir = "/var/lib/citrate"
 state_cache_size = "4GB"
 block_cache_size = "2GB"
 
@@ -445,16 +445,16 @@ gpu_acceleration = true
 EOF
 
 # 3. Generate validator keys
-cargo run --bin lattice-keygen -- --output ~/.lattice-validator/validator.key
+cargo run --bin lattice-keygen -- --output ~/.citrate-validator/validator.key
 
 # 4. Fund validator account (minimum 32,000 LAT)
 cargo run --bin citrate-wallet -- transfer \
-  --to $(cat ~/.lattice-validator/validator.key | jq -r .address) \
+  --to $(cat ~/.citrate-validator/validator.key | jq -r .address) \
   --amount 32000
 
 # 5. Start validator node
 cargo run --bin citrate-node -- \
-  --config ~/.lattice-validator/config.toml \
+  --config ~/.citrate-validator/config.toml \
   --validator \
   --enable-staking
 ```
@@ -518,7 +518,7 @@ git clone https://github.com/YOUR_ORG/citrate.git
 cd citrate
 
 # Add upstream for updates
-git remote add upstream https://github.com/lattice-ai/citrate.git
+git remote add upstream https://github.com/citrate-ai/citrate.git
 ```
 
 #### 2. Customize Network Parameters
@@ -526,7 +526,7 @@ git remote add upstream https://github.com/lattice-ai/citrate.git
 ```rust
 // core/primitives/src/config.rs
 pub const CHAIN_ID: u64 = 99999; // Your unique chain ID
-pub const NETWORK_NAME: &str = "MyLattice";
+pub const NETWORK_NAME: &str = "MyCitrate";
 pub const TOKEN_SYMBOL: &str = "MYLAT";
 pub const GENESIS_ALLOCATION: u64 = 1_000_000_000; // 1B tokens
 
@@ -540,13 +540,13 @@ pub const FINALITY_DEPTH: u64 = 12;
 
 ```bash
 # Replace logos and branding
-cp your-logo.svg docs/assets/lattice-logo.svg
-sed -i 's/Lattice/MyLattice/g' README.md
-sed -i 's/lattice.ai/mylattice.com/g' README.md explorer/src/config.ts
+cp your-logo.svg docs/assets/citrate-logo.svg
+sed -i 's/Lattice/MyCitrate/g' README.md
+sed -i 's/citrate.ai/mycitrate.com/g' README.md explorer/src/config.ts
 
 # Update package names
-find . -name "package.json" -exec sed -i 's/@citrate-ai/@mylattice/g' {} \;
-find . -name "Cargo.toml" -exec sed -i 's/lattice-/mylattice-/g' {} \;
+find . -name "package.json" -exec sed -i 's/@citrate-ai/@mycitrate/g' {} \;
+find . -name "Cargo.toml" -exec sed -i 's/lattice-/mycitrate-/g' {} \;
 ```
 
 #### 4. Deploy Your Network
@@ -1001,7 +1001,7 @@ import { CitrateClient, ModelDeployment } from '@citrate-ai/sdk';
 
 // Initialize client
 const client = new CitrateClient({
-  rpcUrl: 'https://rpc.testnet.lattice.ai',
+  rpcUrl: 'https://rpc.testnet.citrate.ai',
   chainId: 1337
 });
 
@@ -1036,7 +1036,7 @@ import asyncio
 async def main():
     # Initialize client
     client = CitrateClient(
-        rpc_url="https://rpc.testnet.lattice.ai",
+        rpc_url="https://rpc.testnet.citrate.ai",
         chain_id=1337
     )
 
@@ -1068,12 +1068,12 @@ if __name__ == "__main__":
 
 ```bash
 # Standard Ethereum methods
-curl -X POST https://rpc.testnet.lattice.ai \
+curl -X POST https://rpc.testnet.citrate.ai \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 
 # Get transaction receipt
-curl -X POST https://rpc.testnet.lattice.ai \
+curl -X POST https://rpc.testnet.citrate.ai \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_getTransactionReceipt","params":["0x..."],"id":1}'
 ```
@@ -1082,17 +1082,17 @@ curl -X POST https://rpc.testnet.lattice.ai \
 
 ```bash
 # Get DAG statistics
-curl -X POST https://rpc.testnet.lattice.ai \
+curl -X POST https://rpc.testnet.citrate.ai \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"citrate_getDagStats","params":[],"id":1}'
 
 # Get mempool snapshot
-curl -X POST https://rpc.testnet.lattice.ai \
+curl -X POST https://rpc.testnet.citrate.ai \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"citrate_getMempoolSnapshot","params":[],"id":1}'
 
 # Check transaction status
-curl -X POST https://rpc.testnet.lattice.ai \
+curl -X POST https://rpc.testnet.citrate.ai \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"citrate_getTransactionStatus","params":["0x..."],"id":1}'
 ```
@@ -1101,10 +1101,10 @@ curl -X POST https://rpc.testnet.lattice.ai \
 
 ```bash
 # List available models
-curl https://api.lattice.ai/v1/models
+curl https://api.citrate.ai/v1/models
 
 # Create chat completion (OpenAI compatible)
-curl https://api.lattice.ai/v1/chat/completions \
+curl https://api.citrate.ai/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "0x1234...",
@@ -1113,7 +1113,7 @@ curl https://api.lattice.ai/v1/chat/completions \
   }'
 
 # Generate embeddings
-curl https://api.lattice.ai/v1/embeddings \
+curl https://api.citrate.ai/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "model": "0x5678...",
@@ -1187,10 +1187,10 @@ top -pid $(pgrep citrate-node)
 
 ### Getting Help
 
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/lattice-ai/citrate/issues)
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/citrate-ai/citrate/issues)
 - **💬 Community**: [Discord #support](https://discord.gg/lattice)
-- **📧 Direct Contact**: support@lattice.ai
-- **📚 Documentation**: [docs.lattice.ai](https://docs.lattice.ai)
+- **📧 Direct Contact**: support@citrate.ai
+- **📚 Documentation**: [docs.citrate.ai](https://docs.citrate.ai)
 
 ## Contributing
 
@@ -1276,22 +1276,22 @@ We offer rewards for security vulnerabilities:
 - **Medium**: $1,000 - $5,000
 - **Low**: $100 - $1,000
 
-Report security issues to: security@lattice.ai
+Report security issues to: security@citrate.ai
 
 ## Community & Support
 
 ### Official Channels
-- **🌐 Website**: [lattice.ai](https://lattice.ai)
-- **📖 Documentation**: [docs.lattice.ai](https://docs.lattice.ai)
-- **💬 Discord**: [discord.gg/lattice](https://discord.gg/lattice)
-- **🐦 Twitter**: [@LatticeNetwork](https://twitter.com/LatticeNetwork)
-- **📧 Email**: developers@lattice.ai
+- **🌐 Website**: [citrate.ai](https://citrate.ai)
+- **📖 Documentation**: [docs.citrate.ai](https://docs.citrate.ai)
+- **💬 Discord**: [discord.gg/citrate](https://discord.gg/citrate)
+- **🐦 Twitter**: [@CitrateNetwork](https://twitter.com/CitrateNetwork)
+- **📧 Email**: developers@citrate.ai
 
 ### Developer Resources
-- **📚 Examples**: [github.com/lattice-ai/examples](https://github.com/lattice-ai/examples)
-- **🎯 Tutorials**: [tutorials.lattice.ai](https://tutorials.lattice.ai)
-- **🔧 Tools**: [tools.lattice.ai](https://tools.lattice.ai)
-- **📊 Status**: [status.lattice.ai](https://status.lattice.ai)
+- **📚 Examples**: [github.com/citrate-ai/examples](https://github.com/citrate-ai/examples)
+- **🎯 Tutorials**: [tutorials.citrate.ai](https://tutorials.citrate.ai)
+- **🔧 Tools**: [tools.citrate.ai](https://tools.citrate.ai)
+- **📊 Status**: [status.citrate.ai](https://status.citrate.ai)
 
 ## Roadmap
 
@@ -1344,5 +1344,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <div align="center">
   <strong>Built with ❤️ by the Citrate Team</strong>
 
-  [Website](https://lattice.ai) | [Documentation](https://docs.lattice.ai) | [Discord](https://discord.gg/lattice) | [GitHub](https://github.com/lattice-ai)
+  [Website](https://citrate.ai) | [Documentation](https://docs.citrate.ai) | [Discord](https://discord.gg/lattice) | [GitHub](https://github.com/citrate-ai)
 </div>

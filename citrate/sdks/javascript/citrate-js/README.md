@@ -15,9 +15,9 @@ A comprehensive JavaScript/TypeScript SDK for interacting with the Citrate AI bl
 ## Installation
 
 ```bash
-npm install lattice-js
+npm install citrate-js
 # or
-yarn add lattice-js
+yarn add citrate-js
 ```
 
 ## Quick Start
@@ -25,11 +25,11 @@ yarn add lattice-js
 ### Basic Usage
 
 ```typescript
-import { CitrateClient, ModelConfig, ModelType, AccessType } from 'lattice-js';
+import { CitrateClient, ModelConfig, ModelType, AccessType } from 'citrate-js';
 
 // Connect to Citrate network
 const client = new CitrateClient({
-  rpcUrl: 'https://mainnet.lattice.ai',
+  rpcUrl: 'https://mainnet.citrate.ai',
   privateKey: 'your-private-key' // optional
 });
 
@@ -59,11 +59,11 @@ console.log('AI Response:', result.outputData);
 
 ```tsx
 import React from 'react';
-import { useCitrateClient, useInference } from 'lattice-js';
+import { useCitrateClient, useInference } from 'citrate-js';
 
 function AIChat() {
   const { client, isConnected } = useCitrateClient({
-    rpcUrl: 'https://mainnet.lattice.ai',
+    rpcUrl: 'https://mainnet.citrate.ai',
     autoConnect: true
   });
 
@@ -98,10 +98,10 @@ function AIChat() {
 ### Real-time Streaming
 
 ```typescript
-import { WebSocketClient } from 'lattice-js';
+import { WebSocketClient } from 'citrate-js';
 
 const wsClient = new WebSocketClient({
-  url: 'wss://mainnet.lattice.ai/ws'
+  url: 'wss://mainnet.citrate.ai/ws'
 });
 
 await wsClient.connect();
@@ -319,7 +319,7 @@ console.log('Generated text:', result.outputData.text);
 ### Encrypted Private Model
 
 ```typescript
-import { KeyManager } from 'lattice-js';
+import { KeyManager } from 'citrate-js';
 
 const keyManager = new KeyManager();
 
@@ -382,7 +382,7 @@ const {
   address,
   balance
 } = useCitrateClient({
-  rpcUrl: 'https://mainnet.lattice.ai',
+  rpcUrl: 'https://mainnet.citrate.ai',
   autoConnect: true
 });
 ```
@@ -439,7 +439,7 @@ import {
   ModelNotFoundError,
   InsufficientFundsError,
   ValidationError
-} from 'lattice-js';
+} from 'citrate-js';
 
 try {
   const result = await client.inference({
@@ -464,7 +464,7 @@ try {
 ### Network Configuration
 
 ```typescript
-import { CHAIN_IDS, DEFAULT_RPC_URLS } from 'lattice-js';
+import { CHAIN_IDS, DEFAULT_RPC_URLS } from 'citrate-js';
 
 const client = new CitrateClient({
   rpcUrl: DEFAULT_RPC_URLS[CHAIN_IDS.MAINNET],
@@ -478,7 +478,7 @@ const client = new CitrateClient({
 
 ```typescript
 const client = new CitrateClient({
-  rpcUrl: 'https://mainnet.lattice.ai',
+  rpcUrl: 'https://mainnet.citrate.ai',
   timeout: 60000, // 60 seconds
   retries: 3
 });
@@ -537,7 +537,7 @@ Apache License 2.0 - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Documentation**: https://docs.lattice.ai
+- **Documentation**: https://docs.citrate.ai
 - **GitHub**: https://github.com/lattice-ai/citrate
 - **Discord**: https://discord.gg/lattice-ai
 - **Issues**: https://github.com/lattice-ai/citrate/issues

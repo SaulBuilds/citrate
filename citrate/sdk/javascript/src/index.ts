@@ -1,4 +1,4 @@
-export { LatticeSDK } from './sdk';
+export { CitrateSDK } from './sdk';
 export { ModelRegistry } from './model';
 export { ContractManager } from './contract';
 export { AccountManager } from './account';

@@ -1,10 +1,10 @@
 import { AxiosInstance } from 'axios';
-import { LatticeConfig, ModelMetadata, ModelInfo, InferenceResult } from './types';
+import { CitrateConfig, ModelMetadata, ModelInfo, InferenceResult } from './types';
 
 export class ModelRegistry {
   constructor(
     private rpcClient: AxiosInstance,
-    private config: LatticeConfig
+    private config: CitrateConfig
   ) {}
   
   /**

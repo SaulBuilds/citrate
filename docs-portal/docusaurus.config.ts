@@ -1,13 +1,13 @@
 import {Config} from '@docusaurus/types';
 
 const config: Config = {
-  title: 'Lattice Network',
+  title: 'Citrate Network',
   tagline: 'Decentralized AI + Token Incentives',
   url: 'https://docs.lattice',
   baseUrl: '/',
   favicon: 'img/favicon.ico',
-  organizationName: 'lattice-network',
-  projectName: 'lattice-docs',
+  organizationName: 'citrate-network',
+  projectName: 'citrate-docs',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   i18n: { defaultLocale: 'en', locales: ['en'] },
@@ -41,7 +41,7 @@ const config: Config = {
         { title: 'Community', items: [{ label: 'Twitter', href: 'https://x.com' }] },
         { title: 'More', items: [{ label: 'GitHub', href: 'https://github.com/lattice' }] },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Lattice Network`,
+      copyright: `Copyright © ${new Date().getFullYear()} Citrate Network`,
     },
   },
 };

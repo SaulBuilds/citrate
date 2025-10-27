@@ -457,7 +457,7 @@ pub fn create_example_metadata(model_name: &str, framework: &str) -> ModelMetada
             }
         ],
 
-        documentation_url: Some("https://docs.lattice.ai/models".to_string()),
+        documentation_url: Some("https://docs.citrate.ai/models".to_string()),
         paper_url: None,
         thumbnail_url: None,
         demo_url: None,

@@ -53,7 +53,7 @@ Before creating any new documentation file, check:
 ### **Developer Documentation**
 | Topic | Source of Truth | Location | Owner |
 |-------|----------------|----------|-------|
-| SDK (JavaScript) | `sdks/javascript/README.md` | `/citrate/sdks/javascript/lattice-js/README.md` | SDK Team |
+| SDK (JavaScript) | `sdks/javascript/README.md` | `/citrate/sdks/javascript/citrate-js/README.md` | SDK Team |
 | SDK (Python) | `sdks/python/README.md` | `/citrate/sdks/python/README.md` | SDK Team |
 | RPC API | docs-portal/docs/developers/rpc.md | `/docs-portal/docs/developers/rpc.md` | API Team |
 | Smart Contracts | `contracts/README.md` | `/citrate/contracts/README.md` | Contracts Team |
@@ -65,7 +65,7 @@ Before creating any new documentation file, check:
 | Code of Conduct | `CODE_OF_CONDUCT.md` | `/CODE_OF_CONDUCT.md` | Community |
 | Documentation Protocol | `DOCUMENTATION.md` | `/DOCUMENTATION.md` | Engineering |
 | Changelog | `CHANGELOG.md` | `/citrate/CHANGELOG.md` | Engineering |
-| Whitepaper | `lattice-whitepaper-final.md` | `/lattice-docs-v3/lattice-whitepaper-final.md` | Leadership |
+| Whitepaper | `lattice-whitepaper-final.md` | `/citrate-docs-v3/lattice-whitepaper-final.md` | Leadership |
 
 ---
 

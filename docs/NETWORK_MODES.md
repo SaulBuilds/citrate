@@ -7,14 +7,14 @@ This guide explains how to run from a clean genesis, switch between devnet and t
 - Devnet (local):
   - `chain_id = 1337`
   - Fast blocks (2s), RPC `127.0.0.1:8545`
-  - Data dirs: core `./.lattice-devnet`, GUI `./gui-data/devnet/chain`
+  - Data dirs: core `./.citrate-devnet`, GUI `./gui-data/devnet/chain`
   - Use for rapid local iteration.
 
 - Testnet (public):
   - Choose a public `chain_id` (e.g., `42069`)
   - Block time ~5–10s
   - Bootstrap nodes configured and reachable
-  - Data dirs: core `~/.lattice-testnet` (or `./.lattice-testnet`), GUI `./gui-data/testnet/chain`
+  - Data dirs: core `~/.citrate-testnet` (or `./.citrate-testnet`), GUI `./gui-data/testnet/chain`
 
 ## Reset from Genesis (0 → 1)
 

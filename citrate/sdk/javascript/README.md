@@ -274,10 +274,10 @@ Apache-2.0 License. See [LICENSE](../../LICENSE) for details.
 
 ## Support
 
-- 📖 [Documentation](https://docs.lattice.ai)
+- 📖 [Documentation](https://docs.citrate.ai)
 - 💬 [Discord Community](https://discord.gg/lattice-ai)
 - 🐛 [Issue Tracker](https://github.com/lattice-ai/citrate/issues)
-- 📧 [Email Support](mailto:support@lattice.ai)
+- 📧 [Email Support](mailto:support@citrate.ai)
 
 ## Changelog
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test AI transaction types in Lattice v3
+# Test AI transaction types in Citrate v3
 
 echo "=== Testing AI Transaction Types ==="
 echo ""

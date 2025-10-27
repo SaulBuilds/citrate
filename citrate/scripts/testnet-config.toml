@@ -1,0 +1,31 @@
+[chain]
+chain_id = 42069
+genesis_hash = ""
+block_time = 2
+ghostdag_k = 18
+
+[network]
+listen_addr = "0.0.0.0:30303"
+bootstrap_nodes = []
+max_peers = 100
+
+[rpc]
+enabled = true
+listen_addr = "0.0.0.0:8545"
+ws_addr = "0.0.0.0:8546"
+
+[storage]
+data_dir = ".citrate-testnet"
+pruning = false
+keep_blocks = 10000
+
+[mining]
+enabled = true
+# Validator: 0x9401cb5619c2fc3c888d958f11af322431a0a142
+coinbase = "9401cb5619c2fc3c888d958f11af322431a0a142000000000000000000000000"
+target_block_time = 2
+min_gas_price = 1000000000
+
+[explorer]
+enabled = false
+port = 3030

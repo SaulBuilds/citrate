@@ -5,7 +5,7 @@
 set -e
 
 echo "================================================"
-echo "     Lattice V3 Chaos Engineering - Sprint 5"
+echo "     Citrate V3 Chaos Engineering - Sprint 5"
 echo "================================================"
 
 # Colors for output

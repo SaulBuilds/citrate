@@ -1,0 +1,3 @@
+ONNXPLACEHOLDER
+This is a tiny placeholder artifact for the genesis model.
+It is not a valid ONNX graph and is used only for hashing/registration.

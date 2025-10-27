@@ -1,6 +1,6 @@
 #!/bin/bash
 # Sprint 4: Comprehensive E2E Test Suite
-# End-to-end testing for multi-node Lattice network
+# End-to-end testing for multi-node Citrate network
 
 # Be tolerant to individual command failures; count results explicitly
 set +e
@@ -23,7 +23,7 @@ to_dec() {
 }
 
 echo "================================================"
-echo "     Lattice V3 E2E Test Suite - Sprint 4"
+echo "     Citrate V3 E2E Test Suite - Sprint 4"
 echo "================================================"
 
 # Colors for output
@@ -267,7 +267,7 @@ EOF
                 # Try mempool snapshot as fallback for pending tx
                 SNAP=$(curl -s -X POST "$node" \
                     -H "Content-Type: application/json" \
-                    -d '{"jsonrpc":"2.0","method":"lattice_getMempoolSnapshot","params":[],"id":1}')
+                    -d '{"jsonrpc":"2.0","method":"citrate_getMempoolSnapshot","params":[],"id":1}')
                 if echo "$SNAP" | grep -qi "$TX_HASH"; then
                     SEEN=1; break
                 fi

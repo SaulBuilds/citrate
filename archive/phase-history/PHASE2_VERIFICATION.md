@@ -58,7 +58,7 @@
   - `update` command for modifications
 
 - **RPC Endpoint** ✅
-  - `lattice_deployModel` at `core/api/src/server.rs:1269`
+  - `citrate_deployModel` at `core/api/src/server.rs:1269`
   - Full metadata handling
   - IPFS integration
   - Transaction creation
@@ -407,7 +407,7 @@ Phase 2 has successfully delivered 92% of the AI infrastructure with only minor 
 
 The remaining 8% (CoreML binding and precompiles) can be completed in the first 2 weeks of Phase 3.
 
-Phase 3 will transform Lattice into a production-ready AI blockchain platform with:
+Phase 3 will transform Citrate into a production-ready AI blockchain platform with:
 - Complete inference execution
 - Privacy and security features
 - Cross-platform support

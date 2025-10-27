@@ -1,0 +1,28 @@
+# Citrate API Server Configuration
+[server]
+host = "0.0.0.0"
+port = 3000
+
+[mcp]
+enabled = true
+host = "0.0.0.0"
+port = 3001
+
+[node]
+rpc_url = "http://citrate-node:8545"
+ws_url = "ws://citrate-node:8546"
+
+[database]
+url = "postgresql://citrate:citrate@postgres:5432/citrate"
+max_connections = 10
+
+[redis]
+url = "redis://redis:6379"
+
+[ipfs]
+api_url = "http://ipfs:5001"
+gateway_url = "http://ipfs:8080"
+
+[logging]
+level = "info"
+format = "json"

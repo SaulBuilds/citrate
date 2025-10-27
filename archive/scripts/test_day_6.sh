@@ -6,7 +6,7 @@
 set -e
 
 echo "==========================================="
-echo "LATTICE V3 - DAY 6 RPC & API TEST"
+echo "CITRATE V3 - DAY 6 RPC & API TEST"
 echo "==========================================="
 echo ""
 
@@ -94,34 +94,34 @@ echo "------------------------------------------------"
 
 # Test 5: Check key AI RPC methods
 echo "Checking AI RPC methods..."
-if grep -q "lattice_deployModel" core/api/src/methods/ai.rs; then
-    test_feature "lattice_deployModel method" "true"
+if grep -q "citrate_deployModel" core/api/src/methods/ai.rs; then
+    test_feature "citrate_deployModel method" "true"
 else
-    test_feature "lattice_deployModel method" "false"
+    test_feature "citrate_deployModel method" "false"
 fi
 
-if grep -q "lattice_getModel" core/api/src/methods/ai.rs; then
-    test_feature "lattice_getModel method" "true"
+if grep -q "citrate_getModel" core/api/src/methods/ai.rs; then
+    test_feature "citrate_getModel method" "true"
 else
-    test_feature "lattice_getModel method" "false"
+    test_feature "citrate_getModel method" "false"
 fi
 
-if grep -q "lattice_requestInference" core/api/src/methods/ai.rs; then
-    test_feature "lattice_requestInference method" "true"
+if grep -q "citrate_requestInference" core/api/src/methods/ai.rs; then
+    test_feature "citrate_requestInference method" "true"
 else
-    test_feature "lattice_requestInference method" "false"
+    test_feature "citrate_requestInference method" "false"
 fi
 
-if grep -q "lattice_createTrainingJob" core/api/src/methods/ai.rs; then
-    test_feature "lattice_createTrainingJob method" "true"
+if grep -q "citrate_createTrainingJob" core/api/src/methods/ai.rs; then
+    test_feature "citrate_createTrainingJob method" "true"
 else
-    test_feature "lattice_createTrainingJob method" "false"
+    test_feature "citrate_createTrainingJob method" "false"
 fi
 
-if grep -q "lattice_listModels" core/api/src/methods/ai.rs; then
-    test_feature "lattice_listModels method" "true"
+if grep -q "citrate_listModels" core/api/src/methods/ai.rs; then
+    test_feature "citrate_listModels method" "true"
 else
-    test_feature "lattice_listModels method" "false"
+    test_feature "citrate_listModels method" "false"
 fi
 
 echo ""
@@ -242,10 +242,10 @@ echo "------------------------------------------------"
 
 echo "JSON-RPC Endpoints (port 8545):"
 echo "  - Standard Ethereum RPC methods"
-echo "  - lattice_deployModel"
-echo "  - lattice_getModel"
-echo "  - lattice_requestInference"
-echo "  - lattice_createTrainingJob"
+echo "  - citrate_deployModel"
+echo "  - citrate_getModel"
+echo "  - citrate_requestInference"
+echo "  - citrate_createTrainingJob"
 echo ""
 echo "WebSocket Endpoints (port 8546):"
 echo "  - Real-time inference results"
@@ -256,7 +256,7 @@ echo "REST API Endpoints (port 3000):"
 echo "  - /v1/chat/completions (OpenAI compatible)"
 echo "  - /v1/embeddings (OpenAI compatible)"
 echo "  - /v1/messages (Anthropic compatible)"
-echo "  - /lattice/models/* (Lattice specific)"
+echo "  - /lattice/models/* (Citrate specific)"
 
 echo ""
 

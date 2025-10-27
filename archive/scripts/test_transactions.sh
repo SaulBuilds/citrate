@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for sending transactions to the Lattice testnet
+# Test script for sending transactions to the Citrate testnet
 
 # Configuration
 RPC_URL=${RPC_URL:-"http://127.0.0.1:8545"}
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}Lattice Testnet Transaction Tester${NC}"
+echo -e "${GREEN}Citrate Testnet Transaction Tester${NC}"
 echo "==================================="
 echo "RPC URL: $RPC_URL"
 echo "Number of transactions: $NUM_TXS"

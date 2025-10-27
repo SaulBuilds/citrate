@@ -11,14 +11,14 @@
 ### Morning Session (9:00 AM - 12:00 PM)
 | Module | Tests Written | Coverage Estimate | Status |
 |--------|--------------|-------------------|--------|
-| `lattice-consensus` | 31 tests | ~75% | ✅ Complete |
-| `lattice-execution` | 42 tests | ~80% | ✅ Complete |
+| `citrate-consensus` | 31 tests | ~75% | ✅ Complete |
+| `citrate-execution` | 42 tests | ~80% | ✅ Complete |
 
 ### Afternoon Session (12:00 PM - 5:00 PM)
 | Module | Tests Written | Coverage Estimate | Status |
 |--------|--------------|-------------------|--------|
 | `lattice-sequencer` | 28 tests | ~70% | ✅ Complete |
-| `lattice-storage` | 35 tests | ~75% | ✅ Complete |
+| `citrate-storage` | 35 tests | ~75% | ✅ Complete |
 
 ## 📈 Test Statistics
 
@@ -26,14 +26,14 @@
 
 #### Breakdown by Module:
 
-1. **lattice-consensus (31 tests)**
+1. **citrate-consensus (31 tests)**
    - GhostDAG core algorithm: 12 tests
    - Tip selection: 3 tests
    - Block validation: 5 tests
    - Performance tests: 2 tests
    - Concurrent operations: 9 tests
 
-2. **lattice-execution (42 tests)**
+2. **citrate-execution (42 tests)**
    - Executor functionality: 8 tests
    - Address utilities: 8 tests
    - State management: 10 tests
@@ -48,7 +48,7 @@
    - Nonce tracking: 4 tests
    - Size limits: 6 tests
 
-4. **lattice-storage (35 tests)**
+4. **citrate-storage (35 tests)**
    - Block storage: 7 tests
    - Transaction storage: 6 tests
    - State storage: 5 tests
@@ -123,12 +123,12 @@ test_quality:
 ## 📅 Tomorrow's Plan (Day 2)
 
 ### Morning (9:00 AM - 12:00 PM)
-- [ ] Write tests for `lattice-api` RPC handlers
-- [ ] Write tests for `lattice-network` P2P module
+- [ ] Write tests for `citrate-api` RPC handlers
+- [ ] Write tests for `citrate-network` P2P module
 - [ ] Begin property-based testing implementation
 
 ### Afternoon (12:00 PM - 5:00 PM)
-- [ ] Write tests for `lattice-mcp` module
+- [ ] Write tests for `citrate-mcp` module
 - [ ] Implement fuzz testing targets
 - [ ] Run coverage analysis and identify gaps
 
@@ -203,10 +203,10 @@ cargo test --all --verbose
 cargo tarpaulin --all --out Html
 
 # Run specific module tests
-cargo test -p lattice-consensus
-cargo test -p lattice-execution
+cargo test -p citrate-consensus
+cargo test -p citrate-execution
 cargo test -p lattice-sequencer
-cargo test -p lattice-storage
+cargo test -p citrate-storage
 
 # Run tests in parallel
 cargo nextest run --all

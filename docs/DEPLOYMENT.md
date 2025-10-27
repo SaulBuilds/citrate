@@ -1,8 +1,8 @@
-Lattice v3 Testnet Deployment Guide
+Citrate v3 Testnet Deployment Guide
 
 Overview
 
-This guide shows how to bring up a local Lattice v3 Testnet stack:
+This guide shows how to bring up a local Citrate v3 Testnet stack:
 
 - Core node with RPC and WebSocket
 - Explorer (Next.js UI + indexer) backed by Postgres + Redis
@@ -33,23 +33,23 @@ Quickstart (recommended)
 
 3) Stopping services:
    - Core node, Explorer, and Indexer started by the script can be stopped with:
-     - pkill -f "lattice-node"
-     - (from lattice-v3/explorer) docker compose down
+     - pkill -f "citrate-node"
+     - (from citrate/explorer) docker compose down
 
 Manual Steps
 
 1) Core Node + RPC
 
    - Build and run the node:
-     cd lattice-v3
-     cargo run -p lattice-node --release
+     cd citrate
+     cargo run -p citrate-node --release
 
    - By default, RPC listens on 127.0.0.1:8545 and WS on 127.0.0.1:8546.
 
 2) Explorer (Postgres, Redis, Web, Indexer)
 
    - Start DB and cache:
-     cd lattice-v3/explorer
+     cd citrate/explorer
      docker compose up -d postgres redis
 
    - Wait until Postgres is healthy, then apply migrations and generate Prisma client:
@@ -65,7 +65,7 @@ Manual Steps
 3) GUI (Tauri)
 
    - In a separate terminal:
-     cd lattice-v3/gui/lattice-core
+     cd citrate/gui/lattice-core
      npm ci
      npm run tauri
 

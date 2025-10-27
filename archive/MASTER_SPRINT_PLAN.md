@@ -1,11 +1,11 @@
-# Lattice Network v3 - Master Sprint Plan
+# Citrate Network v3 - Master Sprint Plan
 ## Comprehensive Development Roadmap
 
 ---
 
 ## Executive Summary
 
-This document provides a complete sprint-by-sprint breakdown of the Lattice Network v3 development, documenting completed work and defining explicit requirements for remaining tasks. Each sprint includes specific deliverables, acceptance criteria, and implementation details.
+This document provides a complete sprint-by-sprint breakdown of the Citrate Network v3 development, documenting completed work and defining explicit requirements for remaining tasks. Each sprint includes specific deliverables, acceptance criteria, and implementation details.
 
 ---
 
@@ -361,7 +361,7 @@ Optimize performance, security hardening, and mainnet preparation.
    FROM debian:bookworm-slim
    COPY --from=builder /app/target/release/lattice /usr/local/bin/
    EXPOSE 8545 30303
-   CMD ["lattice", "node"]
+   CMD ["citrate", "node"]
    ```
 
 2. **Kubernetes Deployment**
@@ -370,7 +370,7 @@ Optimize performance, security hardening, and mainnet preparation.
    apiVersion: apps/v1
    kind: StatefulSet
    metadata:
-     name: lattice-node
+     name: citrate-node
    spec:
      replicas: 3
      template:
@@ -419,7 +419,7 @@ Build developer tools, documentation, and community resources.
 3. **Development Framework**
    ```javascript
    // lattice-js/sdk.js
-   class LatticeSDK {
+   class CitrateSDK {
      async deployModel(model, metadata)
      async runInference(modelId, input)
      async getProof(executionId)
@@ -600,7 +600,7 @@ Final preparations and mainnet deployment.
 ## Appendix A: File Structure
 
 ```
-lattice-v3/
+citrate/
 ├── core/
 │   ├── consensus/       # ✅ Complete
 │   ├── sequencer/       # ✅ Complete
@@ -659,11 +659,11 @@ cargo build --release
 
 # Test
 cargo test --all
-cargo test -p lattice-mcp  # Test specific module
+cargo test -p citrate-mcp  # Test specific module
 
 # Run
-cargo run -p lattice-node -- devnet
-cargo run -p lattice-node -- mainnet --config config.toml
+cargo run -p citrate-node -- devnet
+cargo run -p citrate-node -- mainnet --config config.toml
 
 # Benchmarks
 cargo bench --all
@@ -680,7 +680,7 @@ docker run -p 8545:8545 -p 30303:30303 lattice:latest
 
 # Kubernetes
 kubectl apply -f k8s/
-kubectl scale statefulset lattice-node --replicas=5
+kubectl scale statefulset citrate-node --replicas=5
 
 # Monitoring
 prometheus --config.file=monitoring/prometheus.yml
@@ -691,7 +691,7 @@ grafana-server --config=monitoring/grafana.ini
 
 ## Conclusion
 
-This master sprint plan provides a complete roadmap for the Lattice Network v3 development. With Sprints 1-8 complete, the foundation is solid. The remaining work focuses on advanced AI features, production optimization, and ecosystem development. Each sprint has clear objectives, explicit requirements, and measurable success criteria.
+This master sprint plan provides a complete roadmap for the Citrate Network v3 development. With Sprints 1-8 complete, the foundation is solid. The remaining work focuses on advanced AI features, production optimization, and ecosystem development. Each sprint has clear objectives, explicit requirements, and measurable success criteria.
 
 **Next Immediate Actions**:
 1. Implement tensor operations with proper testing

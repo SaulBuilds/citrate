@@ -1,4 +1,4 @@
-# Contributing to Lattice Network (v3)
+# Contributing to Citrate Network (v3)
 
 Thanks for your interest in contributing! This document explains how to propose changes, report issues, and get your work merged.
 
@@ -16,18 +16,18 @@ Quick build checks
 
 ```
 # Rust workspace
-cd lattice-v3 && cargo fmt --all && cargo clippy --all-targets --all-features -D warnings && cargo test --workspace
+cd citrate && cargo fmt --all && cargo clippy --all-targets --all-features -D warnings && cargo test --workspace
 
 # GUI (Tauri) / Explorer / Docs (only build the ones you changed)
-cd lattice-v3/gui/lattice-core && npm ci && npm run build
+cd citrate/gui/lattice-core && npm ci && npm run build
 cd ../../explorer && npm ci && npm run build
 cd ../../../docs-portal && npm install && npm run build
 
 # SDK (JavaScript/TypeScript)
-cd lattice-v3/sdk/javascript && npm install && npm run build && npm test
+cd citrate/sdk/javascript && npm install && npm run build && npm test
 
 # Contracts (optional, if touched)
-cd lattice-v3 && forge test -vv
+cd citrate && forge test -vv
 ```
 
 ## Branching And Commits
@@ -71,5 +71,5 @@ cd lattice-v3 && forge test -vv
 - Maintainers cut releases by tagging `v*` (e.g., `v0.1.0`)
 - CI builds and publishes Node/CLI binaries and GUI installers to GitHub Releases
 
-Thanks again for helping make Lattice better!
+Thanks again for helping make Citrate better!
 

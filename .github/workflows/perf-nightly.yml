@@ -19,12 +19,12 @@ jobs:
           node-version: '20'
 
       - name: Build node image
-        run: docker build -t lattice:v3 lattice-v3
+        run: docker build -t lattice:v3 citrate
 
       - name: Start cluster
         run: |
-          docker compose -f lattice-v3/docker-compose.yml up -d --profile cluster lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5
-          docker compose -f lattice-v3/docker-compose.yml up -d --profile monitoring prometheus grafana
+          docker compose -f citrate/docker-compose.yml up -d --profile cluster citrate-node-1 citrate-node-2 citrate-node-3 citrate-node-4 citrate-node-5
+          docker compose -f citrate/docker-compose.yml up -d --profile monitoring prometheus grafana
 
       - name: Wait for Prometheus
         run: |
@@ -42,9 +42,9 @@ jobs:
       - name: Collect metrics
         run: |
           mkdir -p perf
-          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(rate(lattice_blocks_total[5m]))' -o perf/blocks_per_sec.json || true
-          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(lattice_network_peers)' -o perf/peer_count.json || true
-          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(rate(lattice_transactions_total[5m]))' -o perf/tps.json || true
+          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(rate(citrate_blocks_total[5m]))' -o perf/blocks_per_sec.json || true
+          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(citrate_network_peers)' -o perf/peer_count.json || true
+          curl -fsS 'http://localhost:9090/api/v1/query?query=sum(rate(citrate_transactions_total[5m]))' -o perf/tps.json || true
           echo "Timestamp: $(date -u +%FT%TZ)" > perf/meta.txt
 
       - name: Upload artifact
@@ -56,5 +56,5 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          docker compose -f lattice-v3/docker-compose.yml down -v || true
+          docker compose -f citrate/docker-compose.yml down -v || true
 

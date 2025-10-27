@@ -53,7 +53,7 @@
 
 #### 4. RPC Extensions ✅ COMPLETE
 - ✅ **Model Deployment RPC** (`core/api/src/server.rs:1060`)
-  - `lattice_deployModel` endpoint
+  - `citrate_deployModel` endpoint
   - Uploads to IPFS automatically
   - Registers on-chain
   - Returns model ID and CID
@@ -180,7 +180,7 @@ Inference Pipeline:
 ipfs daemon &
 
 # Deploy a test model
-./target/release/lattice-cli model deploy \
+./target/release/citrate-cli model deploy \
   --model test_model.onnx \
   --name "Test Model" \
   --access-policy public
@@ -189,16 +189,16 @@ ipfs daemon &
 ### Test Model Registry
 ```bash
 # List deployed models
-./target/release/lattice-cli model list
+./target/release/citrate-cli model list
 
 # Get model info
-./target/release/lattice-cli model info --model-id <hash>
+./target/release/citrate-cli model info --model-id <hash>
 ```
 
 ### Test Inference (when complete)
 ```bash
 # Run inference
-./target/release/lattice-cli model inference \
+./target/release/citrate-cli model inference \
   --model-id <hash> \
   --input input.json \
   --output result.json
@@ -282,6 +282,6 @@ ipfs daemon &
 1. Complete Metal runtime with real CoreML integration
 2. Build HuggingFace import pipeline
 3. Deploy and test real models
-4. Have fully functional AI inference on Lattice
+4. Have fully functional AI inference on Citrate
 
 The foundation is solid - we just need to connect the final pieces for actual model execution.

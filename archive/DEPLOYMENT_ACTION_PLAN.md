@@ -1,15 +1,15 @@
-# Lattice v3 Deployment Action Plan
+# Citrate v3 Deployment Action Plan
 
 ## Phase 1: Fix Explorer & RPC Connection (Immediate)
 
 ### 1.1 Fix Explorer Connection to Local Node
 ```bash
 # Current issue: Explorer expecting standard Ethereum RPC at port 8545
-# Lattice node running custom RPC implementation
+# Citrate node running custom RPC implementation
 ```
 
 **Actions:**
-- [ ] Update Lattice node RPC to implement required Ethereum methods:
+- [ ] Update Citrate node RPC to implement required Ethereum methods:
   - `eth_blockNumber` - Get latest block number
   - `eth_getBlockByNumber` - Get block by number
   - `eth_getBlockByHash` - Get block by hash
@@ -26,16 +26,16 @@
 
 ### 1.2 Start Services Properly
 ```bash
-# Terminal 1: Start Lattice node
-cd lattice-v3
-cargo build --release -p lattice-node
+# Terminal 1: Start Citrate node
+cd citrate
+cargo build --release -p citrate-node
 ./target/release/lattice devnet --rpc-port 8545
 
 # Terminal 2: Start PostgreSQL for explorer
 docker run -d --name lattice-db \
   -p 5432:5432 \
   -e POSTGRES_PASSWORD=password \
-  -e POSTGRES_DB=lattice_explorer \
+  -e POSTGRES_DB=citrate_explorer \
   postgres:15-alpine
 
 # Terminal 3: Run migrations and start indexer
@@ -98,7 +98,7 @@ contract InferenceRouter {
 }
 
 // contracts/LatticeToken.sol
-contract LatticeToken is ERC20 {
+contract CitrateToken is ERC20 {
     uint256 public constant BLOCK_REWARD = 10 ether;
     
     function mintBlockReward(address validator) external {
@@ -171,7 +171,7 @@ mining_rewards = "500000000"      # 50% mining
 
 ```typescript
 // wallet/src/features/wallet.ts
-interface LatticeWallet {
+interface CitrateWallet {
   // Key management
   generateMnemonic(): string;
   importMnemonic(mnemonic: string): void;
@@ -204,7 +204,7 @@ interface LatticeWallet {
 ### 4.2 Mobile Wallet (React Native)
 ```javascript
 // mobile-wallet/src/App.tsx
-const LatticeWalletApp = () => {
+const CitrateWalletApp = () => {
   // Biometric authentication
   // Secure keychain storage
   // Push notifications for transactions
@@ -350,7 +350,7 @@ async fn test_full_transaction_flow() {
 version: '3.8'
 
 services:
-  lattice-node:
+  citrate-node:
     build: ./core
     ports:
       - "8545:8545"  # RPC
@@ -365,7 +365,7 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: lattice_explorer
+      POSTGRES_DB: citrate_explorer
       POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
@@ -377,35 +377,35 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/lattice_explorer
-      - RPC_ENDPOINT=http://lattice-node:8545
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/citrate_explorer
+      - RPC_ENDPOINT=http://citrate-node:8545
     depends_on:
       - postgres
-      - lattice-node
+      - citrate-node
 
   indexer:
     build: ./explorer
     command: npm run indexer
     environment:
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/lattice_explorer
-      - RPC_ENDPOINT=http://lattice-node:8545
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/citrate_explorer
+      - RPC_ENDPOINT=http://citrate-node:8545
     depends_on:
       - postgres
-      - lattice-node
+      - citrate-node
 
   wallet:
     build: ./apps/wallet
     ports:
       - "3001:3001"
     environment:
-      - RPC_ENDPOINT=http://lattice-node:8545
+      - RPC_ENDPOINT=http://citrate-node:8545
 
   inference-dapp:
     build: ./apps/inference-dapp
     ports:
       - "3002:3002"
     environment:
-      - RPC_ENDPOINT=http://lattice-node:8545
+      - RPC_ENDPOINT=http://citrate-node:8545
       - MODEL_REGISTRY=0x...
 
   faucet:
@@ -413,7 +413,7 @@ services:
     ports:
       - "3003:3003"
     environment:
-      - RPC_ENDPOINT=http://lattice-node:8545
+      - RPC_ENDPOINT=http://citrate-node:8545
       - FAUCET_PRIVATE_KEY=${FAUCET_KEY}
 
 volumes:
@@ -424,7 +424,7 @@ volumes:
 ## Immediate Next Steps (Priority Order)
 
 ### Day 1-2: Get Explorer Working
-1. Implement missing RPC methods in Lattice node
+1. Implement missing RPC methods in Citrate node
 2. Fix explorer database connection
 3. Verify indexer can read blocks
 4. Test UI components loading
@@ -461,16 +461,16 @@ curl -X POST http://localhost:8545 \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 
 # 2. If that fails, we need to implement RPC methods first
-cd lattice-v3/core/api
+cd citrate/core/api
 cargo build
 
 # 3. Check if blocks are being produced
 curl -X POST http://localhost:8545 \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"lattice_getLatestBlock","params":[],"id":1}'
+  -d '{"jsonrpc":"2.0","method":"citrate_getLatestBlock","params":[],"id":1}'
 
 # 4. Deploy contracts (after RPC is working)
-cd lattice-v3/contracts
+cd citrate/contracts
 forge build
 forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 

@@ -60,19 +60,19 @@ sprint_1_metrics:
 | Day | Task | Owner | Priority | Story Points | Dependencies |
 |-----|------|-------|----------|--------------|--------------|
 | **Monday** | | | | | |
-| AM | Write unit tests for `lattice-consensus` GhostDAG | Backend-1 | P0 | 3 | None |
+| AM | Write unit tests for `citrate-consensus` GhostDAG | Backend-1 | P0 | 3 | None |
 | PM | Write unit tests for blue set calculation | Backend-1 | P0 | 2 | None |
-| AM | Write unit tests for `lattice-execution` executor | Backend-2 | P0 | 3 | None |
+| AM | Write unit tests for `citrate-execution` executor | Backend-2 | P0 | 3 | None |
 | PM | Write unit tests for address utilities | Backend-2 | P0 | 2 | None |
 | **Tuesday** | | | | | |
 | AM | Write unit tests for `lattice-sequencer` mempool | Backend-3 | P0 | 3 | None |
 | PM | Write unit tests for transaction validation | Backend-3 | P0 | 2 | None |
-| AM | Write unit tests for `lattice-storage` StateDB | Backend-4 | P0 | 3 | None |
+| AM | Write unit tests for `citrate-storage` StateDB | Backend-4 | P0 | 3 | None |
 | PM | Write unit tests for block storage | Backend-4 | P0 | 2 | None |
 | **Wednesday** | | | | | |
-| AM | Write unit tests for `lattice-api` RPC handlers | QA-1 | P1 | 3 | None |
+| AM | Write unit tests for `citrate-api` RPC handlers | QA-1 | P1 | 3 | None |
 | PM | Write unit tests for eth_tx_decoder | QA-1 | P1 | 2 | Fixed unsafe static |
-| AM | Write unit tests for `lattice-network` P2P | QA-2 | P1 | 3 | None |
+| AM | Write unit tests for `citrate-network` P2P | QA-2 | P1 | 3 | None |
 | PM | Write unit tests for message handling | QA-2 | P1 | 2 | None |
 | **Thursday** | | | | | |
 | AM | Solidity contract unit tests | Backend-1 | P1 | 3 | Foundry setup |
@@ -167,13 +167,13 @@ US-204:
 
 ```yaml
 coverage_targets:
-  lattice-consensus: 85%
-  lattice-execution: 85%
+  citrate-consensus: 85%
+  citrate-execution: 85%
   lattice-sequencer: 80%
-  lattice-storage: 80%
-  lattice-api: 75%
-  lattice-network: 75%
-  lattice-mcp: 70%
+  citrate-storage: 80%
+  citrate-api: 75%
+  citrate-network: 75%
+  citrate-mcp: 70%
   contracts: 90%
   gui: 70%
 ```
@@ -238,10 +238,10 @@ coverage_targets:
    - Set up tracking board
 
 2. **Testing Sessions (9:30 AM - 5:00 PM)**
-   - Backend-1: Start `lattice-consensus` tests
-   - Backend-2: Start `lattice-execution` tests
+   - Backend-1: Start `citrate-consensus` tests
+   - Backend-2: Start `citrate-execution` tests
    - Backend-3: Start `lattice-sequencer` tests
-   - Backend-4: Start `lattice-storage` tests
+   - Backend-4: Start `citrate-storage` tests
    - QA Team: Set up coverage tracking dashboard
 
 3. **End of Day Review (5:00 PM)**

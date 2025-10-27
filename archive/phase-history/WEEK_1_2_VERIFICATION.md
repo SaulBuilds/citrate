@@ -58,7 +58,7 @@
 - ✅ On-chain AI execution enabled
 - ✅ End-to-end test suite created
 
-The infrastructure for AI inference on Lattice blockchain is **operational**. Models can be deployed, inference can be executed with Metal GPU acceleration, and the entire flow is integrated into the EVM.
+The infrastructure for AI inference on Citrate blockchain is **operational**. Models can be deployed, inference can be executed with Metal GPU acceleration, and the entire flow is integrated into the EVM.
 
 ---
 

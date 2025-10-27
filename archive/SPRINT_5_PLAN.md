@@ -1,7 +1,7 @@
 # Sprint 5: Execution Layer & State Management
 
 ## Overview
-Implement the execution layer for processing transactions, managing state, and supporting AI model operations on the Lattice Network.
+Implement the execution layer for processing transactions, managing state, and supporting AI model operations on the Citrate Network.
 
 ## Components to Implement
 

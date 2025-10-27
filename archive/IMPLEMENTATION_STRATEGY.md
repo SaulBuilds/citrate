@@ -1,21 +1,21 @@
-# Lattice v3 Implementation Strategy - GhostDAG BlockDAG
+# Citrate v3 Implementation Strategy - GhostDAG BlockDAG
 
 ## Executive Summary
 
-Complete rewrite of Lattice blockchain using GhostDAG consensus protocol for AI-native Layer-1 with MCP (Model Context Protocol) integration. This strategy provides a granular, sprint-by-sprint implementation plan.
+Complete rewrite of Citrate blockchain using GhostDAG consensus protocol for AI-native Layer-1 with MCP (Model Context Protocol) integration. This strategy provides a granular, sprint-by-sprint implementation plan.
 
 ## Architecture Overview
 
 ### Core Components
 - **GhostDAG Consensus**: Selected parent + merge parents, blue set/score calculation
-- **LVM (Lattice VM)**: EVM-compatible with AI-specific precompiles
+- **LVM (Citrate VM)**: EVM-compatible with AI-specific precompiles
 - **MCP Layer**: Standardized AI model interaction protocol
 - **AI Primitives**: On-chain contracts for model registry, inference, training
 
 ## Project Structure
 
 ```
-lattice-v3/
+citrate/
 ├── consensus/
 │   ├── src/
 │   │   ├── ghostdag/
@@ -47,7 +47,7 @@ lattice-v3/
 │   └── Cargo.toml
 ├── execution/
 │   ├── src/
-│   │   ├── lvm/                # Lattice VM
+│   │   ├── lvm/                # Citrate VM
 │   │   └── precompiles/        # MCP precompiles
 │   └── Cargo.toml
 ├── primitives/
@@ -85,7 +85,7 @@ lattice-v3/
 #### 1.1 Setup Project Structure
 ```bash
 # Initialize workspace
-mkdir lattice-v3 && cd lattice-v3
+mkdir citrate && cd citrate
 cat > Cargo.toml << 'EOF'
 [workspace]
 members = [
@@ -100,7 +100,7 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Lattice Team"]
+authors = ["Citrate Team"]
 
 [workspace.dependencies]
 tokio = { version = "1.35", features = ["full"] }
@@ -716,4 +716,4 @@ execution:
 4. **Week 3**: Blue score and tip selection
 5. **Week 4**: DAG storage and persistence
 
-This implementation strategy provides a complete roadmap for building Lattice v3 with GhostDAG consensus and MCP integration.
+This implementation strategy provides a complete roadmap for building Citrate v3 with GhostDAG consensus and MCP integration.

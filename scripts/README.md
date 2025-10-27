@@ -15,7 +15,7 @@ Common commands:
 - `dev up|down|status` — start/stop local dev stack (node, explorer, docs, marketing)
 - `testnet up|down` — start/stop native node in testnet mode (placeholder config)
 - `mainnet up|down` — placeholder hooks for mainnet
-- `docker up|down` — run devnet node via `lattice-v3/docker-compose.yml`
+- `docker up|down` — run devnet node via `citrate/docker-compose.yml`
 - `docker cluster up|down` — start/stop a 5-node cluster (profile: cluster)
 - `logs` — tail logs from `run-logs/`
 - `clean` — clean Rust targets and common JS build outputs

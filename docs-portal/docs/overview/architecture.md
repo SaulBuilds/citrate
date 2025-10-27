@@ -8,7 +8,7 @@ High-level components:
 - Execution (precompiles for models, governance, artifacts; AI VM opcodes)
 - Storage (RocksDB)
 - Network (P2P gossip, discovery)
-- API (JSON-RPC + Lattice methods)
+- API (JSON-RPC + Citrate methods)
 
-See repository modules under `lattice-v3/core/*` for details.
+See repository modules under `citrate/core/*` for details.
 

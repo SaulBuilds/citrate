@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for Lattice devnet
+# Test script for Citrate devnet
 # Sends RPC calls to test the running node
 
 # Colors
@@ -12,7 +12,7 @@ NC='\033[0m'
 
 RPC_URL=${RPC_URL:-"http://127.0.0.1:8545"}
 
-echo -e "${GREEN}Lattice Devnet Tester${NC}"
+echo -e "${GREEN}Citrate Devnet Tester${NC}"
 echo "====================="
 echo "RPC URL: $RPC_URL"
 echo ""

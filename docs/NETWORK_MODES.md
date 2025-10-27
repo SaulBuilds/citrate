@@ -1,4 +1,4 @@
-# Lattice Network Modes: Devnet vs Testnet
+# Citrate Network Modes: Devnet vs Testnet
 
 This guide explains how to run from a clean genesis, switch between devnet and testnet, and verify everything is wired up.
 

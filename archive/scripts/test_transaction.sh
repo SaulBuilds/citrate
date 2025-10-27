@@ -10,8 +10,8 @@ NC='\033[0m' # No Color
 
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LATTICE_DIR="$SCRIPT_DIR/.."
-WALLET_CLI="$LATTICE_DIR/target/release/wallet"
+CITRATE_DIR="$SCRIPT_DIR/.."
+WALLET_CLI="$CITRATE_DIR/target/release/wallet"
 RPC_URL="${RPC_URL:-http://localhost:8545}"
 CHAIN_ID="${CHAIN_ID:-42069}"
 KEYSTORE_DIR="$HOME/.lattice-wallet-test"
@@ -25,7 +25,7 @@ DEFAULT_GAS_LIMIT="21000"
 
 print_header() {
     echo -e "${BLUE}===============================================${NC}"
-    echo -e "${BLUE}           Lattice Transaction Test${NC}"
+    echo -e "${BLUE}           Citrate Transaction Test${NC}"
     echo -e "${BLUE}===============================================${NC}"
     echo
 }
@@ -60,7 +60,7 @@ check_prerequisites() {
     # Check if RPC server is running
     if ! curl -s "$RPC_URL" > /dev/null; then
         print_error "RPC server not accessible at $RPC_URL"
-        echo "Please start the Lattice node with: cargo run --bin lattice-node"
+        echo "Please start the Citrate node with: cargo run --bin citrate-node"
         exit 1
     fi
     print_success "RPC server is accessible"

@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Lattice is an AI-native Layer-1 BlockDAG blockchain using **GhostDAG consensus**, paired with an EVM-compatible execution environment (LVM) and a standardized Model Context Protocol (MCP) layer. The project makes AI models first-class on-chain assets with registries, weights, training/eval logs, and verifiable provenance.
+Citrate is an AI-native Layer-1 BlockDAG blockchain using **GhostDAG consensus**, paired with an EVM-compatible execution environment (LVM) and a standardized Model Context Protocol (MCP) layer. The project makes AI models first-class on-chain assets with registries, weights, training/eval logs, and verifiable provenance.
 
 ## Core Architecture
 
@@ -36,27 +36,67 @@ Lattice is an AI-native Layer-1 BlockDAG blockchain using **GhostDAG consensus**
 
 ### Workspace Structure
 ```
-lattice-v3/
-├── cli/                      # CLI tools
-├── core/
-│   ├── consensus/           # GhostDAG engine, tip selection, finality
-│   ├── sequencer/           # Mempool policy, bundling, parent selection
-│   ├── execution/           # LVM (EVM-compatible) + precompiles
-│   ├── storage/             # State DB (MPT), block store, artifact pinning
-│   ├── api/                 # JSON-RPC, REST; OpenAI/Anthropic-compatible
-│   ├── network/             # P2P networking, block propagation
-│   ├── mcp/                 # Model Context Protocol layer
-│   ├── economics/           # Rewards and tokenomics
-│   └── primitives/          # Core types and utilities
-├── node/                    # Main node binary
-├── wallet/                  # CLI wallet (ed25519)
-├── faucet/                  # Test token faucet
-├── gui/lattice-core/        # Tauri-based GUI wallet
-├── contracts/               # Solidity smart contracts
-└── scripts/                 # Deployment and testing scripts
+citrate/
+├── Core Components
+│   ├── core/
+│   │   ├── consensus/           # GhostDAG engine, tip selection, finality
+│   │   ├── sequencer/           # Mempool policy, bundling, parent selection
+│   │   ├── execution/           # LVM (EVM-compatible) + precompiles
+│   │   ├── storage/             # State DB (MPT), block store, artifact pinning
+│   │   ├── api/                 # JSON-RPC, REST; OpenAI/Anthropic-compatible
+│   │   ├── network/             # P2P networking, block propagation
+│   │   ├── mcp/                 # Model Context Protocol layer
+│   │   ├── economics/           # Rewards and tokenomics
+│   │   ├── marketplace/         # Marketplace contracts integration
+│   │   └── primitives/          # Core types and utilities
+│   ├── node/                    # Main node binary
+│   └── node-app/                # Node application wrapper
+│
+├── Client Applications
+│   ├── gui/lattice-core/        # Tauri-based GUI wallet (React + Vite)
+│   ├── explorer/                # Web explorer (Next.js)
+│   ├── wallet/                  # CLI wallet (ed25519)
+│   ├── cli/                     # CLI tools
+│   └── faucet/                  # Test token faucet
+│
+├── Developer Tools
+│   ├── developer-tools/
+│   │   ├── lattice-studio/      # Visual IDE for Citrate development
+│   │   ├── debug-dashboard/     # Debug dashboard UI
+│   │   ├── documentation-portal/ # Docs generation tools
+│   │   └── vscode-extension/    # VS Code language support
+│   └── contracts/               # Solidity smart contracts (Foundry)
+│
+├── SDKs
+│   ├── sdk/javascript/          # Official TypeScript SDK (@citrate-ai/sdk)
+│   └── sdks/
+│       ├── javascript/lattice-js/ # Alternative JS SDK
+│       └── python/              # Python SDK
+│
+├── Documentation & Sites
+│   ├── docs-portal/             # Docusaurus documentation site
+│   └── marketing-site/          # Next.js marketing site
+│
+└── Utilities
+    └── scripts/                 # Deployment, testing, orchestration
 ```
 
 ## Development Commands
+
+### Orchestration Script (Recommended)
+```bash
+# Central orchestration script for common tasks
+scripts/lattice.sh setup          # Install all dependencies
+scripts/lattice.sh build          # Build Node/CLI (release), GUI, Explorer, Docs
+scripts/lattice.sh dev up         # Start dev stack (node, explorer, docs, marketing)
+scripts/lattice.sh dev down       # Stop dev stack
+scripts/lattice.sh dev status     # Check dev stack status
+scripts/lattice.sh testnet up     # Start testnet node
+scripts/lattice.sh docker up      # Run devnet via docker-compose
+scripts/lattice.sh docker down    # Stop docker devnet
+scripts/lattice.sh logs           # Tail logs in run-logs/
+scripts/lattice.sh clean          # Clean Rust targets and caches
+```
 
 ### Rust/Cargo Commands
 ```bash
@@ -64,25 +104,31 @@ lattice-v3/
 cargo build --release
 
 # Build specific package
-cargo build -p lattice-consensus
-cargo build -p lattice-node
+cargo build -p citrate-consensus
+cargo build -p citrate-node
+cargo build -p citrate-execution
 
 # Run tests
 cargo test --workspace
-cargo test -p lattice-consensus ghostdag
-cargo test -p lattice-execution
+cargo test -p citrate-consensus ghostdag
+cargo test -p citrate-execution
+
+# Run specific test with output
+cargo test test_blue_set_calculation -- --nocapture
 
 # Run specific node
-cargo run --bin lattice-node -- --data-dir .lattice-devnet
+cargo run --bin citrate-node -- --data-dir .lattice-devnet
+cargo run --bin citrate-node -- devnet
 
 # Run wallet CLI
-cargo run --bin lattice-wallet -- --rpc-url http://localhost:8545
+cargo run --bin citrate-wallet -- --rpc-url http://localhost:8545
 
 # Format code
 cargo fmt --all
 
 # Lint
 cargo clippy --all-targets --all-features
+cargo clippy --all-targets --all-features -D warnings  # Fail on warnings
 ```
 
 ### GUI/Tauri Commands
@@ -93,34 +139,100 @@ cd gui/lattice-core
 # Install dependencies
 npm install
 
-# Run development server
+# Run development server (web only)
 npm run dev
 
-# Build Tauri app
+# Build web version
+npm run build
+
+# Run Tauri desktop app (dev mode)
+npm run tauri dev
+
+# Build Tauri app (production)
 npm run tauri:build
 
-# Run Tauri in dev mode
-npm run tauri dev
+# Lint and format
+npm run lint
+npm run format
 ```
 
 ### Solidity/Foundry Commands
 ```bash
+# Navigate to contracts directory
+cd contracts
+
 # Build contracts
 forge build
 
 # Run contract tests
 forge test
+forge test -vv           # Verbose output
+forge test -vvv          # Very verbose (includes traces)
+forge test --match-test testModelRegistry  # Run specific test
 
-# Deploy contracts
+# Gas snapshots
+forge snapshot
+
+# Deploy contracts to local node
 forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+
+# Deploy to testnet (with private key)
+forge script script/Deploy.s.sol --rpc-url $TESTNET_RPC --private-key $PRIVATE_KEY --broadcast
 
 # Format Solidity
 forge fmt
+
+# Interact with contracts using cast
+cast call <CONTRACT_ADDR> "symbol()" --rpc-url http://localhost:8545
+cast send <CONTRACT_ADDR> "transfer(address,uint256)" <TO> <AMOUNT> --private-key $PRIVATE_KEY
+
+# Check contract storage
+cast storage <CONTRACT_ADDR> <SLOT> --rpc-url http://localhost:8545
+```
+
+### SDK Commands
+```bash
+# Official TypeScript SDK (@citrate-ai/sdk)
+cd sdk/javascript
+npm install
+npm run build
+npm test
+npm run lint
+
+# Alternative lattice-js SDK
+cd sdks/javascript/lattice-js
+npm install
+npm run build
+npm test
+
+# Python SDK
+cd sdks/python
+pip install -e .
+pytest
+```
+
+### Developer Tools
+```bash
+# Citrate Studio (Visual IDE)
+cd developer-tools/lattice-studio
+npm install
+npm start                # Runs on port 3001
+npm run build
+
+# Debug Dashboard
+cd developer-tools/debug-dashboard
+npm install
+npm run dev
+
+# Documentation Portal
+cd developer-tools/documentation-portal
+npm install
+npm run build
 ```
 
 ### Testing Scripts
 ```bash
-# Start local testnet (from lattice-v3/)
+# Start local testnet (from citrate/)
 ./scripts/start_testnet.sh --consensus ghostdag
 
 # Deploy test contracts
@@ -128,11 +240,18 @@ forge fmt
 
 # Send test transaction
 ./scripts/send_test_tx.sh
+
+# Cluster management
+./scripts/cluster_smoke.sh
+./scripts/cluster_down.sh
+
+# Smoke tests
+./scripts/smoke_inference.sh
 ```
 
 ## Module APIs
 
-### Consensus (`lattice-consensus`)
+### Consensus (`citrate-consensus`)
 ```rust
 // Create DAG components
 let dag_store = Arc::new(DagStore::new());
@@ -148,26 +267,49 @@ let children = dag_store.get_children(&parent_hash).await;
 let blue_set = ghostdag.calculate_blue_set(&block).await?;
 ```
 
-### Storage (`lattice-storage`)
+### Storage (`citrate-storage`)
 - StateDB: Merkle Patricia Trie for account state
 - ChainStore: Block and transaction storage with RocksDB
 - TransactionStore: Receipt storage and indexing
 
-### Execution (`lattice-execution`)
+### Execution (`citrate-execution`)
 - Executor: EVM-compatible transaction execution
 - Precompiles: AI model operations and ZKP verification
 - Address utilities: Handle 20-byte EVM addresses in 32-byte fields
 
-## Critical Transaction Pipeline Issues & Solutions
+### API (`citrate-api`)
+```rust
+// JSON-RPC server
+use citrate_api::EthRpc;
 
-### Known Issues
-The transaction pipeline has several critical issues that prevent transactions from completing:
+// Start RPC server
+let rpc = EthRpc::new(executor, storage, network);
+rpc.serve("127.0.0.1:8545").await?;
+```
 
-1. **GUI Producer Issue**: The Tauri GUI's embedded node producer doesn't execute transactions or persist receipts, only simulates wallet balances locally
-2. **Address Mismatch**: 20-byte EVM addresses embedded in 32-byte fields cause derivation mismatches
-3. **RPC Decoder Gaps**: Limited support for EIP-1559 typed transactions
-4. **Nonce Reading**: Uses "latest" instead of "pending", causing sequential transaction blocks
-5. **Missing Observability**: No mempool snapshot endpoint or clear transaction status visibility
+### Network (`citrate-network`)
+```rust
+// P2P networking
+use citrate_network::{Network, PeerConfig};
+
+// Initialize network
+let network = Network::new(config).await?;
+network.start().await?;
+
+// Broadcast block
+network.broadcast_block(&block).await?;
+```
+
+## Transaction Pipeline Architecture
+
+### ✅ Recent Fixes (Post-Audit)
+All critical transaction pipeline issues have been resolved as of the latest audit:
+
+1. ✅ **GUI Producer Execution**: GUI producer now executes transactions and persists receipts (committed at line 374)
+2. ✅ **EIP-1559 Support**: Full support for typed transactions (EIP-1559 and EIP-2930) implemented
+3. ✅ **Address Derivation**: Smart handling of both embedded EVM addresses and full 32-byte public keys
+4. ✅ **Pending Nonce**: `eth_getTransactionCount` supports "pending" tag with mempool transaction inclusion
+5. ✅ **Mempool Visibility**: `citrate_getMempoolSnapshot` RPC endpoint provides full mempool observability
 
 ### Transaction Flow Paths
 
@@ -175,7 +317,7 @@ The transaction pipeline has several critical issues that prevent transactions f
 ```
 1. wallet/src/transaction.rs - Signs with ed25519
 2. wallet/src/rpc_client.rs - Sends via eth_sendRawTransaction
-3. core/api/src/eth_tx_decoder.rs - Decodes bincode/RLP
+3. core/api/src/eth_tx_decoder.rs - Decodes bincode/RLP/EIP-1559/EIP-2930
 4. core/sequencer/src/mempool.rs - Validates and stores
 5. node/src/producer.rs - Executes and stores receipts
 ```
@@ -184,25 +326,44 @@ The transaction pipeline has several critical issues that prevent transactions f
 ```
 1. gui/../wallet_manager.rs - Creates and signs transaction
 2. gui/../lib.rs:195 - Adds directly to embedded mempool
-3. gui/../block_producer.rs - Produces blocks WITHOUT execution
-4. Problem: No receipts stored, no state changes
+3. gui/../block_producer.rs:140 - Executes transactions via executor
+4. gui/../block_producer.rs:374 - Commits state changes (CRITICAL FIX)
+5. gui/../block_producer.rs:204-223 - Stores receipts
 ```
 
-### File-Level Fix Points
+### Key Implementation Details
 
-#### High Priority Fixes
-- `gui/lattice-core/src-tauri/src/block_producer.rs` - Align with node producer execution
-- `core/api/src/eth_tx_decoder.rs` - Add EIP-1559 support
-- `core/execution/src/executor.rs:338` - Fix address mapping for transfers
-- `core/api/src/eth_rpc.rs:389` - Handle "pending" nonce correctly
+#### Address Handling (`core/execution/src/types.rs:13-34`)
+```rust
+// Smart address derivation supporting both formats:
+// 1. Embedded EVM (20 bytes + 12 zeros) → use directly
+// 2. Full 32-byte pubkey → Keccak256 hash last 20 bytes
+pub fn from_public_key(pubkey: &PublicKey) -> Self {
+    let is_evm_address = pubkey.0[20..].iter().all(|&b| b == 0)
+        && !pubkey.0[..20].iter().all(|&b| b == 0);
 
-#### Mempool & Verification
-- `core/sequencer/src/mempool.rs:374` - Unify signature verification paths
-- `core/sequencer/src/mempool.rs:298` - Fix nonce state tracking
+    if is_evm_address {
+        // Direct mapping
+    } else {
+        // Keccak256 derivation
+    }
+}
+```
 
-#### Storage & Receipts
-- `core/storage/src/chain/transaction_store.rs` - Ensure receipt persistence
-- `node/src/producer.rs` - Reference implementation for GUI
+#### EIP-1559 Support (`core/api/src/eth_tx_decoder.rs:78-630`)
+- Detects transaction type byte (0x01, 0x02)
+- Full RLP decoding for typed transactions
+- Access list parsing
+- yParity-based signature recovery
+
+#### Pending Nonce (`core/api/src/eth_rpc.rs:522-544`)
+```rust
+// Supports both "latest" and "pending" tags
+if tag.eq_ignore_ascii_case("pending") {
+    // Scans mempool for sender's pending transactions
+    // Returns max(mempool_nonce + 1, base_nonce)
+}
+```
 
 ## Block Structure
 ```rust
@@ -248,7 +409,7 @@ struct Block {
 
 ### JSON-RPC (EVM-compatible)
 - Standard `eth_*` methods at port 8545
-- Custom `lattice_*` for DAG queries
+- Custom `citrate_*` for DAG queries
 - WebSocket support at ws://localhost:8546
 
 ### MCP REST API
@@ -265,8 +426,8 @@ struct Block {
 ### Unit Tests
 ```bash
 # Test specific module
-cargo test -p lattice-consensus
-cargo test -p lattice-execution
+cargo test -p citrate-consensus
+cargo test -p citrate-execution
 
 # Test with output
 cargo test -- --nocapture
@@ -281,13 +442,29 @@ cargo test test_blue_set_calculation
 cargo test --test integration
 
 # DAG scenarios
-cargo test -p lattice-consensus --test dag_scenarios
+cargo test -p citrate-consensus --test dag_scenarios
 ```
 
 ### End-to-End Tests
 ```bash
 # Start testnet and run E2E
 ./scripts/run_e2e_tests.sh
+
+# Smoke tests
+./scripts/smoke_inference.sh
+```
+
+### Contract Tests
+```bash
+# Run all Foundry tests
+cd contracts
+forge test
+
+# Run with gas reporting
+forge test --gas-report
+
+# Coverage
+forge coverage
 ```
 
 ## Performance Targets
@@ -300,11 +477,17 @@ cargo test -p lattice-consensus --test dag_scenarios
 
 1. **GhostDAG vs GHOST**: We use GhostDAG (DAG-based) not GHOST (tree-based)
 2. **Signature Schemes**: Supporting both ed25519 (native) and ECDSA (EVM compatibility)
-3. **Address Format**: 20-byte EVM addresses must be carefully handled when embedded in 32-byte fields
-4. **Nonce Management**: Always use "pending" for wallet queries to avoid transaction blocks
-5. **Producer Execution**: Both GUI and core node producers must execute transactions and store receipts
+3. **Address Format**: Smart handling of addresses - embedded 20-byte EVM addresses (with trailing zeros) are used directly, full 32-byte public keys are Keccak256-hashed
+4. **Nonce Management**: RPC supports both "latest" and "pending" tags; use "pending" for sequential transactions
+5. **Producer Execution**: ✅ Both GUI and core node producers execute transactions and store receipts (fixed in recent audit)
 6. **MCP Integration**: All AI operations go through MCP standard
 7. **Storage**: Artifacts stored off-chain (IPFS/Arweave), referenced by CID
+8. **SDK Paths**:
+   - Use `sdk/javascript/` for the official `@citrate-ai/sdk` (published to npm)
+   - Alternative `sdks/javascript/lattice-js/` and `sdks/python/` are available
+9. **Developer Tools**: Citrate Studio provides visual IDE at port 3001, Debug Dashboard for monitoring
+10. **Transaction Types**: Full support for legacy, EIP-2930, and EIP-1559 transactions via RLP decoding
+11. **Mempool Visibility**: Use `citrate_getMempoolSnapshot` RPC method for debugging transaction status
 
 ## Debugging Transaction Issues
 
@@ -320,13 +503,40 @@ curl -X POST http://localhost:8545 -H "Content-Type: application/json" \
 
 # Check mempool (custom endpoint needed)
 curl http://localhost:8545/mempool
+
+# Get current block number
+curl -X POST http://localhost:8545 -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 ```
 
-### Common Issues
-- **Pending Forever**: Check if GUI producer is executing transactions
-- **Wrong Balance**: Verify address derivation in executor
-- **Invalid Signature**: Check chainId and signature scheme compatibility
-- **Nonce Too Low**: Ensure using "pending" nonce, not "latest"
+### Using Citrate Studio for Debugging
+```bash
+# Start Citrate Studio
+cd developer-tools/lattice-studio
+npm start
+
+# Access at http://localhost:3001
+# Features:
+# - DAG visualization
+# - Block explorer
+# - Transaction inspector
+# - Mempool monitor
+# - Smart contract interaction
+# - Monaco code editor for contracts
+```
+
+### Common Issues (Post-Audit Resolution)
+
+#### ✅ Previously Known Issues (Now Fixed)
+- ~~**Pending Forever**~~ - GUI producer now executes transactions correctly
+- ~~**Wrong Balance**~~ - Address derivation fixed for both EVM and native formats
+- ~~**Nonce Too Low**~~ - Pending nonce support implemented
+
+#### Current Troubleshooting
+- **Invalid Signature**: Check chainId and signature scheme compatibility (ed25519 vs ECDSA)
+- **Contract Deployment Fails**: Verify gas limits and contract bytecode size
+- **Transaction Not Found**: Use `citrate_getMempoolSnapshot` to check if transaction is in mempool
+- **Gas Estimation**: Use `eth_estimateGas` before sending transactions
 
 ---
 
@@ -342,14 +552,133 @@ curl http://localhost:8545/mempool
 2. **Discovery & Search Engine** - Full-text search with IPFS indexing
 3. **Rating & Review System** - Performance-based quality metrics
 
-**Critical Blockers to Resolve:**
-1. EIP-1559 transaction decoder support (blocks modern wallet compatibility)
-2. Address derivation mismatches in executor (causes transfer failures)
-3. Pending nonce support in RPC (prevents sequential transactions)
-4. Mempool visibility endpoint (essential for debugging)
+**Critical Blockers Status:**
+1. ✅ EIP-1559 transaction decoder support - **RESOLVED** (implemented in `core/api/src/eth_tx_decoder.rs`)
+2. ✅ Address derivation mismatches in executor - **RESOLVED** (fixed in `core/execution/src/types.rs`)
+3. ✅ Pending nonce support in RPC - **RESOLVED** (implemented in `core/api/src/eth_rpc.rs`)
+4. ✅ Mempool visibility endpoint - **RESOLVED** (`citrate_getMempoolSnapshot` RPC method)
 
 **Success Criteria:**
+- ✅ Critical transaction pipeline bugs resolved
 - ModelMarketplace contract deployed and tested on testnet
 - Discovery engine functional with indexed model metadata
 - Rating system operational with automated quality scoring
-- Critical transaction pipeline bugs resolved
+
+## CI/CD & Release Process
+
+### GitHub Actions Workflows
+```bash
+# Rust CI - runs on every PR and push to main
+.github/workflows/rust-ci.yml
+
+# Solidity CI - Foundry tests and Slither analysis
+.github/workflows/solidity-ci.yml
+
+# GUI Tauri - cross-platform builds
+.github/workflows/gui-tauri.yml
+
+# Release - triggered on version tags
+.github/workflows/release.yml
+```
+
+### Creating a Release
+```bash
+# Tag and push (triggers automated release)
+git tag v0.1.0
+git push origin v0.1.0
+
+# CI will automatically:
+# - Build Node/CLI binaries for Linux/macOS/Windows
+# - Build Tauri GUI app for all platforms
+# - Upload to GitHub Releases
+# - Generate release notes
+```
+
+## Network Configuration
+
+### Config Files
+- Node TOML configs: `node/config/` (devnet/testnet samples)
+- GUI JSON configs: `gui/lattice-core/config/devnet.json`, `testnet.json`
+- Switching networks in GUI updates ports, discovery, and `chainId` automatically
+
+### Starting Different Networks
+```bash
+# Devnet (local single node)
+cargo run --bin citrate-node -- devnet
+
+# Testnet
+cargo run --bin citrate-node -- --config node/config/testnet.toml
+
+# Using orchestrator
+scripts/lattice.sh testnet up
+```
+
+---
+
+## 📚 Documentation Protocol & Single Sources of Truth
+
+**CRITICAL**: This codebase follows strict documentation governance to prevent confusion and sprawl.
+
+### Core Rules for AI Assistants & Contributors
+
+1. **One Source of Truth Per Topic** - Never create duplicate documentation
+2. **Check Before Creating** - Always consult `DOCUMENTATION_MATRIX.md` before writing new docs
+3. **Link, Don't Duplicate** - Reference the authoritative doc, don't copy content
+4. **Archive Historical Docs** - Completed work goes to `/archive/` with dates
+
+### Key Reference Documents
+
+| What You Need | File | Path |
+|---------------|------|------|
+| Documentation governance | DOCUMENTATION.md | `/DOCUMENTATION.md` |
+| Quick doc lookup | DOCUMENTATION_MATRIX.md | `/DOCUMENTATION_MATRIX.md` |
+| Current P0 roadmap | roadmap-p0.md | `/citrate/docs/roadmap-p0.md` |
+| Main README | README.md | `/citrate/README.md` |
+| Quick start | DEVNET_QUICKSTART.md | `/DEVNET_QUICKSTART.md` |
+| Installation | installation.md | `/citrate/docs/guides/installation.md` |
+| Deployment guide | deployment.md | `/citrate/docs/guides/deployment.md` |
+| Genesis setup | genesis-startup.md | `/citrate/docs/guides/genesis-startup.md` |
+| Wallet guide | wallet-and-rewards.md | `/citrate/docs/guides/wallet-and-rewards.md` |
+| User docs portal | docs-portal/docs/ | `/docs-portal/docs/` |
+| Whitepaper | lattice-whitepaper-final.md | `/lattice-docs-v3/lattice-whitepaper-final.md` |
+
+### Prohibited Practices
+
+❌ **Do NOT Create**:
+- `*_PROGRESS.md` files (use `docs/roadmap-p0.md` with checkboxes)
+- `*_COMPLETION.md` files (archive these immediately)
+- `*_SUMMARY.md` files (archive these immediately)
+- `*_PLAN.md` files for active work (archive old ones)
+- `*_v2.md` version files (use git for versioning)
+- README files in every subdirectory (only where they add unique value)
+- Guides at root level (use `docs/guides/` for all operational guides)
+
+✅ **Do Instead**:
+- Update `docs/roadmap-p0.md` for current work status
+- Update existing source of truth documents in `docs/guides/` or `docs/technical/`
+- Archive completed documents to `/archive/` with dates
+- Link to authoritative docs instead of copying content
+
+### Archive Structure
+```
+archive/
+├── audits/              # Dated audit reports (YYYY-MM-name.md)
+├── deployment-guides/   # Old deployment docs
+├── gui-docs/            # GUI-specific archived docs
+├── implementations/     # Implementation plans
+├── phase-history/       # Phase completion reports
+├── roadmaps/            # Superseded roadmaps (YYYY-MM-name.md)
+├── testing/             # Test reports
+└── whitepapers/         # Old whitepaper versions
+```
+
+### Before Writing Any Documentation
+
+**Mandatory Checklist**:
+1. ✅ Check `DOCUMENTATION_MATRIX.md` - Does this topic exist?
+2. ✅ Check `DOCUMENTATION.md` - What's the governance rule?
+3. ✅ Check `/archive/` - Is there historical context to review?
+4. ✅ Ask: Should this be in CLAUDE.md, README, or docs-portal?
+5. ✅ Plan: When will this doc be archived? Who maintains it?
+
+**For more details**: See `/DOCUMENTATION.md` for full governance protocol.

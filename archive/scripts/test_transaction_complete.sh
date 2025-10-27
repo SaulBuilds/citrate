@@ -14,7 +14,7 @@ MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           LATTICE V3 COMPLETE TRANSACTION TEST                      ║${NC}"
+echo -e "${CYAN}║           CITRATE V3 COMPLETE TRANSACTION TEST                      ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════╝${NC}"
 
 # Test addresses
@@ -61,7 +61,7 @@ EOF
     fi
     
     # Start node in background
-    RUST_LOG=info ./target/release/lattice --config testnet-config.toml --data-dir .lattice-testnet --mine > /tmp/lattice_tx_test.log 2>&1 &
+    RUST_LOG=info ./target/release/lattice --config testnet-config.toml --data-dir .lattice-testnet --mine > /tmp/citrate_tx_test.log 2>&1 &
     NODE_PID=$!
     
     echo -e "${CYAN}Waiting for node to start...${NC}"

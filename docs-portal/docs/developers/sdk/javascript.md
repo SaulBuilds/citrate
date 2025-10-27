@@ -2,7 +2,7 @@
 title: JavaScript SDK
 ---
 
-The JS SDK lives under `lattice-v3/sdk/javascript`. Example (ContractManager):
+The JS SDK lives under `citrate/sdk/javascript`. Example (ContractManager):
 
 ```ts
 import axios from 'axios';

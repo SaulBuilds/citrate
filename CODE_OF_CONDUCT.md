@@ -27,7 +27,7 @@ Project maintainers are responsible for clarifying the standards of acceptable b
 This Code of Conduct applies within all project spaces, and it also applies when an individual is officially representing the project in public spaces.
 
 ## Enforcement
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team at security@lattice.example (replace with the correct project contact). All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team at security@citrate.example (replace with the correct project contact). All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances.
 
 ## Attribution
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.

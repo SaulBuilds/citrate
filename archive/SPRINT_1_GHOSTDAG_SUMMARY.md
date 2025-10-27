@@ -69,7 +69,7 @@
 ## Files Created
 
 ```
-lattice-v3/
+citrate/
 ├── Cargo.toml (workspace configuration)
 ├── core/
 │   └── consensus/
@@ -88,7 +88,7 @@ lattice-v3/
 cargo build --all
 
 # Test
-cargo test --package lattice-consensus
+cargo test --package citrate-consensus
 
 # Check implementation matches spec
 grep -r "selected_parent" core/consensus/

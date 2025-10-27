@@ -1,7 +1,7 @@
 # Sprint 8: MCP Integration & VM Primitives
 
 ## Overview
-Sprint 8 focuses on integrating Model Compute Protocol (MCP) services and developing VM primitives for AI model execution on the Lattice blockchain.
+Sprint 8 focuses on integrating Model Compute Protocol (MCP) services and developing VM primitives for AI model execution on the Citrate blockchain.
 
 ## Objectives
 
@@ -40,7 +40,7 @@ pub mod provider;
 pub mod execution;
 pub mod verification;
 
-use lattice_execution::types::{ModelId, ModelState};
+use citrate_execution::types::{ModelId, ModelState};
 
 /// MCP Service coordinator
 pub struct MCPService {

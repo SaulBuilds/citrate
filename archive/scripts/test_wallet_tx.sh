@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test transaction script for Lattice V3 wallet system
+# Test transaction script for Citrate V3 wallet system
 # Sends a test transaction and verifies execution
 
 set -e
@@ -23,7 +23,7 @@ TO=${2:-$DEFAULT_TO}
 AMOUNT=${3:-$DEFAULT_AMOUNT}
 
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           LATTICE V3 TRANSACTION TEST                               ║${NC}"
+echo -e "${CYAN}║           CITRATE V3 TRANSACTION TEST                               ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════╝${NC}"
 
 echo -e "\n${BLUE}Transaction Details:${NC}"

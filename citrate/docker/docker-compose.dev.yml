@@ -1,0 +1,61 @@
+version: '3.8'
+services:
+  node1:
+    build:
+      context: ../..
+      dockerfile: citrate/docker/node.Dockerfile
+    container_name: citrate-node-1
+    ports:
+      - "8545:8545"
+      - "30303:30303"
+    environment:
+      - RUST_LOG=info
+    networks:
+      - lattice
+
+  node2:
+    build:
+      context: ../..
+      dockerfile: citrate/docker/node.Dockerfile
+    container_name: citrate-node-2
+    ports:
+      - "8547:8545"
+      - "30305:30303"
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      - node1
+    networks:
+      - lattice
+
+  node-app:
+    build:
+      context: ../..
+      dockerfile: citrate/docker/node-app.Dockerfile
+    container_name: citrate-app
+    ports:
+      - "3000:3000"
+      - "18545:8545"
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      - node1
+    networks:
+      - lattice
+
+  faucet:
+    build:
+      context: ../..
+      dockerfile: citrate/docker/faucet.Dockerfile
+    container_name: citrate-faucet
+    ports:
+      - "3001:3001"
+    environment:
+      - RUST_LOG=info
+    networks:
+      - lattice
+
+networks:
+  lattice:
+    driver: bridge
+

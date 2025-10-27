@@ -12,14 +12,14 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}Lattice Multi-Node Test${NC}"
+echo -e "${GREEN}Citrate Multi-Node Test${NC}"
 echo "========================"
 echo ""
 
 # Cleanup function
 cleanup() {
     echo -e "\n${YELLOW}Stopping all nodes...${NC}"
-    pkill -f "lattice" || true
+    pkill -f "citrate" || true
     rm -rf .lattice-test-node* 2>/dev/null || true
     echo -e "${GREEN}Cleanup complete${NC}"
 }

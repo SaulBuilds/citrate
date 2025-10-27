@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Successfully implemented CoreML Rust FFI bridge, added AI inference precompiles (0x0100-0x0105), and enabled actual on-chain AI execution. The Lattice blockchain can now execute AI models natively on Apple Silicon using Metal GPU and Neural Engine acceleration.
+Successfully implemented CoreML Rust FFI bridge, added AI inference precompiles (0x0100-0x0105), and enabled actual on-chain AI execution. The Citrate blockchain can now execute AI models natively on Apple Silicon using Metal GPU and Neural Engine acceleration.
 
 ---
 
@@ -228,7 +228,7 @@ With inference execution complete, the next phase focuses on:
 
 ## Conclusion
 
-Week 1-2 objectives have been **fully completed**. The Lattice blockchain now has:
+Week 1-2 objectives have been **fully completed**. The Citrate blockchain now has:
 
 ✅ **Working CoreML integration** via FFI bridge
 ✅ **Six AI inference precompiles** with gas metering

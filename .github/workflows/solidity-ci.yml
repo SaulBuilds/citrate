@@ -3,12 +3,12 @@ name: Solidity CI
 on:
   push:
     paths:
-      - 'lattice-v3/contracts/**'
-      - 'lattice-v3/foundry.toml'
+      - 'citrate/contracts/**'
+      - 'citrate/foundry.toml'
   pull_request:
     paths:
-      - 'lattice-v3/contracts/**'
-      - 'lattice-v3/foundry.toml'
+      - 'citrate/contracts/**'
+      - 'citrate/foundry.toml'
 
 jobs:
   forge-tests:
@@ -20,7 +20,7 @@ jobs:
         with:
           version: stable
       - name: Run Forge tests
-        working-directory: lattice-v3
+        working-directory: citrate
         run: |
           forge --version
           forge test -vvv
@@ -34,7 +34,7 @@ jobs:
         with:
           version: stable
       - name: Run Forge tests in contracts folder
-        working-directory: lattice-v3/contracts
+        working-directory: citrate/contracts
         run: |
           forge --version
           forge test -vvv
@@ -49,7 +49,7 @@ jobs:
           pip3 install slither-analyzer solc-select
           solc-select install 0.8.24 && solc-select use 0.8.24
       - name: Run Slither
-        working-directory: lattice-v3
+        working-directory: citrate
         continue-on-error: true
         run: |
           slither . --solc-remaps @openzeppelin/=lib/openzeppelin-contracts/ || true

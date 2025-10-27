@@ -1,6 +1,6 @@
-# Lattice v3 — System Audit, Gaps, and Roadmap
+# Citrate v3 — System Audit, Gaps, and Roadmap
 
-This document summarizes the current state of the Lattice v3 codebase, highlights what is complete vs. partial vs. missing, and proposes a concrete roadmap to reach the envisioned AI‑native BlockDAG platform (compute + storage + governance + incentives).
+This document summarizes the current state of the Citrate v3 codebase, highlights what is complete vs. partial vs. missing, and proposes a concrete roadmap to reach the envisioned AI‑native BlockDAG platform (compute + storage + governance + incentives).
 
 Scope covers consensus, execution/VM, AI primitives, storage/pinning, economics/rewards, governance, API/RPC, CLI/GUI/Explorer, Solidity contracts, and security/testing.
 
@@ -8,12 +8,12 @@ Scope covers consensus, execution/VM, AI primitives, storage/pinning, economics/
 
 Completed (foundation present)
 
-- Consensus: GhostDAG core, DAG store, tip selection, chain selection are implemented and wired. See `lattice-v3/core/consensus/src/`.
-- Execution: Transaction executor with gas accounting and account/state management; block production integrates rewards. See `lattice-v3/core/execution/src/executor.rs` and `lattice-v3/node/src/producer.rs`.
-- AI Primitives (Rust): Tensor engine, ZKP backend, AI VM extension and opcodes exist as modules. See `lattice-v3/core/execution/src/tensor/*`, `.../zkp/*`, `.../vm/*`.
-- Economics: Reward calculator and native token model defined; producer applies rewards (validator + treasury). See `lattice-v3/core/economics/src/*`, `lattice-v3/node/src/producer.rs`.
+- Consensus: GhostDAG core, DAG store, tip selection, chain selection are implemented and wired. See `citrate/core/consensus/src/`.
+- Execution: Transaction executor with gas accounting and account/state management; block production integrates rewards. See `citrate/core/execution/src/executor.rs` and `citrate/node/src/producer.rs`.
+- AI Primitives (Rust): Tensor engine, ZKP backend, AI VM extension and opcodes exist as modules. See `citrate/core/execution/src/tensor/*`, `.../zkp/*`, `.../vm/*`.
+- Economics: Reward calculator and native token model defined; producer applies rewards (validator + treasury). See `citrate/core/economics/src/*`, `citrate/node/src/producer.rs`.
 - Networking + Sync: Peer manager, DAG sync, and block broadcast loop present. See GUI node and core network crates.
-- API: JSON‑RPC subset (ETH compatibility + `lattice_*`), OpenAI‑compatible REST scaffolding. See `lattice-v3/core/api/src`.
+- API: JSON‑RPC subset (ETH compatibility + `citrate_*`), OpenAI‑compatible REST scaffolding. See `citrate/core/api/src`.
 - Tooling/UI: Tauri GUI node manager, Explorer app, CLI, SDK.
 
 Partial (functional placeholders or not fully integrated)
@@ -39,9 +39,9 @@ Missing (design needed and/or implementation work)
 ### Consensus (BlockDAG)
 
 - Implemented: GhostDAG, DAG store, tip and chain selection.
-  - Files: `lattice-v3/core/consensus/src/ghostdag.rs`, `dag_store.rs`, `tip_selection.rs`, `chain_selection.rs`, `types.rs`.
+  - Files: `citrate/core/consensus/src/ghostdag.rs`, `dag_store.rs`, `tip_selection.rs`, `chain_selection.rs`, `types.rs`.
   - Blue score/work and parents are computed; block producer calls these paths.
-- Tests: Present, including `lattice-v3/core/consensus/tests/real_tests.rs`.
+- Tests: Present, including `citrate/core/consensus/tests/real_tests.rs`.
 - Gaps/Risks:
   - VRF proposer logic exists (`vrf.rs`) but is not used in block production for real leader election.
   - Finality/rewind rules and slashing hooks are not connected to governance or economics.
@@ -49,8 +49,8 @@ Missing (design needed and/or implementation work)
 ### Execution and VM
 
 - Implemented:
-  - Executor handles transfer, deploy, call, and AI‑typed transactions (parse by data prefix). See `lattice-v3/core/execution/src/executor.rs`.
-  - AI VM module with opcodes for tensors, model load/exec, and ZK proofs. See `lattice-v3/core/execution/src/vm/mod.rs` and `vm/ai_opcodes.rs`.
+  - Executor handles transfer, deploy, call, and AI‑typed transactions (parse by data prefix). See `citrate/core/execution/src/executor.rs`.
+  - AI VM module with opcodes for tensors, model load/exec, and ZK proofs. See `citrate/core/execution/src/vm/mod.rs` and `vm/ai_opcodes.rs`.
   - Tensor engine and ZKP backend abstractions exist and are internally testable.
 - Partial:
   - Executor currently scans bytecode to detect “AI opcodes” and simulates work, rather than invoking the VM. The dedicated VM is not wired into transaction execution, leading to duplication and drift.
@@ -62,8 +62,8 @@ Missing (design needed and/or implementation work)
 ### AI Integrations & MCP (Compute Marketplace)
 
 - Implemented (modules):
-  - MCP service with provider registry, reputation scoring, model cache, execution/verifier scaffolding. See `lattice-v3/core/mcp/src/*`.
-  - AI state tree in storage with model, training, inference cache, and LoRA entries (`lattice-v3/core/storage/src/state/ai_state.rs`).
+  - MCP service with provider registry, reputation scoring, model cache, execution/verifier scaffolding. See `citrate/core/mcp/src/*`.
+  - AI state tree in storage with model, training, inference cache, and LoRA entries (`citrate/core/storage/src/state/ai_state.rs`).
 - Partial:
   - MCP not wired to RPC or block execution paths; no flow from API → MCP → provider → receipts.
   - Executor simulates inference output rather than delegating through MCP and recording proof artifacts.
@@ -74,7 +74,7 @@ Missing (design needed and/or implementation work)
 ### Storage & IPFS/Artifacts
 
 - Implemented:
-  - RocksDB‑based state/chain storage; column families for accounts, storage, code, blocks, txs, receipts. See `lattice-v3/core/storage/src/*`.
+  - RocksDB‑based state/chain storage; column families for accounts, storage, code, blocks, txs, receipts. See `citrate/core/storage/src/*`.
   - AI state roots are computed; artifacts referenced via string CIDs in state.
 - Partial:
   - Contracts and docs use IPFS CIDs but there is no Rust IPFS client/pinning and no artifact replication policy.
@@ -84,8 +84,8 @@ Missing (design needed and/or implementation work)
 ### Economics & Rewards
 
 - Implemented:
-  - `RewardCalculator` with halving schedule, inference bonus heuristics, and treasury split. See `lattice-v3/core/economics/src/rewards.rs`.
-  - Block producer mints rewards to validator and treasury accounts (`lattice-v3/node/src/producer.rs`).
+  - `RewardCalculator` with halving schedule, inference bonus heuristics, and treasury split. See `citrate/core/economics/src/rewards.rs`.
+  - Block producer mints rewards to validator and treasury accounts (`citrate/node/src/producer.rs`).
 - Partial:
   - Fees for inference/training/storage are not yet fully charged/settled across transactions and providers.
   - No staking/slashing for providers/validators beyond placeholders.
@@ -96,7 +96,7 @@ Missing (design needed and/or implementation work)
 
 - Implemented:
   - `ModelRegistry.sol`, `LoRAFactory.sol`, `InferenceRouter.sol`, with precompile integrations and ownership/permissions.
-  - Foundry tests mock precompiles via `vm.etch`. See `lattice-v3/contracts/test/ModelRegistry.t.sol`.
+  - Foundry tests mock precompiles via `vm.etch`. See `citrate/contracts/test/ModelRegistry.t.sol`.
 - Gaps:
   - No corresponding Rust precompile handlers; on‑chain calls into precompile addresses will currently do nothing in the node.
   - Governance contracts do not yet exist; no parameter registry or voting system.
@@ -104,8 +104,8 @@ Missing (design needed and/or implementation work)
 ### API / RPC / REST
 
 - Implemented:
-  - JSON‑RPC server with ETH compatibility and custom `lattice_*` methods (deploy model, inference, training). See `lattice-v3/core/api/src/server.rs` and `eth_rpc.rs`.
-  - OpenAI‑compatible REST router with endpoints for models, chat, embeddings, and lattice‑specific paths. See `lattice-v3/core/api/src/openai_api.rs` and `methods/ai.rs`.
+  - JSON‑RPC server with ETH compatibility and custom `citrate_*` methods (deploy model, inference, training). See `citrate/core/api/src/server.rs` and `eth_rpc.rs`.
+  - OpenAI‑compatible REST router with endpoints for models, chat, embeddings, and lattice‑specific paths. See `citrate/core/api/src/openai_api.rs` and `methods/ai.rs`.
 - Partial:
   - Many OpenAI methods return placeholders and do not orchestrate inference end‑to‑end.
   - WebSocket broadcasts for inference results exist but are not fed by real execution.
@@ -113,7 +113,7 @@ Missing (design needed and/or implementation work)
 ### GUI (Tauri) and Explorer
 
 - Implemented:
-  - Embedded node manager (Tauri) initializes storage, mempool, peers, and iterative sync. See `lattice-v3/gui/lattice-core/src-tauri/src/node/mod.rs`.
+  - Embedded node manager (Tauri) initializes storage, mempool, peers, and iterative sync. See `citrate/gui/lattice-core/src-tauri/src/node/mod.rs`.
   - Explorer has DAG visualization and RPC‑backed indexer.
 - Partial:
   - GUI notes a mempool type mismatch workaround and uses dev/test configs.
@@ -157,7 +157,7 @@ Prioritized milestones (incremental, testable):
 
 2) Wire MCP Into API and Execution
 
-- In API server, route `lattice_requestInference` to MCP selection and execution pipeline, returning request IDs and emitting WebSocket updates.
+- In API server, route `citrate_requestInference` to MCP selection and execution pipeline, returning request IDs and emitting WebSocket updates.
 - In executor, for inference/training tx types, enqueue/coordinate with MCP (async model):
   - Record a pending receipt initially; finalize with result and proof once MCP finishes.
 - Persist proof artifacts via artifact manager (see next step) and reference CIDs on‑chain in AI state.
@@ -261,34 +261,34 @@ Prioritized milestones (incremental, testable):
 ## File References (Key Entry Points)
 
 - Consensus
-  - `lattice-v3/core/consensus/src/ghostdag.rs`
-  - `lattice-v3/core/consensus/src/dag_store.rs`
-  - `lattice-v3/node/src/producer.rs:240`
+  - `citrate/core/consensus/src/ghostdag.rs`
+  - `citrate/core/consensus/src/dag_store.rs`
+  - `citrate/node/src/producer.rs:240`
 - Execution/VM
-  - `lattice-v3/core/execution/src/executor.rs:440`
-  - `lattice-v3/core/execution/src/vm/mod.rs:1`
-  - `lattice-v3/core/execution/src/vm/ai_opcodes.rs:31`
+  - `citrate/core/execution/src/executor.rs:440`
+  - `citrate/core/execution/src/vm/mod.rs:1`
+  - `citrate/core/execution/src/vm/ai_opcodes.rs:31`
 - AI/MCP
-  - `lattice-v3/core/mcp/src/lib.rs:16`
-  - `lattice-v3/core/mcp/src/provider.rs:85`
-  - `lattice-v3/core/storage/src/state/ai_state.rs:18`
+  - `citrate/core/mcp/src/lib.rs:16`
+  - `citrate/core/mcp/src/provider.rs:85`
+  - `citrate/core/storage/src/state/ai_state.rs:18`
 - Storage
-  - `lattice-v3/core/storage/src/state/state_store.rs:112`
-  - `lattice-v3/core/storage/src/chain/block_store.rs:7`
+  - `citrate/core/storage/src/state/state_store.rs:112`
+  - `citrate/core/storage/src/chain/block_store.rs:7`
 - Economics
-  - `lattice-v3/core/economics/src/rewards.rs:51`
-  - `lattice-v3/node/src/producer.rs:296`
+  - `citrate/core/economics/src/rewards.rs:51`
+  - `citrate/node/src/producer.rs:296`
 - Contracts
-  - `lattice-v3/contracts/src/ModelRegistry.sol:14`
-  - `lattice-v3/contracts/src/LoRAFactory.sol:13`
+  - `citrate/contracts/src/ModelRegistry.sol:14`
+  - `citrate/contracts/src/LoRAFactory.sol:13`
 - API / REST
-  - `lattice-v3/core/api/src/server.rs:384`
-  - `lattice-v3/core/api/src/openai_api.rs:67`
+  - `citrate/core/api/src/server.rs:384`
+  - `citrate/core/api/src/openai_api.rs:67`
 - GUI
-  - `lattice-v3/gui/lattice-core/src-tauri/src/node/mod.rs:1`
-  - `lattice-v3/gui/LATTICE_GUI_INTEGRATION_PLAN.md`
+  - `citrate/gui/lattice-core/src-tauri/src/node/mod.rs:1`
+  - `citrate/gui/LATTICE_GUI_INTEGRATION_PLAN.md`
 - Explorer
-  - `lattice-v3/explorer/src/indexer/index.ts:380`
+  - `citrate/explorer/src/indexer/index.ts:380`
 
 ---
 

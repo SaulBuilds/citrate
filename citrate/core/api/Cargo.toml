@@ -1,0 +1,65 @@
+[package]
+name = "citrate-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+prometheus = "0.13"
+once_cell = "1.19"
+
+# Local dependencies
+citrate-consensus = { path = "../consensus" }
+citrate-sequencer = { path = "../sequencer" }
+citrate-network = { path = "../network" }
+citrate-execution = { path = "../execution" }
+citrate-storage = { path = "../storage" }
+citrate-economics = { path = "../economics" }
+
+# RPC Server
+jsonrpc-core = "18.0"
+jsonrpc-http-server = "18.0"
+jsonrpc-ws-server = "18.0"
+jsonrpc-derive = "18.0"
+
+# Web Framework
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Additional
+hex = "0.4"
+futures = "0.3"
+primitive-types = "0.12"
+bincode = { workspace = true }
+rand = { workspace = true }
+sha3 = "0.10"
+rlp = "0.5"
+ethereum-types = "0.14"
+secp256k1 = { version = "0.27", features = ["recovery"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio-tungstenite = "0.21"
+uuid = { version = "1.0", features = ["v4"] }
+base64 = "0.21"
+
+# Optional verifier tooling
+ethers-solc = { version = "2", optional = true }
+semver = { version = "1", optional = true }
+
+[features]
+default = []
+verifier-ethers-solc = ["ethers-solc", "semver"]
+
+[dev-dependencies]
+reqwest = { version = "0.11", features = ["json"] }
+tokio-test = "0.4"
+tempfile = "3.0"

@@ -1,7 +1,7 @@
-# Lattice V3 - AI-Native BlockDAG Implementation Summary
+# Citrate V3 - AI-Native BlockDAG Implementation Summary
 
 ## Overview
-This document summarizes the complete implementation of Lattice V3, an AI-native Layer-1 BlockDAG blockchain with integrated machine learning capabilities.
+This document summarizes the complete implementation of Citrate V3, an AI-native Layer-1 BlockDAG blockchain with integrated machine learning capabilities.
 
 ## Implementation Status: Days 1-6 ✅
 
@@ -97,7 +97,7 @@ This document summarizes the complete implementation of Lattice V3, an AI-native
 - **REST API** (Port 3000):
   - OpenAI-compatible: `/v1/chat/completions`, `/v1/embeddings`
   - Anthropic-compatible: `/v1/messages`
-  - Lattice-specific: `/lattice/models/*`
+  - Citrate-specific: `/lattice/models/*`
 - **Files Created/Modified**:
   - `methods/ai.rs` - AI RPC method implementations
   - `websocket.rs` - WebSocket server
@@ -167,7 +167,7 @@ The following TODOs are acceptable placeholders for future enhancements:
 
 ## Conclusion
 
-Lattice V3 represents a fully-functional AI-native blockchain with:
+Citrate V3 represents a fully-functional AI-native blockchain with:
 - Complete consensus implementation (GhostDAG)
 - Native AI operation support at VM level
 - Comprehensive state management for ML models

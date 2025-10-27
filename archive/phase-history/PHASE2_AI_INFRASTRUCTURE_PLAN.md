@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-**Goal**: Transform Lattice from a blockchain into an AI-native compute network
+**Goal**: Transform Citrate from a blockchain into an AI-native compute network
 **Duration**: 8 weeks (Weeks 5-12 of overall roadmap)
 **Outcome**: Functional AI model storage, registry, and inference on blockchain
 
@@ -29,7 +29,7 @@
 ## Week 5-6: IPFS Integration
 
 ### Objectives
-- Integrate IPFS daemon with Lattice nodes
+- Integrate IPFS daemon with Citrate nodes
 - Implement model weight storage and retrieval
 - Create pinning incentive mechanism
 
@@ -496,7 +496,7 @@ class HuggingFaceImporter:
         self.registry = ModelRegistry(registry_address, web3_provider)
     
     def import_model(self, model_name: str, model_type: str):
-        """Import model from HuggingFace to Lattice"""
+        """Import model from HuggingFace to Citrate"""
         
         # 1. Download from HuggingFace
         print(f"Downloading {model_name}...")
@@ -787,7 +787,7 @@ Week 11-12: HuggingFace Integration
 
 ## Conclusion
 
-Phase 2 will transform Lattice into the first truly AI-native blockchain with:
+Phase 2 will transform Citrate into the first truly AI-native blockchain with:
 - Decentralized model storage via IPFS
 - On-chain model registry and governance
 - Native AI inference in smart contracts

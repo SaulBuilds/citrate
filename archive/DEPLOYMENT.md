@@ -1,4 +1,4 @@
-# Lattice V3 Deployment Guide
+# Citrate V3 Deployment Guide
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
@@ -26,8 +26,8 @@
 
 ### 1. Clone and Build
 ```bash
-git clone https://github.com/lattice-network/lattice-v3.git
-cd lattice-v3
+git clone https://github.com/citrate-network/citrate.git
+cd citrate
 cargo build --release
 ```
 
@@ -65,7 +65,7 @@ docker build -t lattice:v3 .
 
 # Run the container
 docker run -d \
-  --name lattice-node \
+  --name citrate-node \
   -p 8545:8545 \
   -p 8546:8546 \
   -p 3000:3000 \
@@ -82,7 +82,7 @@ docker-compose up -d
 ```
 
 This deploys:
-- Lattice node
+- Citrate node
 - Block explorer (port 8080)
 - Prometheus metrics (port 9090)
 - Grafana dashboard (port 3001)
@@ -173,7 +173,7 @@ Override configuration with environment variables:
 export LATTICE_NETWORK=mainnet
 export LATTICE_RPC_PORT=8545
 export LATTICE_DATA_DIR=/data/lattice
-export RUST_LOG=info,lattice_api=debug
+export RUST_LOG=info,citrate_api=debug
 ```
 
 ## API Documentation
@@ -192,15 +192,15 @@ export RUST_LOG=info,lattice_api=debug
 - `eth_gasPrice`
 - `eth_chainId`
 
-#### Lattice AI Methods
-- `lattice_deployModel` - Deploy new AI model
-- `lattice_getModel` - Get model information
-- `lattice_listModels` - List available models
-- `lattice_requestInference` - Request model inference
-- `lattice_getInferenceResult` - Get inference result
-- `lattice_createTrainingJob` - Create training job
-- `lattice_getTrainingJob` - Get training job status
-- `lattice_submitGradient` - Submit training gradient
+#### Citrate AI Methods
+- `citrate_deployModel` - Deploy new AI model
+- `citrate_getModel` - Get model information
+- `citrate_listModels` - List available models
+- `citrate_requestInference` - Request model inference
+- `citrate_getInferenceResult` - Get inference result
+- `citrate_createTrainingJob` - Create training job
+- `citrate_getTrainingJob` - Get training job status
+- `citrate_submitGradient` - Submit training gradient
 
 ### WebSocket API (Port 8546)
 
@@ -220,7 +220,7 @@ ws.send(JSON.stringify({
 // Subscribe to inference results
 ws.send(JSON.stringify({
   jsonrpc: '2.0',
-  method: 'lattice_subscribe',
+  method: 'citrate_subscribe',
   params: ['inferenceResults', {modelId: '0x...'}],
   id: 2
 }));
@@ -248,7 +248,7 @@ curl -X POST http://localhost:3000/v1/embeddings \
   }'
 ```
 
-#### Lattice Specific Endpoints
+#### Citrate Specific Endpoints
 - `GET /lattice/models` - List all models
 - `GET /lattice/models/{id}` - Get model details
 - `POST /lattice/models` - Deploy new model
@@ -331,7 +331,7 @@ Check logs for errors:
 tail -f ~/.lattice/logs/lattice.log
 
 # Docker logs
-docker logs -f lattice-node
+docker logs -f citrate-node
 
 # Systemd logs
 journalctl -u lattice -f
@@ -339,7 +339,7 @@ journalctl -u lattice -f
 
 ### Support
 
-- GitHub Issues: https://github.com/lattice-network/lattice-v3/issues
+- GitHub Issues: https://github.com/citrate-network/citrate/issues
 - Discord: https://discord.gg/lattice
 - Documentation: https://docs.lattice.network
 
@@ -426,9 +426,9 @@ systemctl start lattice
 
 ## Conclusion
 
-Lattice V3 is now ready for deployment! Choose the deployment option that best fits your needs and follow the configuration guidelines for optimal performance.
+Citrate V3 is now ready for deployment! Choose the deployment option that best fits your needs and follow the configuration guidelines for optimal performance.
 
 For updates and announcements, follow:
 - Twitter: @LatticeNetwork
 - Blog: https://blog.lattice.network
-- GitHub: https://github.com/lattice-network
+- GitHub: https://github.com/citrate-network

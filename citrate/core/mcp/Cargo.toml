@@ -1,0 +1,33 @@
+[package]
+name = "citrate-mcp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Local dependencies
+citrate-consensus = { path = "../consensus" }
+citrate-execution = { path = "../execution" }
+citrate-storage = { path = "../storage" }
+
+# External dependencies
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+sha3 = { workspace = true }
+blake3 = { workspace = true }
+
+# Additional dependencies for MCP
+bincode = { workspace = true }
+primitive-types = "0.12"
+hex = "0.4"
+chrono = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"

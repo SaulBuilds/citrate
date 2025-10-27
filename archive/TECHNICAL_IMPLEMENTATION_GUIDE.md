@@ -95,7 +95,7 @@ let merge_parents = vec![];        // TODO: Get merge parents from GhostDAG
 #### Required Implementation
 ```rust
 // In node/src/producer.rs
-use lattice_consensus::ghostdag::{GhostDag, TipManager};
+use citrate_consensus::ghostdag::{GhostDag, TipManager};
 
 impl BlockProducer {
     async fn produce_block(&self) -> Result<Block> {
@@ -317,14 +317,14 @@ use libp2p::{
 };
 
 #[derive(NetworkBehaviour)]
-pub struct LatticeBehaviour {
+pub struct CitrateBehaviour {
     pub gossipsub: Gossipsub,
     pub kademlia: Kademlia,
     pub mdns: Mdns,
     pub request_response: RequestResponse,
 }
 
-impl LatticeNetwork {
+impl CitrateNetwork {
     pub async fn new(config: NetworkConfig) -> Result<Self> {
         // Initialize libp2p
         let local_key = identity::Keypair::generate_ed25519();
@@ -430,13 +430,13 @@ Inference Request:
 #### Test 1: Transaction Execution
 ```bash
 # Deploy a test contract
-./lattice-cli contract deploy --bytecode 0x608060... --gas 1000000
+./citrate-cli contract deploy --bytecode 0x608060... --gas 1000000
 
 # Verify state change
-./lattice-cli account balance 0x1234...
+./citrate-cli account balance 0x1234...
 
 # Check receipt
-./lattice-cli tx receipt 0xabcd...
+./citrate-cli tx receipt 0xabcd...
 ```
 
 #### Test 2: GhostDAG Consensus
@@ -445,23 +445,23 @@ Inference Request:
 ./scripts/start_multinode.sh 3
 
 # Verify DAG structure
-./lattice-cli dag tips
-./lattice-cli dag blue-set 0xblock_hash
+./citrate-cli dag tips
+./citrate-cli dag blue-set 0xblock_hash
 
 # Check convergence
-./lattice-cli consensus status
+./citrate-cli consensus status
 ```
 
 #### Test 3: AI Operations
 ```bash
 # Deploy a model
-./lattice-cli model deploy --cid QmXxx --stake 1000
+./citrate-cli model deploy --cid QmXxx --stake 1000
 
 # Request inference
-./lattice-cli inference request --model 0xmodel_id --input data.json
+./citrate-cli inference request --model 0xmodel_id --input data.json
 
 # Verify proof
-./lattice-cli proof verify --tx 0xtx_hash
+./citrate-cli proof verify --tx 0xtx_hash
 ```
 
 ### 8. Performance Optimization Points

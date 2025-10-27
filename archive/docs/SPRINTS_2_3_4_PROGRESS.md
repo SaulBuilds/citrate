@@ -18,12 +18,12 @@
 ### Test Distribution
 | Module | Tests | Coverage | Status |
 |--------|-------|----------|--------|
-| lattice-consensus | 31 | 75% | ✅ |
-| lattice-execution | 42 | 80% | ✅ |
+| citrate-consensus | 31 | 75% | ✅ |
+| citrate-execution | 42 | 80% | ✅ |
 | lattice-sequencer | 28 | 70% | ✅ |
-| lattice-storage | 35 | 75% | ✅ |
-| lattice-api | 38 | 72% | ✅ |
-| lattice-network | 32 | 68% | ✅ |
+| citrate-storage | 35 | 75% | ✅ |
+| citrate-api | 38 | 72% | ✅ |
+| citrate-network | 32 | 68% | ✅ |
 
 ---
 

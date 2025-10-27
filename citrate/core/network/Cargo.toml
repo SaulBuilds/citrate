@@ -1,0 +1,36 @@
+[package]
+name = "citrate-network"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true, features = ["full"] }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Local dependencies
+citrate-consensus = { path = "../consensus" }
+citrate-sequencer = { path = "../sequencer" }
+citrate-storage = { path = "../storage" }
+citrate-execution = { path = "../execution" }
+# Network specific
+primitive-types = "0.12"
+futures = "0.3"
+bytes = "1.5"
+tokio-util = { version = "0.7", features = ["codec"] }
+dashmap = "5.5"
+rand = { workspace = true }
+chrono = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+proptest = { workspace = true }

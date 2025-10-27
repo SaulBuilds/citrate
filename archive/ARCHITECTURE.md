@@ -1,7 +1,7 @@
-# Lattice Network V3 - Architecture & Implementation Status
+# Citrate Network V3 - Architecture & Implementation Status
 
 ## Project Overview
-Lattice Network V3 is a high-performance blockchain implementation featuring:
+Citrate Network V3 is a high-performance blockchain implementation featuring:
 - **GhostDAG Consensus**: BlockDAG with blue set calculation for parallel block processing
 - **AI/ML Integration**: Native support for model registry, inference, and federated training
 - **Smart Contract Execution**: EVM-compatible execution layer with state management

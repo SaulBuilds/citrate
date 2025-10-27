@@ -1,7 +1,7 @@
 # Sprint 7: API & RPC Layer Implementation
 
 ## Objectives
-Build comprehensive API layer for client interaction with the Lattice Network, including JSON-RPC, REST, and WebSocket interfaces.
+Build comprehensive API layer for client interaction with the Citrate Network, including JSON-RPC, REST, and WebSocket interfaces.
 
 ## Components to Build
 

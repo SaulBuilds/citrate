@@ -1,11 +1,11 @@
 #!/bin/bash
 # Sprint 1: Test Infrastructure Setup Script
-# This script sets up the complete testing infrastructure for Lattice V3
+# This script sets up the complete testing infrastructure for Citrate V3
 
 set -e
 
 echo "================================================"
-echo "   Lattice V3 Test Infrastructure Setup"
+echo "   Citrate V3 Test Infrastructure Setup"
 echo "   Sprint 1 - Week 1 Implementation"
 echo "================================================"
 
@@ -137,7 +137,7 @@ create_test_generators() {
     
     # Create test data generator for transactions
     cat > tests/generators/transaction_generator.rs << 'EOF'
-use lattice_consensus::types::{Transaction, Hash, PublicKey, Signature};
+use citrate_consensus::types::{Transaction, Hash, PublicKey, Signature};
 use rand::{Rng, thread_rng};
 
 pub struct TransactionGenerator {
@@ -328,7 +328,7 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'lattice-node'
+  - job_name: 'citrate-node'
     static_configs:
       - targets: ['localhost:9090']
     metrics_path: /metrics
@@ -343,7 +343,7 @@ EOF
     cat > monitoring/test-dashboard.json << 'EOF'
 {
   "dashboard": {
-    "title": "Lattice V3 Test Metrics",
+    "title": "Citrate V3 Test Metrics",
     "panels": [
       {
         "title": "Test Coverage Trend",

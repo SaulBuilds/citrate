@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'citrate-node'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['citrate-node-devnet:9100']
+      - targets: ['citrate-node-1:9100','citrate-node-2:9100','citrate-node-3:9100','citrate-node-4:9100','citrate-node-5:9100']

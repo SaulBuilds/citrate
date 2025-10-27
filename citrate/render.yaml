@@ -1,0 +1,31 @@
+# Citrate Testnet - Render Deployment
+services:
+  # Main Blockchain Node
+  - type: web
+    name: citrate-node
+    runtime: docker
+    repo: https://github.com/SaulBuilds/lattice-v3.git
+    branch: render-deploy
+    dockerfilePath: ./citrate/Dockerfile
+    dockerContext: .
+    region: oregon
+    plan: starter
+    autoDeploy: true
+
+    healthCheckPath: /health
+    healthCheckInterval: 30000
+
+    envVars:
+      - key: NETWORK_MODE
+        value: testnet
+      - key: CHAIN_ID
+        value: "31337"
+      - key: RUST_LOG
+        value: info
+      - key: RUST_BACKTRACE
+        value: "1"
+
+    disk:
+      name: citrate-node-data
+      mountPath: /app/data
+      sizeGB: 50

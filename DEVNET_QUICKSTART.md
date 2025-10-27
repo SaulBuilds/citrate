@@ -1,4 +1,4 @@
-# Lattice V3 Devnet Quick Start Guide
+# Citrate V3 Devnet Quick Start Guide
 
 ## 🚀 Quick Start (Single Node)
 
@@ -156,7 +156,7 @@ tail -f .lattice-devnet/node.log
 
 ### Network Details
 - **Chain ID**: 1337
-- **Network Name**: Lattice Devnet
+- **Network Name**: Citrate Devnet
 - **RPC URL**: `http://127.0.0.1:8545`
 - **Currency Symbol**: LATTICE
 - **Block Explorer**: None (local only)

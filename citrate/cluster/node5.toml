@@ -1,0 +1,25 @@
+[chain]
+chain_id = 1337
+block_time = 2
+ghostdag_k = 8
+
+[network]
+listen_addr = "0.0.0.0:30303"
+bootstrap_nodes = ["citrate-node-1:30303"]
+max_peers = 100
+
+[rpc]
+enabled = true
+listen_addr = "0.0.0.0:8545"
+ws_addr = "0.0.0.0:8546"
+
+[storage]
+data_dir = "/data/chain"
+pruning = false
+keep_blocks = 5000
+
+[mining]
+enabled = true
+target_block_time = 2
+min_gas_price = 1000000000
+

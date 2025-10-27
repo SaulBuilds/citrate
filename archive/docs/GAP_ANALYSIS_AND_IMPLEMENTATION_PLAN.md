@@ -1,6 +1,6 @@
 # Gap Analysis and Implementation Plan (v1)
 
-Purpose: identify concrete gaps between the current codebase and the initial Lattice vision, and define an incremental, test‑driven plan to deliver a credible v1 that aligns with stated goals without breaking existing behavior.
+Purpose: identify concrete gaps between the current codebase and the initial Citrate vision, and define an incremental, test‑driven plan to deliver a credible v1 that aligns with stated goals without breaking existing behavior.
 
 ## 0) Vision → Deliverables Map
 

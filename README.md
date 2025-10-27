@@ -1,4 +1,4 @@
-# Lattice Network (v3) – Monorepo
+# Citrate Network (v3) – Monorepo
 
 A Layer‑1, AI‑native BlockDAG with Ethereum‑compatible JSON‑RPC, model registration and inference flows, and a desktop GUI. This monorepo hosts the node, CLI, SDK(s), GUI (Tauri), explorer, docs portal, and supporting scripts.
 
@@ -6,10 +6,10 @@ A Layer‑1, AI‑native BlockDAG with Ethereum‑compatible JSON‑RPC, model r
 
 ## Contents
 
-- lattice-v3/ — Rust workspace (node, core crates, CLI, wallet, faucet)
-- lattice-v3/gui/lattice-core — Desktop GUI (Tauri + React + Vite)
-- lattice-v3/explorer — Web explorer (Next.js)
-- lattice-v3/sdk/javascript — TypeScript SDK (ethers‑based)
+- citrate/ — Rust workspace (node, core crates, CLI, wallet, faucet)
+- citrate/gui/citrate-core — Desktop GUI (Tauri + React + Vite)
+- citrate/explorer — Web explorer (Next.js)
+- citrate/sdk/javascript — TypeScript SDK (ethers‑based)
 - docs-portal — Docusaurus documentation site
 - marketing-site — Next.js site (includes /downloads)
 - scripts — Local dev/testnet helpers
@@ -24,12 +24,12 @@ Prerequisites
 Build everything
 ```bash
 # Rust workspace
-cd lattice-v3
+cd citrate
 cargo build --workspace
 cargo test --workspace
 
 # GUI (web build) and Desktop app (Tauri)
-cd ../lattice-v3/gui/lattice-core
+cd ../citrate/gui/citrate-core
 npm ci
 npm run build              # web build to dist/
 npm run tauri              # run desktop app (dev)
@@ -47,8 +47,8 @@ npm install && npm run build
 Run a single‑node devnet
 ```bash
 # Start node (JSON‑RPC :8545)
-cd lattice-v3
-cargo run -p lattice-node -- devnet
+cd citrate
+cargo run -p citrate-node -- devnet
 
 # In another terminal, smoke test RPC
 curl -s http://127.0.0.1:8545 -H 'content-type: application/json' \
@@ -57,30 +57,30 @@ curl -s http://127.0.0.1:8545 -H 'content-type: application/json' \
 
 Desktop GUI attached to a local node
 ```bash
-cd lattice-v3/gui/lattice-core
+cd citrate/gui/lattice-core
 npm run tauri
 ```
 
 Downloads (prebuilt)
 - See marketing /downloads page (links latest GitHub release assets):
   - File: `marketing-site/pages/downloads.tsx`
-  - Hosted: https://github.com/lattice-network/lattice-v3/releases/latest
+  - Hosted: https://github.com/citrate-network/citrate/releases/latest
 
 ## Monorepo Structure
 
-- lattice-v3/Cargo.toml — Rust workspace config (core crates and binaries)
-- Core crates under `lattice-v3/core/`:
+- citrate/Cargo.toml — Rust workspace config (core crates and binaries)
+- Core crates under `citrate/core/`:
   - consensus, execution, storage, network, sequencer, api, mcp, economics, primitives
 - Binaries
-  - `lattice-v3/node` — the blockchain node (binary: `lattice`)
-  - `lattice-v3/cli` — CLI tool (binary: `lattice-cli`)
-  - `lattice-v3/wallet` — wallet binary (dev utilities)
+  - `citrate/node` — the blockchain node (binary: `lattice`)
+  - `citrate/cli` — CLI tool (binary: `citrate-cli`)
+  - `citrate/wallet` — wallet binary (dev utilities)
 - GUI
-  - `lattice-v3/gui/lattice-core` — Tauri app; invokes node operations and displays DAG
+  - `citrate/gui/lattice-core` — Tauri app; invokes node operations and displays DAG
 - Explorer
-  - `lattice-v3/explorer` — Next.js app plus indexer scripts
+  - `citrate/explorer` — Next.js app plus indexer scripts
 - SDK
-  - `lattice-v3/sdk/javascript` — TypeScript SDK
+  - `citrate/sdk/javascript` — TypeScript SDK
 - Documentation
   - `docs-portal` — Docusaurus site (developer docs, RPC, guides)
   - `lattice-docs-v3` — whitepaper and archival docs
@@ -89,8 +89,8 @@ Downloads (prebuilt)
 
 ## Network Modes & Config
 
-- Node TOML configs: `lattice-v3/node/config/` (devnet/testnet samples)
-- GUI JSON configs: `lattice-v3/gui/lattice-core/config/devnet.json`, `.../testnet.json`
+- Node TOML configs: `citrate/node/config/` (devnet/testnet samples)
+- GUI JSON configs: `citrate/gui/lattice-core/config/devnet.json`, `.../testnet.json`
 - Switching networks in GUI updates ports, discovery, and `chainId` automatically.
 
 ## Architecture (Mermaid)
@@ -105,15 +105,15 @@ flowchart LR
         SDK[SDKs & Scripts\nsdk/, scripts/, docs/]
     end
     subgraph Node_Runtime
-        LNode[lattice-node crate\nnode/]
-        API[lattice-api\ncore/api/]
-        Net[lattice-network\ncore/network/]
+        LNode[citrate-node crate\nnode/]
+        API[citrate-api\ncore/api/]
+        Net[citrate-network\ncore/network/]
         Seq[lattice-sequencer\ncore/sequencer/]
-        Cons[lattice-consensus\ncore/consensus/]
-        Exec[lattice-execution (EVM + AI)\ncore/execution/]
-        Store[lattice-storage\ncore/storage/]
+        Cons[citrate-consensus\ncore/consensus/]
+        Exec[citrate-execution (EVM + AI)\ncore/execution/]
+        Store[citrate-storage\ncore/storage/]
         Econ[lattice-economics\ncore/economics/]
-        MCP[lattice-mcp\ncore/mcp/]
+        MCP[citrate-mcp\ncore/mcp/]
     end
     subgraph External_Systems
         IPFS[(IPFS Daemons)]
@@ -144,19 +144,19 @@ flowchart LR
 
 ```mermaid
 graph TD
-    LC[lattice-consensus]
-    LE[lattice-execution]
-    LS[lattice-storage]
-    LNw[lattice-network]
+    LC[citrate-consensus]
+    LE[citrate-execution]
+    LS[citrate-storage]
+    LNw[citrate-network]
     LSeq[lattice-sequencer]
-    LMCP[lattice-mcp]
+    LMCP[citrate-mcp]
     LEcon[lattice-economics]
-    LApi[lattice-api]
-    LNode[lattice-node]
-    CLI[lattice-cli]
+    LApi[citrate-api]
+    LNode[citrate-node]
+    CLI[citrate-cli]
     NodeApp[node-app]
-    LWallet[lattice-wallet]
-    LFaucet[lattice-faucet]
+    LWallet[citrate-wallet]
+    LFaucet[citrate-faucet]
     LCore[lattice-core]
     LMCP --> LE
     LMCP --> LS
@@ -216,7 +216,7 @@ flowchart TD
         IPFSService --> ArtifactSvc["NodeArtifactService\nnode/src/artifact.rs"]
         PinMgr -->|Rewards| IPFSIncentivesC["IPFSIncentives.sol\ncontracts/src"]
         IPFSService -->|Persists| RocksDB[(RocksDB CFs)]
-        ArtifactSvc -->|REST| IPFSEndpoints[(LATTICE_IPFS_API, providers)]
+        ArtifactSvc -->|REST| IPFSEndpoints[(CITRATE_IPFS_API, providers)]
     end
     subgraph Execution_and_MCP
         Executor["Executor\ncore/execution/src/executor.rs"] --> IPFSService
@@ -307,7 +307,7 @@ sequenceDiagram
   participant Cons as Consensus
   participant DB as Storage
 
-  Wallet->>RPC: eth_sendRawTransaction / lattice_requestInference
+  Wallet->>RPC: eth_sendRawTransaction / citrate_requestInference
   RPC->>Seq: enqueue(tx)
   Seq->>Cons: propose block (DAG tip selection)
   Cons->>Exec: ordered tx set
@@ -318,7 +318,7 @@ sequenceDiagram
 
 ## Explorer & Docs
 
-- Explorer (app + API routes): `lattice-v3/explorer`
+- Explorer (app + API routes): `citrate/explorer`
 - Docs portal (Docusaurus): `docs-portal` (builds to `docs-portal/build`)
 
 ## CI/CD
@@ -339,9 +339,9 @@ git push origin v0.1.0
 
 ## Launch Locally (End‑to‑End)
 
-- Single node: `cargo run -p lattice-node -- devnet`
-- GUI attach: `npm run tauri` in `lattice-v3/gui/lattice-core`
-- Explorer: `npm run dev` in `lattice-v3/explorer`
+- Single node: `cargo run -p citrate-node -- devnet`
+- GUI attach: `npm run tauri` in `citrate/gui/lattice-core`
+- Explorer: `npm run dev` in `citrate/explorer`
 - Docs: `npm run start` in `docs-portal`
 
 Scripts
@@ -354,7 +354,7 @@ Scripts
 git clone https://github.com/<you>/lattice.git
 cd lattice
 # Add upstream for syncing
-git remote add upstream https://github.com/lattice-network/lattice.git
+git remote add upstream https://github.com/citrate-network/lattice.git
 ```
 - Create a feature branch from `main`:
 ```bash
@@ -374,7 +374,7 @@ git rebase upstream/main
 - Code style & checks (must pass locally before PR):
   - Rust: `cargo fmt --all`, `cargo clippy --all-targets --all-features -D warnings`, `cargo test --workspace`
   - GUI/Explorer/Docs: `npm ci && npm run build` in changed packages
-  - SDK: `npm run build && npm test` in `lattice-v3/sdk/javascript`
+  - SDK: `npm run build && npm test` in `citrate/sdk/javascript`
   - Contracts: `forge test -vv` (recommended)
 - Add tests for new features and bug fixes where practical.
 - Security: do not open public issues for vulnerabilities — email larryklosowski@proton.me 
@@ -386,6 +386,31 @@ See full contributing guidelines in `CONTRIBUTING.md`. Our community expectation
 ## Security & Disclosure
 
 Please report security issues privately (see Contributing). Do not post exploits in public issues or PRs.
+
+## Documentation & Sources of Truth
+
+This monorepo follows strict **documentation governance** to maintain a single source of truth for each topic.
+
+### Key Documents
+- **📚 [DOCUMENTATION.md](./DOCUMENTATION.md)** - Full documentation governance protocol
+- **📋 [DOCUMENTATION_MATRIX.md](./DOCUMENTATION_MATRIX.md)** - Quick reference for finding any doc
+- **🤖 [CLAUDE.md](./CLAUDE.md)** - AI assistant context & technical architecture
+- **🚀 [DEVNET_QUICKSTART.md](./DEVNET_QUICKSTART.md)** - Quick start guide
+- **📖 [citrate/README.md](./citrate/README.md)** - Complete technical documentation
+- **🗺️ [citrate/docs/roadmap-p0.md](./citrate/docs/roadmap-p0.md)** - Current P0 roadmap
+- **📦 [citrate/docs/guides/deployment.md](./citrate/docs/guides/deployment.md)** - Deployment guide
+- **🔧 [citrate/docs/guides/installation.md](./citrate/docs/guides/installation.md)** - Installation guide
+- **💰 [citrate/docs/guides/wallet-and-rewards.md](./citrate/docs/guides/wallet-and-rewards.md)** - Wallet guide
+- **🌱 [citrate/docs/guides/genesis-startup.md](./citrate/docs/guides/genesis-startup.md)** - Genesis setup
+- **📄 [lattice-docs-v3/lattice-whitepaper-final.md](./lattice-docs-v3/lattice-whitepaper-final.md)** - Whitepaper
+
+### Documentation Rules
+**Before creating any new documentation**:
+1. Check [DOCUMENTATION_MATRIX.md](./DOCUMENTATION_MATRIX.md) for existing sources of truth
+2. Read [DOCUMENTATION.md](./DOCUMENTATION.md) for governance rules
+3. Never duplicate content - link to the authoritative document
+
+**Historical documents** are in `/archive/` with dated filenames.
 
 ## License
 

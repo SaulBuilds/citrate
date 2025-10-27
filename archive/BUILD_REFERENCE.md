@@ -1,4 +1,4 @@
-# Lattice v3 Build Reference
+# Citrate v3 Build Reference
 
 ## CRITICAL: Always Reference These Documents
 

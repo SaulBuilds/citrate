@@ -73,7 +73,7 @@ echo ""
 
 # Test 5: Check mempool snapshot
 echo -e "${YELLOW}Test 5: Mempool Snapshot${NC}"
-MEMPOOL=$(rpc_call "lattice_getMempoolSnapshot" "[]")
+MEMPOOL=$(rpc_call "citrate_getMempoolSnapshot" "[]")
 if [ -z "$MEMPOOL" ] || [ "$MEMPOOL" = "null" ]; then
     echo -e "${YELLOW}⚠ Mempool endpoint not available or empty${NC}"
 else
@@ -139,7 +139,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}Note: For complete transaction testing, ensure:${NC}"
-echo "1. The node is running with: cargo run --bin lattice-node"
+echo "1. The node is running with: cargo run --bin citrate-node"
 echo "2. The wallet has funded accounts"
 echo "3. Block producer is active"
 echo ""
@@ -155,4 +155,4 @@ echo ""
 echo -e "${YELLOW}Example: Query Mempool Snapshot${NC}"
 echo 'curl -X POST http://localhost:8545 \'
 echo '  -H "Content-Type: application/json" \'
-echo '  -d '\''{"jsonrpc":"2.0","method":"lattice_getMempoolSnapshot","params":[],"id":1}'\'' | jq'
+echo '  -d '\''{"jsonrpc":"2.0","method":"citrate_getMempoolSnapshot","params":[],"id":1}'\'' | jq'

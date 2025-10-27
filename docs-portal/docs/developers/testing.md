@@ -7,7 +7,7 @@ Run unit/integration tests and bring up local stacks using the unified script:
 
 ```
 # Rust workspace tests
-cd lattice-v3 && cargo test --workspace
+cd citrate && cargo test --workspace
 
 # Local dev stack (node + explorer + docs + marketing)
 scripts/lattice.sh dev up
@@ -27,5 +27,5 @@ RATE=20 NODE_RPC=http://localhost:8545 node scripts/loadgen.js
 
 SDK tests:
 ```
-cd lattice-v3/sdk/javascript && npm install && npm test
+cd citrate/sdk/javascript && npm install && npm test
 ```

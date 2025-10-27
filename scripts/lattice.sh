@@ -22,7 +22,7 @@ compose() {
 
 usage() {
   cat <<EOF
-Lattice Orchestrator
+Citrate Orchestrator
 
 Usage: scripts/lattice.sh <command> [args]
 
@@ -32,7 +32,7 @@ Common commands:
   dev up|down|status             Start/stop dev stack (node, explorer, docs, marketing)
   testnet up|down                Start/stop node in testnet mode (native)
   mainnet up|down                Placeholder (to be released)
-  docker up|down                 Run devnet node via docker compose (lattice-v3/docker-compose.yml)
+  docker up|down                 Run devnet node via docker compose (citrate/docker-compose.yml)
   logs                           Tail logs in run-logs/
   clean                          Clean Rust targets and common caches
 
@@ -59,15 +59,15 @@ ensure_npm_installed() {
 
 start_node_devnet() {
   need cargo
-  (cd "$ROOT_DIR/lattice-v3" && \
-    RUST_LOG="info,lattice_api=debug" \
-    nohup cargo run -p lattice-node -- devnet >"$LOG_DIR/node.log" 2>&1 & echo $! > "$LOG_DIR/node.pid")
+  (cd "$ROOT_DIR/citrate" && \
+    RUST_LOG="info,citrate_api=debug" \
+    nohup cargo run -p citrate-node -- devnet >"$LOG_DIR/node.log" 2>&1 & echo $! > "$LOG_DIR/node.pid")
 }
 
 start_node_testnet() {
   need cargo
-  (cd "$ROOT_DIR/lattice-v3" && \
-    RUST_LOG="info" nohup cargo run -p lattice-node --release >"$LOG_DIR/node.log" 2>&1 & echo $! > "$LOG_DIR/node.pid")
+  (cd "$ROOT_DIR/citrate" && \
+    RUST_LOG="info" nohup cargo run -p citrate-node --release >"$LOG_DIR/node.log" 2>&1 & echo $! > "$LOG_DIR/node.pid")
 }
 
 stop_pid() {
@@ -84,12 +84,12 @@ stop_pid() {
 start_explorer() {
   need node; need npm; need docker
   # Start Postgres via docker-compose
-  (cd "$ROOT_DIR/lattice-v3" && compose up -d explorer-db)
+  (cd "$ROOT_DIR/citrate" && compose up -d explorer-db)
   # Prepare and start the Explorer processes locally
-  ensure_npm_installed "$ROOT_DIR/lattice-v3/explorer"
+  ensure_npm_installed "$ROOT_DIR/citrate/explorer"
   (
-    cd "$ROOT_DIR/lattice-v3/explorer"
-    export DATABASE_URL="postgresql://postgres:password@localhost:5432/lattice_explorer"
+    cd "$ROOT_DIR/citrate/explorer"
+    export DATABASE_URL="postgresql://postgres:password@localhost:5432/citrate_explorer"
     npx prisma generate >/dev/null || true
     npx prisma db push >/dev/null || true
     nohup npm run indexer:dev >"$LOG_DIR/explorer-indexer.log" 2>&1 & echo $! > "$LOG_DIR/explorer-indexer.pid"
@@ -109,23 +109,23 @@ start_marketing() {
 
 cmd_setup() {
   need node; need npm
-  ensure_npm_installed "$ROOT_DIR/lattice-v3/explorer"
+  ensure_npm_installed "$ROOT_DIR/citrate/explorer"
   ensure_npm_installed "$ROOT_DIR/docs-portal"
   ensure_npm_installed "$ROOT_DIR/marketing-site"
-  ensure_npm_installed "$ROOT_DIR/lattice-v3/gui/lattice-core"
+  ensure_npm_installed "$ROOT_DIR/citrate/gui/citrate-core"
   echo "Setup complete."
 }
 
 cmd_build() {
   need cargo; need node; need npm
   echo "[+] Building Node/CLI (release)…"
-  (cd "$ROOT_DIR/lattice-v3" && cargo build --release -p lattice-node -p lattice-cli)
+  (cd "$ROOT_DIR/citrate" && cargo build --release -p citrate-node -p citrate-cli)
   echo "[+] Building Explorer (Next.js)…"
-  (cd "$ROOT_DIR/lattice-v3/explorer" && npm run build)
+  (cd "$ROOT_DIR/citrate/explorer" && npm run build)
   echo "[+] Building Docs (Docusaurus)…"
   (cd "$ROOT_DIR/docs-portal" && npm run build)
   echo "[+] Building GUI web (Vite)…"
-  (cd "$ROOT_DIR/lattice-v3/gui/lattice-core" && npm run build)
+  (cd "$ROOT_DIR/citrate/gui/citrate-core" && npm run build)
 }
 
 cmd_dev_up() {
@@ -138,7 +138,7 @@ cmd_dev_up() {
 
 cmd_dev_down() {
   stop_pid explorer-web; stop_pid explorer-indexer; stop_pid docs; stop_pid marketing; stop_pid node
-  if have docker; then (cd "$ROOT_DIR/lattice-v3" && compose stop explorer-db >/dev/null || true); fi
+  if have docker; then (cd "$ROOT_DIR/citrate" && compose stop explorer-db >/dev/null || true); fi
   echo "Dev stack stopped."
 }
 
@@ -165,33 +165,33 @@ cmd_mainnet_down() { echo "Mainnet stop: placeholder (to be released)."; }
 
 cmd_docker_up() {
   need docker
-  (cd "$ROOT_DIR/lattice-v3" && compose up -d lattice-node-devnet)
+  (cd "$ROOT_DIR/citrate" && compose up -d citrate-node-devnet)
   echo "Docker devnet node started via compose."
 }
 
 cmd_docker_down() {
   need docker
-  (cd "$ROOT_DIR/lattice-v3" && compose stop lattice-node-devnet || true && compose rm -sf lattice-node-devnet || true)
+  (cd "$ROOT_DIR/citrate" && compose stop citrate-node-devnet || true && compose rm -sf citrate-node-devnet || true)
   echo "Docker node stopped."
 }
 
 cmd_docker_testnet_up() {
   need docker
-  (cd "$ROOT_DIR/lattice-v3" && compose up -d lattice-node-testnet)
+  (cd "$ROOT_DIR/citrate" && compose up -d citrate-node-testnet)
   echo "Docker testnet node started via compose."
 }
 
 cmd_docker_testnet_down() {
   need docker
-  (cd "$ROOT_DIR/lattice-v3" && compose stop lattice-node-testnet || true && compose rm -sf lattice-node-testnet || true)
+  (cd "$ROOT_DIR/citrate" && compose stop citrate-node-testnet || true && compose rm -sf citrate-node-testnet || true)
   echo "Docker testnet node stopped."
 }
 
 cmd_logs() { tail -n 200 -F "$LOG_DIR"/*.log 2>/dev/null || echo "No logs in $LOG_DIR"; }
 
 cmd_clean() {
-  (cd "$ROOT_DIR/lattice-v3" && cargo clean || true)
-  rm -rf "$ROOT_DIR"/**/node_modules "$ROOT_DIR/docs-portal/build" "$ROOT_DIR/lattice-v3/gui/lattice-core/dist" || true
+  (cd "$ROOT_DIR/citrate" && cargo clean || true)
+  rm -rf "$ROOT_DIR"/**/node_modules "$ROOT_DIR/docs-portal/build" "$ROOT_DIR/citrate/gui/citrate-core/dist" || true
   echo "Cleaned build artifacts and caches."
 }
 
@@ -225,11 +225,11 @@ case "${1:-}" in
         case "${3:-}" in
           up)
             need docker
-            (cd "$ROOT_DIR/lattice-v3" && compose up -d --profile cluster lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5)
+            (cd "$ROOT_DIR/citrate" && compose up -d --profile cluster citrate-node-1 citrate-node-2 citrate-node-3 citrate-node-4 citrate-node-5)
             echo "Cluster (5 nodes) started." ;;
           down)
             need docker
-            (cd "$ROOT_DIR/lattice-v3" && compose stop lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5 || true && compose rm -sf lattice-node-1 lattice-node-2 lattice-node-3 lattice-node-4 lattice-node-5 || true)
+            (cd "$ROOT_DIR/citrate" && compose stop citrate-node-1 citrate-node-2 citrate-node-3 citrate-node-4 citrate-node-5 || true && compose rm -sf citrate-node-1 citrate-node-2 citrate-node-3 citrate-node-4 citrate-node-5 || true)
             echo "Cluster stopped." ;;
           *) echo "Usage: $0 docker cluster {up|down}"; exit 1 ;;
         esac ;;
@@ -243,11 +243,11 @@ case "${1:-}" in
         case "${3:-}" in
           up)
             need docker
-            (cd "$ROOT_DIR/lattice-v3" && compose up -d --profile explorer explorer-db explorer-web explorer-indexer)
+            (cd "$ROOT_DIR/citrate" && compose up -d --profile explorer explorer-db explorer-web explorer-indexer)
             echo "Explorer services started (db, web:3000, indexer)." ;;
           down)
             need docker
-            (cd "$ROOT_DIR/lattice-v3" && compose stop explorer-web explorer-indexer explorer-db || true && compose rm -sf explorer-web explorer-indexer explorer-db || true)
+            (cd "$ROOT_DIR/citrate" && compose stop explorer-web explorer-indexer explorer-db || true && compose rm -sf explorer-web explorer-indexer explorer-db || true)
             echo "Explorer services stopped." ;;
           *) echo "Usage: $0 docker explorer {up|down}"; exit 1 ;;
         esac ;;
@@ -255,11 +255,11 @@ case "${1:-}" in
         case "${3:-}" in
           up)
             need docker
-            (cd "$ROOT_DIR/lattice-v3" && compose up -d --profile monitoring prometheus grafana)
+            (cd "$ROOT_DIR/citrate" && compose up -d --profile monitoring prometheus grafana)
             echo "Monitoring started (Prometheus:9090, Grafana:3001)." ;;
           down)
             need docker
-            (cd "$ROOT_DIR/lattice-v3" && compose stop prometheus grafana || true && compose rm -sf prometheus grafana || true)
+            (cd "$ROOT_DIR/citrate" && compose stop prometheus grafana || true && compose rm -sf prometheus grafana || true)
             echo "Monitoring stopped." ;;
           *) echo "Usage: $0 docker monitoring {up|down}"; exit 1 ;;
         esac ;;
@@ -268,10 +268,10 @@ case "${1:-}" in
   reset)
     case "${2:-}" in
       devnet)
-        rm -rf "$ROOT_DIR/lattice-v3/.lattice-devnet" "$ROOT_DIR/lattice-v3/gui-data/devnet/chain" || true
+        rm -rf "$ROOT_DIR/citrate/.citrate-devnet" "$ROOT_DIR/citrate/gui-data/devnet/chain" || true
         echo "Reset devnet data directories." ;;
       testnet)
-        rm -rf "$HOME/.lattice" "$ROOT_DIR/lattice-v3/gui-data/testnet/chain" || true
+        rm -rf "$HOME/.lattice" "$ROOT_DIR/citrate/gui-data/testnet/chain" || true
         echo "Reset testnet data directories." ;;
       *) echo "Usage: $0 reset {devnet|testnet}"; exit 1 ;;
     esac ;;

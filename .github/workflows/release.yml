@@ -16,7 +16,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: lattice-v3
+        working-directory: citrate
 
     steps:
       - name: Checkout
@@ -27,7 +27,7 @@ jobs:
 
       - name: Build release binaries
         run: |
-          cargo build --release -p lattice-node -p lattice-cli
+          cargo build --release -p citrate-node -p citrate-cli
 
       - name: Package artifacts (Linux/macOS)
         if: runner.os != 'Windows'
@@ -38,9 +38,9 @@ jobs:
           ARCH=$(uname -m)
           mkdir -p dist
           cp target/release/lattice dist/
-          cp target/release/lattice-cli dist/
-          tar -C dist -czf dist/lattice-${OS}-${ARCH}.tar.gz lattice lattice-cli
-          rm -f dist/lattice dist/lattice-cli
+          cp target/release/citrate-cli dist/
+          tar -C dist -czf dist/lattice-${OS}-${ARCH}.tar.gz lattice citrate-cli
+          rm -f dist/lattice dist/citrate-cli
           echo "Created dist/lattice-${OS}-${ARCH}.tar.gz"
 
       - name: Package artifacts (Windows)
@@ -49,18 +49,18 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target\release\lattice.exe dist\
-          Copy-Item target\release\lattice-cli.exe dist\
+          Copy-Item target\release\citrate-cli.exe dist\
           $arch = $env:PROCESSOR_ARCHITECTURE
           $zip = "dist\lattice-windows-$arch.zip"
-          Compress-Archive -Path dist\lattice.exe, dist\lattice-cli.exe -DestinationPath $zip
-          Remove-Item dist\lattice.exe, dist\lattice-cli.exe
+          Compress-Archive -Path dist\lattice.exe, dist\citrate-cli.exe -DestinationPath $zip
+          Remove-Item dist\lattice.exe, dist\citrate-cli.exe
           Write-Host "Created $zip"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.os }}
-          path: lattice-v3/dist/*
+          path: citrate/dist/*
           if-no-files-found: warn
 
   build-tauri:
@@ -73,7 +73,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: lattice-v3/gui/lattice-core
+        working-directory: citrate/gui/lattice-core
 
     steps:
       - name: Checkout
@@ -84,7 +84,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: lattice-v3/gui/lattice-core/package-lock.json
+          cache-dependency-path: citrate/gui/lattice-core/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -124,7 +124,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tauri-${{ matrix.os }}
-          path: lattice-v3/gui/lattice-core/dist/**
+          path: citrate/gui/lattice-core/dist/**
           if-no-files-found: warn
 
   publish:

@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  # Core blockchain node
+  citrate-node:
+    build:
+      context: ..
+      dockerfile: docker/node.Dockerfile
+    image: lattice/node:latest
+    container_name: citrate-node
+    restart: unless-stopped
+    ports:
+      - "8545:8545"   # JSON-RPC
+      - "8546:8546"   # WebSocket
+      - "30303:30303" # P2P
+    environment:
+      - RUST_LOG=info,lattice=debug
+    volumes:
+      - citrate_data:/data
+      - ./config/node.toml:/config/node.toml:ro
+    networks:
+      - citrate-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API server with MCP support
+  citrate-api:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    image: lattice/api:latest
+    container_name: citrate-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # REST API
+      - "3001:3001"   # MCP API
+    environment:
+      - LOG_LEVEL=info
+    depends_on:
+      - citrate-node
+      - postgres
+      - redis
+    volumes:
+      - ./config/api.toml:/config/api.toml:ro
+    networks:
+      - citrate-network
+
+  # IPFS node for distributed storage
+  ipfs:
+    build:
+      context: ..
+      dockerfile: docker/ipfs.Dockerfile
+    image: lattice/ipfs:latest
+    container_name: citrate-ipfs
+    restart: unless-stopped
+    ports:
+      - "4001:4001"   # IPFS Swarm
+      - "5001:5001"   # IPFS API
+      - "8080:8080"   # IPFS Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ./config/ipfs-config.json:/data/ipfs/config:ro
+    networks:
+      - citrate-network
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: citrate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lattice
+      POSTGRES_USER: lattice
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-citrate_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - citrate-network
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: citrate-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - citrate-network
+
+  # Faucet service
+  faucet:
+    build:
+      context: ..
+      dockerfile: docker/faucet.Dockerfile
+    image: lattice/faucet:latest
+    container_name: citrate-faucet
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_URL=http://citrate-node:8545
+    depends_on:
+      - citrate-node
+    networks:
+      - citrate-network
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: citrate-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - citrate-network
+
+  # Grafana dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: citrate-grafana
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - citrate-network
+
+volumes:
+  citrate_data:
+    driver: local
+  ipfs_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  citrate-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+

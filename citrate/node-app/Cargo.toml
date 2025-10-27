@@ -1,0 +1,20 @@
+[package]
+name = "node-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+anyhow = { workspace = true }
+serde = { workspace = true }
+axum = "0.7"
+prometheus = "0.13"
+
+# Lattice crates
+citrate-api = { path = "../core/api" }
+citrate-storage = { path = "../core/storage" }
+citrate-sequencer = { path = "../core/sequencer" }
+citrate-network = { path = "../core/network" }
+citrate-execution = { path = "../core/execution" }

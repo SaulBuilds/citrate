@@ -6,7 +6,7 @@
 set -e
 
 echo "==========================================="
-echo "LATTICE V3 - DAY 5 P2P NETWORK TEST"
+echo "CITRATE V3 - DAY 5 P2P NETWORK TEST"
 echo "==========================================="
 echo ""
 
@@ -38,7 +38,7 @@ echo "------------------------------------------------"
 
 # Test 1: Build network module
 echo "Building network module..."
-if cargo build -p lattice-network 2>&1 | grep -q "Finished"; then
+if cargo build -p citrate-network 2>&1 | grep -q "Finished"; then
     test_feature "Network module builds successfully" "true"
 else
     test_feature "Network module builds successfully" "false"
@@ -235,7 +235,7 @@ echo "------------------------------------------------"
 
 # Test 7: Run network module tests
 echo "Running unit tests..."
-if cargo test -p lattice-network --lib 2>&1 | grep -q "test result"; then
+if cargo test -p citrate-network --lib 2>&1 | grep -q "test result"; then
     test_feature "Network module tests pass" "true"
 else
     test_feature "Network module tests pass" "false"

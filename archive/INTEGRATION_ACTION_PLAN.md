@@ -1,4 +1,4 @@
-# Lattice v3 Integration Action Plan
+# Citrate v3 Integration Action Plan
 ## AI-Native BlockDAG Implementation Roadmap
 
 ### Vision Statement

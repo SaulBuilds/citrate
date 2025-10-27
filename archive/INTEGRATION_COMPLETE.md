@@ -106,13 +106,13 @@ Run these commands to verify integration:
 
 ```bash
 # Run all tests
-cargo test --package lattice-consensus
+cargo test --package citrate-consensus
 
 # Check for proper integration patterns
 grep -r "GhostDag::new" --include="*.rs" | grep dag_store
 
 # Verify no circular dependencies
-cargo tree --package lattice-consensus
+cargo tree --package citrate-consensus
 ```
 
 ## Status: INTEGRATION COMPLETE ✓

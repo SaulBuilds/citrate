@@ -32,6 +32,9 @@ pub enum NetworkError {
     #[error("Network is shutting down")]
     Shutdown,
 
+    #[error("Transport error: {0}")]
+    TransportError(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

@@ -531,6 +531,7 @@ async fn handle_incoming(
         version: ProtocolVersion::CURRENT,
         head_height,
         head_hash,
+        peer_id: peer_id.0.clone(),
     };
     send_msg(&mut framed, &ack).await?;
     // Split framed into sink and stream

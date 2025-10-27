@@ -259,6 +259,7 @@ impl SyncManager {
         let count = headers.len();
         let first_height = headers.first().unwrap().height;
         let last_height = headers.last().unwrap().height;
+        let first_hash = headers.first().map(|h| h.block_hash).unwrap_or_default();
         let last_hash = headers.last().map(|h| h.block_hash).unwrap_or_default();
 
         // Store headers

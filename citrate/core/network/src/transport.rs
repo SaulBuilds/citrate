@@ -97,7 +97,7 @@ async fn handle_inbound(
 ) -> Result<(), NetworkError> {
     let codec = LengthDelimitedCodec::builder()
         .max_frame_length(MAX_FRAME_LEN)
-        .new_length_delimited();
+        .new_codec();
     let framed = Framed::new(stream, codec);
     // Expect Hello from remote
     let (mut sink, mut stream) = framed.split();
@@ -218,7 +218,7 @@ async fn handle_outbound(
 ) -> Result<(), NetworkError> {
     let codec = LengthDelimitedCodec::builder()
         .max_frame_length(MAX_FRAME_LEN)
-        .new_length_delimited();
+        .new_codec();
     let framed = Framed::new(stream, codec);
     // Send Hello
     let hello = NetworkMessage::Hello {

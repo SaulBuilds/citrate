@@ -27,7 +27,7 @@ export class GF256 {
 
     // Handle overflow
     for (let i = 255; i < 512; i++) {
-      this.expTable[i] = this.expTable[i - 255];
+      this.expTable[i] = this.expTable[i - 255] ?? 0;
     }
 
     this.logTable[0] = 0; // Special case
@@ -76,7 +76,7 @@ export class GF256 {
       return 0;
     }
 
-    return this.expTable[this.logTable[a] + this.logTable[b]];
+    return this.expTable[(this.logTable[a] ?? 0) + (this.logTable[b] ?? 0)] ?? 0;
   }
 
   /**
@@ -92,7 +92,7 @@ export class GF256 {
     }
 
     this.initializeTables();
-    return this.expTable[this.logTable[a] - this.logTable[b] + 255];
+    return this.expTable[(this.logTable[a] ?? 0) - (this.logTable[b] ?? 0) + 255] ?? 0;
   }
 
   /**
@@ -107,7 +107,7 @@ export class GF256 {
     }
 
     this.initializeTables();
-    return this.expTable[(this.logTable[a] * exp) % 255];
+    return this.expTable[((this.logTable[a] ?? 0) * exp) % 255] ?? 0;
   }
 
   /**
@@ -119,7 +119,7 @@ export class GF256 {
     }
 
     this.initializeTables();
-    return this.expTable[255 - this.logTable[a]];
+    return this.expTable[255 - (this.logTable[a] ?? 0)] ?? 0;
   }
 }
 
@@ -165,7 +165,11 @@ export class ShamirSecretSharing {
     const activeShares = shares.slice(0, this.threshold);
 
     // Ensure all shares have same length
-    const shareLength = activeShares[0].y.length;
+    const firstShare = activeShares[0];
+    if (!firstShare) {
+      throw new Error('No shares provided');
+    }
+    const shareLength = firstShare.y.length;
     if (!activeShares.every(share => share.y.length === shareLength)) {
       throw new Error('All shares must have the same length');
     }
@@ -174,7 +178,7 @@ export class ShamirSecretSharing {
     const secretBytes: number[] = [];
     for (let bytePos = 0; bytePos < shareLength; bytePos++) {
       // Extract byte values for this position
-      const points = activeShares.map(share => ({ x: share.x, y: share.y[bytePos] }));
+      const points = activeShares.map(share => ({ x: share.x, y: share.y[bytePos] ?? 0 }));
 
       // Use Lagrange interpolation to find f(0)
       const reconstructedByte = this.lagrangeInterpolation(points, 0);
@@ -219,7 +223,9 @@ export class ShamirSecretSharing {
     let result = 0;
 
     for (let i = 0; i < points.length; i++) {
-      const { x: xi, y: yi } = points[i];
+      const point = points[i];
+      if (!point) continue;
+      const { x: xi, y: yi } = point;
 
       // Calculate Lagrange basis polynomial L_i(x)
       let numerator = 1;
@@ -227,7 +233,9 @@ export class ShamirSecretSharing {
 
       for (let j = 0; j < points.length; j++) {
         if (i !== j) {
-          const xj = points[j].x;
+          const otherPoint = points[j];
+          if (!otherPoint) continue;
+          const xj = otherPoint.x;
           // For x=0, numerator becomes (0 - x_j) = -x_j = x_j (in GF(2^8))
           numerator = GF256.multiply(numerator, xj);
           denominator = GF256.multiply(denominator, GF256.subtract(xi, xj));

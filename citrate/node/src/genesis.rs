@@ -53,8 +53,26 @@ impl Default for GenesisConfig {
             chain_id: 1337,
             timestamp: chrono::Utc::now().timestamp() as u64,
             initial_accounts: vec![
-                // Dev account with initial balance
+                // Dev account with initial balance (ed25519)
                 (PublicKey::new([1; 32]), 1_000_000_000_000_000_000), // 1 ETH worth
+
+                // Forge default deployer account (ECDSA - first 20 bytes are the address, rest zeros)
+                // Address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+                (PublicKey::new([
+                    0xf3, 0x9F, 0xd6, 0xe5, 0x1a, 0xad, 0x88, 0xF6,
+                    0xF4, 0xce, 0x6a, 0xB8, 0x82, 0x72, 0x79, 0xcf,
+                    0xfF, 0xb9, 0x22, 0x66, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                ]), 100_000_000_000_000_000_000), // 100 ETH for testing
+
+                // Recovered deployer from failed transaction
+                // Address: 0xfcad0b19bb29d4674531d6f115237e16afce377c
+                (PublicKey::new([
+                    0xfc, 0xad, 0x0b, 0x19, 0xbb, 0x29, 0xd4, 0x67,
+                    0x45, 0x31, 0xd6, 0xf1, 0x15, 0x23, 0x7e, 0x16,
+                    0xaf, 0xce, 0x37, 0x7c, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                ]), 100_000_000_000_000_000_000), // 100 ETH for testing
             ],
         }
     }
@@ -134,6 +152,12 @@ pub async fn initialize_genesis_state(
         // Set initial balance (convert to U256)
         let balance_u256 = U256::from(*balance);
         executor.set_balance(&addr_bytes, balance_u256);
+
+        tracing::info!(
+            "Initialized genesis account 0x{} with balance {} ETH",
+            hex::encode(addr_bytes.0),
+            balance / 1_000_000_000_000_000_000
+        );
     }
 
     // Register a genesis AI model in state (public access)
@@ -141,9 +165,9 @@ pub async fn initialize_genesis_state(
         tracing::warn!("Failed to register genesis model: {}", e);
     }
 
-    // Calculate state root after initializing accounts
-    // TODO: Need public API to calculate state root
-    genesis.state_root = Hash::default();
+    // Commit state changes to persist genesis balances
+    let state_root = executor.state_db().commit();
+    genesis.state_root = Hash::new(*state_root.as_bytes());
 
     // Calculate block hash
     genesis.header.block_hash = calculate_block_hash(&genesis);

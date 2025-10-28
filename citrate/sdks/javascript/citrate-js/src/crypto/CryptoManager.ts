@@ -47,16 +47,16 @@ export class CryptoManager {
         // Browser environment
         const cryptoKey = await window.crypto.subtle.importKey(
           'raw',
-          key,
+          key as BufferSource,
           { name: 'AES-GCM' },
           false,
           ['encrypt']
         );
 
         const encryptedData = await window.crypto.subtle.encrypt(
-          { name: 'AES-GCM', iv: nonce },
+          { name: 'AES-GCM', iv: nonce as BufferSource },
           cryptoKey,
-          data
+          data as BufferSource
         );
 
         // Split encrypted data and auth tag (last 16 bytes)
@@ -99,8 +99,10 @@ export class CryptoManager {
       const ciphertext = new Uint8Array(data.length);
       for (let i = 0; i < encrypted.ciphertext.words.length && i * 4 < data.length; i++) {
         const word = encrypted.ciphertext.words[i];
-        for (let j = 0; j < 4 && i * 4 + j < data.length; j++) {
-          ciphertext[i * 4 + j] = (word >>> (24 - j * 8)) & 0xff;
+        if (word !== undefined) {
+          for (let j = 0; j < 4 && i * 4 + j < data.length; j++) {
+            ciphertext[i * 4 + j] = (word >>> (24 - j * 8)) & 0xff;
+          }
         }
       }
 
@@ -126,7 +128,7 @@ export class CryptoManager {
         // Browser environment
         const cryptoKey = await window.crypto.subtle.importKey(
           'raw',
-          key,
+          key as BufferSource,
           { name: 'AES-GCM' },
           false,
           ['decrypt']
@@ -138,9 +140,9 @@ export class CryptoManager {
         encryptedData.set(authTag, ciphertext.length);
 
         const decryptedData = await window.crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: nonce },
+          { name: 'AES-GCM', iv: nonce as BufferSource },
           cryptoKey,
-          encryptedData
+          encryptedData as BufferSource
         );
 
         return new Uint8Array(decryptedData);
@@ -166,10 +168,10 @@ export class CryptoManager {
 
       const words: number[] = [];
       for (let i = 0; i < ciphertext.length; i += 4) {
-        const word = (ciphertext[i] << 24) |
-                     ((ciphertext[i + 1] || 0) << 16) |
-                     ((ciphertext[i + 2] || 0) << 8) |
-                     (ciphertext[i + 3] || 0);
+        const word = ((ciphertext[i] ?? 0) << 24) |
+                     ((ciphertext[i + 1] ?? 0) << 16) |
+                     ((ciphertext[i + 2] ?? 0) << 8) |
+                     ((ciphertext[i + 3] ?? 0));
         words.push(word);
       }
 
@@ -188,8 +190,10 @@ export class CryptoManager {
       const result = new Uint8Array(ciphertext.length);
       for (let i = 0; i < decrypted.words.length && i * 4 < ciphertext.length; i++) {
         const word = decrypted.words[i];
-        for (let j = 0; j < 4 && i * 4 + j < ciphertext.length; j++) {
-          result[i * 4 + j] = (word >>> (24 - j * 8)) & 0xff;
+        if (word !== undefined) {
+          for (let j = 0; j < 4 && i * 4 + j < ciphertext.length; j++) {
+            result[i * 4 + j] = (word >>> (24 - j * 8)) & 0xff;
+          }
         }
       }
 
@@ -210,10 +214,12 @@ export class CryptoManager {
     const result = new Uint8Array(32);
     for (let i = 0; i < derived.words.length; i++) {
       const word = derived.words[i];
-      result[i * 4] = (word >>> 24) & 0xff;
-      result[i * 4 + 1] = (word >>> 16) & 0xff;
-      result[i * 4 + 2] = (word >>> 8) & 0xff;
-      result[i * 4 + 3] = word & 0xff;
+      if (word !== undefined) {
+        result[i * 4] = (word >>> 24) & 0xff;
+        result[i * 4 + 1] = (word >>> 16) & 0xff;
+        result[i * 4 + 2] = (word >>> 8) & 0xff;
+        result[i * 4 + 3] = word & 0xff;
+      }
     }
 
     return result;

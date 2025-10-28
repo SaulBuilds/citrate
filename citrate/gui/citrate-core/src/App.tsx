@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import './App.css';
 import latticeLogo from './assets/citrate_lockup.png';
 import { Dashboard } from './components/Dashboard';

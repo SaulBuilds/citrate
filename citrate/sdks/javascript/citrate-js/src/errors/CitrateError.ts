@@ -9,8 +9,8 @@ export class CitrateError extends Error {
   constructor(message: string, code?: string, details?: Record<string, any>) {
     super(message);
     this.name = 'CitrateError';
-    this.code = code;
-    this.details = details;
+    if (code !== undefined) this.code = code;
+    if (details !== undefined) this.details = details;
 
     // Maintains proper stack trace for where our error was thrown (only available on V8)
     if (Error.captureStackTrace) {

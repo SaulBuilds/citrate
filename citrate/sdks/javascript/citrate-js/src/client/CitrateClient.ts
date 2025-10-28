@@ -191,7 +191,7 @@ export class CitrateClient {
     }
 
     // Prepare inference data
-    let inputData = request.inputData;
+    let inputData: any = request.inputData;
 
     // Encrypt input if requested
     if (request.encrypted && this.keyManager) {
@@ -382,7 +382,7 @@ export class CitrateClient {
     try {
       // Try to upload to IPFS using HTTP API
       const formData = new FormData();
-      const blob = new Blob([data], { type: 'application/octet-stream' });
+      const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' });
       formData.append('file', blob, 'model_data');
 
       const response = await fetch('http://localhost:5001/api/v0/add?pin=true', {

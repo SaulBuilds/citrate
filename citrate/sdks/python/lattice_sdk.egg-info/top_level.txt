@@ -1,2 +1,0 @@
-lattice_sdk
-tests

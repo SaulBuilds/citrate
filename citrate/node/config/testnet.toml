@@ -17,7 +17,7 @@ listen_addr = "0.0.0.0:8545"
 ws_addr = "0.0.0.0:8546"
 
 [storage]
-data_dir = "/Users/soleilklosowski/Downloads/lattice/citrate/.citrate-testnet"
+data_dir = ".citrate-testnet"
 pruning = false
 keep_blocks = 100000
 

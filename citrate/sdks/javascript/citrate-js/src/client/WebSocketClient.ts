@@ -167,7 +167,7 @@ export class WebSocketClient extends EventEmitter {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new CitrateError('Request timeout'));
-      }, this.config.timeout);
+      }, this.config.timeout) as unknown as number;
 
       this.pendingRequests.set(id, { resolve, reject, timeout });
 
@@ -330,10 +330,16 @@ export class WebSocketClient extends EventEmitter {
    */
   private startPing(): void {
     this.pingTimer = setInterval(() => {
-      if (this.isConnected()) {
-        this.ws!.ping();
+      if (this.isConnected() && this.ws) {
+        // Send a ping message (WebSocket standard doesn't have ping method)
+        // Using a custom ping message instead
+        try {
+          this.ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+        } catch (error) {
+          // Ignore ping errors
+        }
       }
-    }, this.config.pingInterval) as any;
+    }, this.config.pingInterval) as unknown as number;
   }
 
   /**
@@ -342,7 +348,7 @@ export class WebSocketClient extends EventEmitter {
   private stopPing(): void {
     if (this.pingTimer) {
       clearInterval(this.pingTimer);
-      this.pingTimer = undefined;
+      delete (this as any).pingTimer;
     }
   }
 

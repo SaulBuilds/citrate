@@ -15,12 +15,12 @@ export interface EncryptedModelResult {
     keyDerivation: string;
     encryptedKey: string;
     accessControl: boolean;
-    keyShares?: Array<{ x: string; y: string; threshold: string }>;
+    keyShares?: Array<{ x: string; y: string; threshold: string; }>;
   };
 }
 
 export class KeyManager {
-  private wallet: ethers.Wallet;
+  private wallet: ethers.Wallet | ethers.HDNodeWallet;
   private cryptoManager: CryptoManager;
 
   constructor(privateKey?: string) {
@@ -83,7 +83,14 @@ export class KeyManager {
     const encryptedKey = await this.encryptKeyForOwner(encryptionKey);
 
     // Create metadata
-    const metadata = {
+    const metadata: {
+      algorithm: string;
+      nonce: string;
+      keyDerivation: string;
+      encryptedKey: string;
+      accessControl: boolean;
+      keyShares?: Array<{ x: string; y: string; threshold: string; }>;
+    } = {
       algorithm,
       nonce: this.cryptoManager.bytesToHex(encrypted.nonce),
       keyDerivation,
@@ -258,7 +265,11 @@ export class KeyManager {
       throw new Error('No shares provided');
     }
 
-    const threshold = parseInt(shares[0].threshold);
+    const firstShare = shares[0];
+    if (!firstShare) {
+      throw new Error('Invalid shares array');
+    }
+    const threshold = parseInt(firstShare.threshold);
     if (shares.length < threshold) {
       throw new Error('Insufficient shares for key reconstruction');
     }

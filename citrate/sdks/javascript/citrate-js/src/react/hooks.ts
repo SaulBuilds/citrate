@@ -71,7 +71,7 @@ export function useCitrateClient(options: UseCitrateClientOptions): UseCitrateCl
       setChainId(chainIdResult);
 
       const clientAddress = newClient.getAddress();
-      setAddress(clientAddress);
+      setAddress(clientAddress ?? null);
 
       if (clientAddress) {
         const balanceResult = await newClient.getBalance();

@@ -466,6 +466,11 @@ impl BlockProducer {
             self.apply_basic_rewards(&reward, &validator_address);
         }
 
+        // Persist state changes from executed transactions to storage
+        info!("Persisting state changes to storage...");
+        let modified_count = self.executor.persist_state_changes()?;
+        info!("Persisted {} modified accounts to storage", modified_count);
+
         // Persist block and related data
         self.storage.blocks.put_block(&block)?;
 

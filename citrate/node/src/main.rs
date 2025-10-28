@@ -12,7 +12,7 @@ use citrate_storage::{pruning::PruningConfig, StorageManager};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 mod adapters;
@@ -173,6 +173,31 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Initialize chain if data directory doesn't exist (first run)
+    if !config.storage.data_dir.exists() {
+        info!("Data directory doesn't exist, initializing genesis...");
+        std::fs::create_dir_all(&config.storage.data_dir)?;
+
+        let storage = Arc::new(StorageManager::new(
+            &config.storage.data_dir,
+            PruningConfig::default(),
+        )?);
+
+        let state_db = Arc::new(StateDB::new());
+        let executor = Arc::new(Executor::with_storage(
+            state_db,
+            Some(storage.state.clone()),
+        ));
+
+        let genesis_config = genesis::GenesisConfig {
+            chain_id: config.chain.chain_id,
+            ..Default::default()
+        };
+
+        genesis::initialize_genesis_state(storage, executor, &genesis_config).await?;
+        info!("Genesis state initialized for chain ID {}", config.chain.chain_id);
+    }
+
     // Start node
     start_node(config).await
 }
@@ -273,6 +298,22 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     // Create state DB and executor with persistent storage
     let state_db = Arc::new(StateDB::new());
     let state_manager = Arc::new(citrate_storage::state_manager::StateManager::new(storage.db.clone()));
+
+    // Load existing state from storage into memory
+    info!("Loading state from storage...");
+    match storage.state.get_all_accounts() {
+        Ok(accounts) => {
+            info!("Found {} accounts in storage, loading into memory...", accounts.len());
+            for (address, account) in accounts {
+                debug!("Loaded account: 0x{} with balance {}", hex::encode(address.0), account.balance);
+                state_db.accounts.set_account(address, account);
+            }
+            info!("State loaded successfully");
+        }
+        Err(e) => {
+            warn!("Failed to load accounts from storage: {}", e);
+        }
+    }
     // MCP + inference service
     let vm_for_mcp = Arc::new(citrate_execution::vm::VM::new(10_000_000));
     let mcp = Arc::new(citrate_mcp::MCPService::new(

@@ -246,6 +246,26 @@ impl Executor {
         &self.state_db
     }
 
+    /// Persist all dirty accounts from state_db to state_store
+    pub fn persist_state_changes(&self) -> anyhow::Result<usize> {
+        if let Some(store) = &self.state_store {
+            let dirty_accounts = self.state_db.accounts.get_dirty_accounts();
+            let count = dirty_accounts.len();
+
+            for address in dirty_accounts {
+                let account = self.state_db.accounts.get_account(&address);
+                store.put_account(&address, &account)?;
+            }
+
+            // Commit state DB (clears dirty tracking)
+            self.state_db.commit();
+
+            Ok(count)
+        } else {
+            Ok(0) // No storage configured, nothing to persist
+        }
+    }
+
     /// Store raw artifact bytes via configured artifact service
     pub async fn add_artifact(&self, data: &[u8]) -> Result<String, ExecutionError> {
         if let Some(svc) = &self.artifact_service {
@@ -756,8 +776,8 @@ impl Executor {
             .accounts
             .create_account_if_not_exists(contract_address);
 
-        // Store code
-        let _code_hash = self.state_db.set_code(contract_address, code);
+        // Store code (use self.set_code to persist to storage backend)
+        self.set_code(&contract_address, code);
 
         // Set contract address in output
         context.output = contract_address.0.to_vec();

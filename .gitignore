@@ -47,7 +47,8 @@ docs-portal/build/
 **/broadcast/
 **/cache/
 **/script/
-contracts/src/TestContract.sol
+**/TestContract.sol
+package-lock.json
 
 # AI Models (large files - use IPFS for deployment)
 **/models/**/*.safetensors

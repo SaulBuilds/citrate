@@ -39,6 +39,15 @@ node_modules/
 docs-portal/build/
 **/gui-data/
 **/.lattice-*/
+**/.citrate-devnet/
+**/.citrate-testnet/
+**/.citrate-*/
+
+# Forge/Foundry deployment artifacts
+**/broadcast/
+**/cache/
+**/script/
+contracts/src/TestContract.sol
 
 # AI Models (large files - use IPFS for deployment)
 **/models/**/*.safetensors
@@ -50,3 +59,8 @@ docs-portal/build/
 
 # Tauri bundles (covered by target/, but kept for clarity)
 **/bundle/
+
+# Python
+**/*.egg-info/
+**/__pycache__/
+.pypirc

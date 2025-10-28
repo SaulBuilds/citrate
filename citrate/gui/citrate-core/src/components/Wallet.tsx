@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { walletService, nodeService } from '../services/tauri';
 import { Account, TxActivity } from '../types';
-import { 
+import { validateAddress, validateAmount, validatePrivateKey, validateMnemonic } from '../utils/validation';
+import {
   Wallet as WalletIcon,
   Plus,
   Key,
@@ -9,6 +10,7 @@ import {
   CheckCircle,
   Send
 } from 'lucide-react';
+import { SkeletonCard, SkeletonList } from './Skeleton';
 
 export const Wallet: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -19,6 +21,8 @@ export const Wallet: React.FC = () => {
   const [copied, setCopied] = useState<string | null>(null);
   const [activity, setActivity] = useState<TxActivity[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [activityLoading, setActivityLoading] = useState(true);
   const [signMessage, setSignMessage] = useState('');
   const [signPassword, setSignPassword] = useState('');
   const [signature, setSignature] = useState<string | null>(null);
@@ -61,6 +65,11 @@ export const Wallet: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to load accounts:', err);
+    } finally {
+      // Mark initial loading as complete
+      if (initialLoading) {
+        setInitialLoading(false);
+      }
     }
   };
 
@@ -75,6 +84,11 @@ export const Wallet: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to load activity:', err);
+    } finally {
+      // Mark activity loading as complete
+      if (activityLoading) {
+        setActivityLoading(false);
+      }
     }
   };
 
@@ -187,80 +201,90 @@ export const Wallet: React.FC = () => {
       </div>
 
       <div className="accounts-grid">
-        {accounts.map(account => (
-          <div 
-            key={account.address}
-            className={`account-card ${selectedAccount?.address === account.address ? 'selected' : ''}`}
-            onClick={() => setSelectedAccount(account)}
-          >
-            <div className="account-header">
-              <WalletIcon size={20} />
-              <h3>{account.label}</h3>
-            </div>
-            
-            <div className="account-address">
-              <span>{formatAddress(account.address)}</span>
-              <button 
-                className="copy-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  copyToClipboard(account.address, account.address);
-                }}
+        {initialLoading ? (
+          <>
+            <SkeletonCard height="200px" />
+            <SkeletonCard height="200px" />
+            <SkeletonCard height="200px" />
+          </>
+        ) : (
+          <>
+            {accounts.map(account => (
+              <div
+                key={account.address}
+                className={`account-card ${selectedAccount?.address === account.address ? 'selected' : ''}`}
+                onClick={() => setSelectedAccount(account)}
               >
-                {copied === account.address ? (
-                  <CheckCircle size={14} className="text-green" />
-                ) : (
-                  <Copy size={14} />
-                )}
-              </button>
-            </div>
+                <div className="account-header">
+                  <WalletIcon size={20} />
+                  <h3>{account.label}</h3>
+                </div>
 
-            <div className="account-balance">
-              <span className="balance-label">Balance</span>
-              <span className="balance-value">
-                {formatBalance(account.balance)} LAT
-              </span>
-            </div>
+                <div className="account-address">
+                  <span>{formatAddress(account.address)}</span>
+                  <button
+                    className="copy-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyToClipboard(account.address, account.address);
+                    }}
+                  >
+                    {copied === account.address ? (
+                      <CheckCircle size={14} className="text-green" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </button>
+                </div>
 
-            <div className="account-footer">
-              <span className="nonce">Nonce: {account.nonce}</span>
-              <button 
-                className="btn-sm btn-primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedAccount(account);
-                  setShowSendModal(true);
-                }}
-              >
-                <Send size={14} />
-                Send
-              </button>
-              <button
-                className="btn-sm btn-secondary"
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  try {
-                    await nodeService.setRewardAddress(account.address);
-                    copyToClipboard(account.address, 'reward');
-                    alert('Reward address set to this account. Block producer will use it.');
-                  } catch (err) {
-                    console.error('Failed to set reward address', err);
-                    alert('Failed to set reward address');
-                  }
-                }}
-              >
-                Set Rewards
-              </button>
-            </div>
-          </div>
-        ))}
+                <div className="account-balance">
+                  <span className="balance-label">Balance</span>
+                  <span className="balance-value">
+                    {formatBalance(account.balance)} LAT
+                  </span>
+                </div>
 
-        {accounts.length === 0 && (
-          <div className="empty-state">
-            <WalletIcon size={48} className="text-gray" />
-            <p>No accounts yet</p>
-            <p className="text-muted">Create or import an account to get started</p>
-          </div>
+                <div className="account-footer">
+                  <span className="nonce">Nonce: {account.nonce}</span>
+                  <button
+                    className="btn-sm btn-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedAccount(account);
+                      setShowSendModal(true);
+                    }}
+                  >
+                    <Send size={14} />
+                    Send
+                  </button>
+                  <button
+                    className="btn-sm btn-secondary"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await nodeService.setRewardAddress(account.address);
+                        copyToClipboard(account.address, 'reward');
+                        alert('Reward address set to this account. Block producer will use it.');
+                      } catch (err) {
+                        console.error('Failed to set reward address', err);
+                        alert('Failed to set reward address');
+                      }
+                    }}
+                  >
+                    Set Rewards
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {accounts.length === 0 && (
+              <div className="empty-state">
+                <WalletIcon size={48} className="text-gray" />
+                <p>No accounts yet</p>
+                <p className="text-muted">Create or import an account to get started</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -269,8 +293,12 @@ export const Wallet: React.FC = () => {
         <div className="activity">
           <h3>Activity</h3>
           <div className="activity-list">
-            {activity.length === 0 && <div className="muted">No activity yet</div>}
-            {activity.map(tx => (
+            {activityLoading ? (
+              <SkeletonList items={5} itemHeight="80px" />
+            ) : (
+              <>
+                {activity.length === 0 && <div className="muted">No activity yet</div>}
+                {activity.map(tx => (
               <div key={tx.hash} className={`tx ${tx.status}`}>
                 <div className="left">
                   <div className="hash mono">{tx.hash.slice(0, 10)}…</div>
@@ -307,7 +335,9 @@ export const Wallet: React.FC = () => {
                   </div>
                 )}
               </div>
-            ))}
+            )))}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -766,6 +796,17 @@ const CreateAccountModal: React.FC<{
           font-size: 1rem;
         }
 
+        .input-error {
+          border-color: #ef4444 !important;
+          border-width: 2px !important;
+        }
+
+        .error-text {
+          color: #ef4444;
+          font-size: 0.875rem;
+          margin-top: 0.25rem;
+        }
+
         .error-message {
           background: #fee;
           color: #c00;
@@ -820,13 +861,64 @@ const ImportAccountModal: React.FC<{
   const [mnemonic, setMnemonic] = useState('');
   const [label, setLabel] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Validation error states
+  const [privateKeyError, setPrivateKeyError] = useState('');
+  const [mnemonicError, setMnemonicError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  // Calculate password strength
+  const calculatePasswordStrength = (pwd: string): number => {
+    let strength = 0;
+    if (pwd.length >= 8) strength++;
+    if (pwd.length >= 12) strength++;
+    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) strength++;
+    if (/\d/.test(pwd)) strength++;
+    if (/[^a-zA-Z0-9]/.test(pwd)) strength++;
+    return Math.min(strength, 4);
+  };
+
+  const getPasswordStrengthLabel = (strength: number): string => {
+    switch (strength) {
+      case 0: return 'Very Weak';
+      case 1: return 'Weak';
+      case 2: return 'Medium';
+      case 3: return 'Strong';
+      case 4: return 'Very Strong';
+      default: return '';
+    }
+  };
+
+  const getPasswordStrengthColor = (strength: number): string => {
+    switch (strength) {
+      case 0: return '#ef4444';
+      case 1: return '#f97316';
+      case 2: return '#f59e0b';
+      case 3: return '#84cc16';
+      case 4: return '#10b981';
+      default: return '#e5e7eb';
+    }
+  };
+
   const handleImport = async () => {
+    // Validate password
+    if (password.length < 8) {
+      setPasswordError('Password must be at least 8 characters');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    
+    setPasswordError('');
+
     try {
       if (mnemonic.trim()) {
         await walletService.importAccountFromMnemonic(mnemonic.trim(), label, password);
@@ -853,9 +945,24 @@ const ImportAccountModal: React.FC<{
           <input
             type="password"
             value={privateKey}
-            onChange={e => setPrivateKey(e.target.value)}
+            onChange={e => {
+              const value = e.target.value;
+              setPrivateKey(value);
+
+              // Validate private key in real-time (only if not empty)
+              if (value.trim()) {
+                const validation = validatePrivateKey(value);
+                setPrivateKeyError(validation.isValid ? '' : validation.error || '');
+                // Clear mnemonic error when entering private key
+                if (validation.isValid) setMnemonicError('');
+              } else {
+                setPrivateKeyError('');
+              }
+            }}
             placeholder="Enter private key (or leave empty to use mnemonic)"
+            className={privateKeyError ? 'input-error' : ''}
           />
+          {privateKeyError && <div className="error-text">{privateKeyError}</div>}
         </div>
 
         <div className="form-group">
@@ -863,9 +970,24 @@ const ImportAccountModal: React.FC<{
           <input
             type="text"
             value={mnemonic}
-            onChange={e => setMnemonic(e.target.value)}
+            onChange={e => {
+              const value = e.target.value;
+              setMnemonic(value);
+
+              // Validate mnemonic in real-time (only if not empty)
+              if (value.trim()) {
+                const validation = validateMnemonic(value);
+                setMnemonicError(validation.isValid ? '' : validation.error || '');
+                // Clear private key error when entering mnemonic
+                if (validation.isValid) setPrivateKeyError('');
+              } else {
+                setMnemonicError('');
+              }
+            }}
             placeholder="Enter seed phrase (optional)"
+            className={mnemonicError ? 'input-error' : ''}
           />
+          {mnemonicError && <div className="error-text">{mnemonicError}</div>}
         </div>
 
         <div className="form-group">
@@ -883,19 +1005,71 @@ const ImportAccountModal: React.FC<{
           <input
             type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Enter password to encrypt key"
+            onChange={e => {
+              const value = e.target.value;
+              setPassword(value);
+              setPasswordStrength(calculatePasswordStrength(value));
+              setPasswordError('');
+            }}
+            placeholder="Enter password to encrypt key (min 8 characters)"
+            className={passwordError ? 'input-error' : ''}
           />
+          {password && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{
+                display: 'flex',
+                gap: '0.25rem',
+                marginBottom: '0.25rem'
+              }}>
+                {[0, 1, 2, 3, 4].map((level) => (
+                  <div
+                    key={level}
+                    style={{
+                      flex: 1,
+                      height: '4px',
+                      borderRadius: '2px',
+                      backgroundColor: level < passwordStrength
+                        ? getPasswordStrengthColor(passwordStrength)
+                        : '#e5e7eb',
+                      transition: 'background-color 0.3s'
+                    }}
+                  />
+                ))}
+              </div>
+              <div style={{
+                fontSize: '0.75rem',
+                color: getPasswordStrengthColor(passwordStrength),
+                fontWeight: 500
+              }}>
+                {getPasswordStrengthLabel(passwordStrength)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="form-group">
+          <label>Confirm Password</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={e => {
+              setConfirmPassword(e.target.value);
+              setPasswordError('');
+            }}
+            placeholder="Confirm password"
+            className={passwordError ? 'input-error' : ''}
+          />
+          {passwordError && <div className="error-text">{passwordError}</div>}
         </div>
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             onClick={handleImport}
-            disabled={loading || (!privateKey && !mnemonic) || !label || !password}
+            disabled={loading || (!privateKey && !mnemonic) || !label || !password || !confirmPassword || password.length < 8 || password !== confirmPassword || !!privateKeyError || !!mnemonicError}
           >
             {loading ? 'Importing...' : 'Import Account'}
           </button>
@@ -944,6 +1118,17 @@ const ImportAccountModal: React.FC<{
           border: 1px solid #e5e7eb;
           border-radius: 0.5rem;
           font-size: 1rem;
+        }
+
+        .input-error {
+          border-color: #ef4444 !important;
+          border-width: 2px !important;
+        }
+
+        .error-text {
+          color: #ef4444;
+          font-size: 0.875rem;
+          margin-top: 0.25rem;
         }
 
         .error-message {
@@ -1000,6 +1185,10 @@ const SendTransactionModal: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
+  // Validation error states
+  const [toError, setToError] = useState('');
+  const [amountError, setAmountError] = useState('');
+
   const handleSend = async () => {
     setLoading(true);
     setError(null);
@@ -1053,9 +1242,22 @@ const SendTransactionModal: React.FC<{
           <input
             type="text"
             value={to}
-            onChange={e => setTo(e.target.value)}
+            onChange={e => {
+              const value = e.target.value;
+              setTo(value);
+
+              // Validate address in real-time
+              if (value.trim()) {
+                const validation = validateAddress(value);
+                setToError(validation.isValid ? '' : validation.error || '');
+              } else {
+                setToError('');
+              }
+            }}
             placeholder="0x..."
+            className={toError ? 'input-error' : ''}
           />
+          {toError && <div className="error-text">{toError}</div>}
         </div>
 
         <div className="form-group">
@@ -1063,10 +1265,23 @@ const SendTransactionModal: React.FC<{
           <input
             type="number"
             value={amount}
-            onChange={e => setAmount(e.target.value)}
+            onChange={e => {
+              const value = e.target.value;
+              setAmount(value);
+
+              // Validate amount in real-time with balance check
+              if (value.trim()) {
+                const validation = validateAmount(value, account.balance);
+                setAmountError(validation.isValid ? '' : validation.error || '');
+              } else {
+                setAmountError('');
+              }
+            }}
             placeholder="0.0"
             step="0.0001"
+            className={amountError ? 'input-error' : ''}
           />
+          {amountError && <div className="error-text">{amountError}</div>}
         </div>
 
         <div className="form-group">
@@ -1083,10 +1298,10 @@ const SendTransactionModal: React.FC<{
           <button className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button 
-            className="btn btn-primary" 
+          <button
+            className="btn btn-primary"
             onClick={handleSend}
-            disabled={loading || !to || !amount || !password || !!txHash}
+            disabled={loading || !to || !amount || !password || !!txHash || !!toError || !!amountError}
           >
             {loading ? 'Sending...' : 'Send Transaction'}
           </button>
@@ -1140,6 +1355,17 @@ const SendTransactionModal: React.FC<{
         .form-group input:disabled {
           background: #f9fafb;
           color: #6b7280;
+        }
+
+        .input-error {
+          border-color: #ef4444 !important;
+          border-width: 2px !important;
+        }
+
+        .error-text {
+          color: #ef4444;
+          font-size: 0.875rem;
+          margin-top: 0.25rem;
         }
 
         .error-message {

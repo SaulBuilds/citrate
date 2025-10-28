@@ -10,6 +10,7 @@ import {
   Wallet,
   Key
 } from 'lucide-react';
+import { validateMnemonic } from '../utils/validation';
 
 interface FirstTimeSetupResult {
   primary_address: string;
@@ -30,6 +31,16 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Password management state
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  // Mnemonic validation state
+  const [mnemonicWarning, setMnemonicWarning] = useState('');
+
   useEffect(() => {
     checkFirstTimeSetup();
   }, []);
@@ -45,18 +56,57 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
     }
   };
 
+  const calculatePasswordStrength = (pwd: string): number => {
+    let strength = 0;
+    if (pwd.length >= 8) strength++;
+    if (pwd.length >= 12) strength++;
+    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) strength++;
+    if (/\d/.test(pwd)) strength++;
+    if (/[^a-zA-Z0-9]/.test(pwd)) strength++;
+    return Math.min(strength, 4);
+  };
+
+  const validatePasswords = (): boolean => {
+    if (password.length < 8) {
+      setPasswordError('Password must be at least 8 characters');
+      return false;
+    }
+    if (password !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return false;
+    }
+    setPasswordError('');
+    return true;
+  };
+
   const handleSetupWallet = async () => {
+    // Validate passwords before proceeding
+    if (!validatePasswords()) {
+      return;
+    }
+
     setLoading(true);
+    setPasswordError(''); // Clear any previous errors
+
     try {
       const result = await invoke<FirstTimeSetupResult>('perform_first_time_setup', {
-        password: 'user_secure_password'
+        password: password  // Use user-provided password instead of hardcoded value
       });
+
+      // Validate the received mnemonic
+      const mnemonicValidation = validateMnemonic(result.mnemonic);
+      if (!mnemonicValidation.isValid) {
+        setMnemonicWarning(`Warning: Generated mnemonic validation failed: ${mnemonicValidation.error}`);
+      } else {
+        setMnemonicWarning('');
+      }
 
       setSetupResult(result);
       setStep('reveal');
-      setLoading(false);
     } catch (error) {
       console.error('Error setting up wallet:', error);
+      setPasswordError('Failed to create wallet. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -85,8 +135,8 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
         {/* Welcome Step */}
         {step === 'welcome' && (
           <div className="text-center">
-            <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-              <Wallet className="w-8 h-8 text-blue-600" />
+            <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+              <Wallet className="w-8 h-8" style={{color: '#ffa500'}} />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Welcome to Citrate!
@@ -97,21 +147,24 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
             </p>
             <div className="space-y-3 mb-6">
               <div className="flex items-center text-sm text-gray-700">
-                <Shield className="w-4 h-4 text-green-600 mr-2" />
+                <Shield className="w-4 h-4 mr-2" style={{color: '#10b981'}} />
                 Secure wallet with 12-word recovery phrase
               </div>
               <div className="flex items-center text-sm text-gray-700">
-                <Key className="w-4 h-4 text-blue-600 mr-2" />
+                <Key className="w-4 h-4 mr-2" style={{color: '#ffa500'}} />
                 Automatic reward address configuration
               </div>
               <div className="flex items-center text-sm text-gray-700">
-                <CheckCircle className="w-4 h-4 text-purple-600 mr-2" />
+                <CheckCircle className="w-4 h-4 mr-2" style={{color: '#ffa500'}} />
                 Start earning tokens immediately
               </div>
             </div>
             <button
               onClick={() => setStep('setup')}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-medium transition-colors"
+              className="w-full text-white py-3 rounded-lg font-medium transition-colors"
+              style={{backgroundColor: '#ffa500'}}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ff8800'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffa500'}
             >
               Set Up My Wallet
             </button>
@@ -120,30 +173,138 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
 
         {/* Setup Step */}
         {step === 'setup' && (
-          <div className="text-center">
-            <div className="mx-auto w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-              <Shield className="w-8 h-8 text-purple-600" />
+          <div>
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
+                <Shield className="w-8 h-8" style={{color: '#ffa500'}} />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Create Your Secure Wallet
+              </h2>
+              <p className="text-gray-600 text-sm">
+                Choose a strong password to protect your wallet
+              </p>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Creating Your Secure Wallet
-            </h2>
-            <p className="text-gray-600 mb-6">
-              We'll generate a unique wallet with a 12-word recovery phrase.
-              This will be automatically configured as your reward address.
-            </p>
+
+            {/* Password Input */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordStrength(calculatePasswordStrength(e.target.value));
+                    setPasswordError('');
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg pr-10 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  placeholder="Enter password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-2 p-1 text-gray-500 hover:text-gray-700"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm Password Input */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Confirm Password
+              </label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setPasswordError('');
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                placeholder="Re-enter password"
+              />
+            </div>
+
+            {/* Password Strength Indicator */}
+            {password && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-gray-600">Password Strength</span>
+                  <span className={`text-sm font-medium ${
+                    passwordStrength === 0 ? 'text-red-600' :
+                    passwordStrength <= 2 ? 'text-yellow-600' :
+                    passwordStrength === 3 ? 'text-orange-500' :
+                    'text-green-600'
+                  }`}>
+                    {passwordStrength === 0 ? 'Too Weak' :
+                     passwordStrength <= 2 ? 'Weak' :
+                     passwordStrength === 3 ? 'Good' :
+                     'Strong'}
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      passwordStrength === 0 ? 'bg-red-500 w-1/4' :
+                      passwordStrength <= 2 ? 'bg-yellow-500 w-2/4' :
+                      passwordStrength === 3 ? 'bg-orange-500 w-3/4' :
+                      'bg-green-500 w-full'
+                    }`}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Password Requirements */}
+            <div className="text-xs text-gray-600 mb-4 bg-gray-50 rounded-lg p-3">
+              <p className="font-medium mb-1">Password should contain:</p>
+              <ul className="space-y-1">
+                <li className={password.length >= 8 ? 'text-green-600' : ''}>
+                  • At least 8 characters {password.length >= 8 && '✓'}
+                </li>
+                <li className={/[A-Z]/.test(password) && /[a-z]/.test(password) ? 'text-green-600' : ''}>
+                  • Upper and lowercase letters {/[A-Z]/.test(password) && /[a-z]/.test(password) && '✓'}
+                </li>
+                <li className={/\d/.test(password) ? 'text-green-600' : ''}>
+                  • At least one number {/\d/.test(password) && '✓'}
+                </li>
+                <li className={/[^a-zA-Z0-9]/.test(password) ? 'text-green-600' : ''}>
+                  • At least one special character {/[^a-zA-Z0-9]/.test(password) && '✓'}
+                </li>
+              </ul>
+            </div>
+
+            {/* Error Message */}
+            {passwordError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-600 text-sm">{passwordError}</p>
+              </div>
+            )}
+
+            {/* Warning */}
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
               <div className="flex items-start">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-yellow-800">
-                  <strong>Important:</strong> Your recovery phrase is the only way to restore your wallet.
-                  Keep it secure and never share it with anyone.
+                  <strong>Important:</strong> Your password protects your wallet and recovery phrase.
+                  Make sure it's strong and keep it secure.
                 </div>
               </div>
             </div>
+
+            {/* Create Wallet Button */}
             <button
               onClick={handleSetupWallet}
-              disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition-colors"
+              disabled={loading || !password || !confirmPassword}
+              className="w-full disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-medium transition-colors"
+              style={{backgroundColor: (loading || !password || !confirmPassword) ? '#9ca3af' : '#ffa500'}}
+              onMouseEnter={(e) => (!loading && password && confirmPassword) && (e.currentTarget.style.backgroundColor = '#ff8800')}
+              onMouseLeave={(e) => (!loading && password && confirmPassword) && (e.currentTarget.style.backgroundColor = '#ffa500')}
             >
               {loading ? 'Creating Wallet...' : 'Create Secure Wallet'}
             </button>
@@ -175,6 +336,17 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
                 </div>
               </div>
             </div>
+
+            {mnemonicWarning && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-yellow-800">
+                    {mnemonicWarning}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -218,7 +390,10 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
 
                 <button
                   onClick={() => copyToClipboard(setupResult.primary_address)}
-                  className="w-full flex items-center justify-center space-x-2 bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 rounded-lg transition-colors"
+                  className="w-full flex items-center justify-center space-x-2 py-2 rounded-lg transition-colors text-gray-700"
+                  style={{backgroundColor: '#f3f4f6'}}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
                 >
                   <Wallet className="w-4 h-4" />
                   <span>Copy Wallet Address</span>
@@ -242,7 +417,10 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
             <button
               onClick={handleComplete}
               disabled={!confirmed}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition-colors"
+              className="w-full disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition-colors"
+              style={{backgroundColor: confirmed ? '#ffa500' : '#9ca3af'}}
+              onMouseEnter={(e) => confirmed && (e.currentTarget.style.backgroundColor = '#ff8800')}
+              onMouseLeave={(e) => confirmed && (e.currentTarget.style.backgroundColor = '#ffa500')}
             >
               Complete Setup & Start Earning
             </button>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './App.css';
-import latticeLogo from './assets/citrate_lockup.png';
+import citrateLogo from './assets/citrate_lockup.png';
 import { Dashboard } from './components/Dashboard';
 import { Wallet } from './components/Wallet';
 import { DAGVisualization } from './components/DAGVisualization';
@@ -11,6 +11,7 @@ import { ChatBot } from './components/ChatBot';
 import { IPFS } from './components/IPFS';
 import { Settings as SettingsView } from './components/Settings';
 import { FirstTimeSetup } from './components/FirstTimeSetup';
+import ErrorBoundary from './components/ErrorBoundary';
 import {
   LayoutDashboard,
   Wallet as WalletIcon,
@@ -102,202 +103,207 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <img src={latticeLogo} alt="Citrate" className="app-logo" />
-          <p className="app-version">v3.0.0</p>
-          <p className="app-mode">{isNativeApp ? '🖥️ Native' : '🌐 Web Mode'}</p>
+    <ErrorBoundary>
+      <div className="app">
+        <div className="sidebar">
+          <div className="sidebar-header">
+            <img src={citrateLogo} alt="Citrate" className="app-logo" />
+            <p className="app-version">v3.0.0</p>
+            <p className="app-mode">{isNativeApp ? '🖥️ Native' : '🌐 Web Mode'}</p>
+          </div>
+
+          <nav className="sidebar-nav">
+            <button
+              className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setCurrentView('dashboard')}
+            >
+              <LayoutDashboard size={20} />
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'wallet' ? 'active' : ''}`}
+              onClick={() => setCurrentView('wallet')}
+            >
+              <WalletIcon size={20} />
+              <span>Wallet</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'dag' ? 'active' : ''}`}
+              onClick={() => setCurrentView('dag')}
+            >
+              <Network size={20} />
+              <span>DAG Explorer</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'models' ? 'active' : ''}`}
+              onClick={() => setCurrentView('models')}
+            >
+              <Brain size={20} />
+              <span>AI Models</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'marketplace' ? 'active' : ''}`}
+              onClick={() => setCurrentView('marketplace')}
+            >
+              <ShoppingBag size={20} />
+              <span>Marketplace</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'chat' ? 'active' : ''}`}
+              onClick={() => setCurrentView('chat')}
+            >
+              <MessageSquare size={20} />
+              <span>AI Chat</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'ipfs' ? 'active' : ''}`}
+              onClick={() => setCurrentView('ipfs')}
+            >
+              <Database size={20} />
+              <span>IPFS Storage</span>
+            </button>
+
+            <button
+              className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
+              onClick={() => setCurrentView('settings')}
+            >
+              <Settings size={20} />
+              <span>Settings</span>
+            </button>
+          </nav>
+
+          <div className="sidebar-footer">
+            <a
+              href="https://github.com/saulbuilds/citrate"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="github-link"
+            >
+              <Github size={20} />
+              <span>GitHub</span>
+            </a>
+          </div>
         </div>
 
-        <nav className="sidebar-nav">
-          <button 
-            className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setCurrentView('dashboard')}
-          >
-            <LayoutDashboard size={20} />
-            <span>Dashboard</span>
-          </button>
+        <main className="main-content">
+          {renderView()}
+        </main>
 
-          <button 
-            className={`nav-item ${currentView === 'wallet' ? 'active' : ''}`}
-            onClick={() => setCurrentView('wallet')}
-          >
-            <WalletIcon size={20} />
-            <span>Wallet</span>
-          </button>
+        <style jsx>{`
+          .app {
+            display: flex;
+            height: 100vh;
+            background: #ffffff;
+            font-family: 'Superclarendon', 'Clarendon', Georgia, serif;
+          }
 
-          <button 
-            className={`nav-item ${currentView === 'dag' ? 'active' : ''}`}
-            onClick={() => setCurrentView('dag')}
-          >
-            <Network size={20} />
-            <span>DAG Explorer</span>
-          </button>
+          .sidebar {
+            width: 260px;
+            background: #ffffff;
+            border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+          }
 
-          <button
-            className={`nav-item ${currentView === 'models' ? 'active' : ''}`}
-            onClick={() => setCurrentView('models')}
-          >
-            <Brain size={20} />
-            <span>AI Models</span>
-          </button>
+          .sidebar-header {
+            padding: 2rem 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+          }
 
-          <button
-            className={`nav-item ${currentView === 'marketplace' ? 'active' : ''}`}
-            onClick={() => setCurrentView('marketplace')}
-          >
-            <ShoppingBag size={20} />
-            <span>Marketplace</span>
-          </button>
+          .app-logo {
+            width: 100%;
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 0.5rem;
+          }
 
-          <button
-            className={`nav-item ${currentView === 'chat' ? 'active' : ''}`}
-            onClick={() => setCurrentView('chat')}
-          >
-            <MessageSquare size={20} />
-            <span>AI Chat</span>
-          </button>
+          .app-version {
+            margin: 0.5rem 0 0 0;
+            color: #666666;
+            font-size: 0.875rem;
+            font-weight: 400;
+          }
 
-          <button
-            className={`nav-item ${currentView === 'ipfs' ? 'active' : ''}`}
-            onClick={() => setCurrentView('ipfs')}
-          >
-            <Database size={20} />
-            <span>IPFS Storage</span>
-          </button>
+          .app-mode {
+            margin: 0.5rem 0 0 0;
+            padding: 0.25rem 0.5rem;
+            background: #ffa50020;
+            color: #ffa500;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+          }
 
-          <button
-            className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
-            onClick={() => setCurrentView('settings')}
-          >
-            <Settings size={20} />
-            <span>Settings</span>
-          </button>
-        </nav>
+          .sidebar-nav {
+            flex: 1;
+            padding: 1.5rem 1rem;
+          }
 
-        <div className="sidebar-footer">
-          <a 
-            href="https://github.com/saulbuilds/citrate" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="github-link"
-          >
-            <Github size={20} />
-            <span>GitHub</span>
-          </a>
-        </div>
+          .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            background: none;
+            border: none;
+            border-radius: 0.5rem;
+            color: #000000;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+
+          .nav-item:hover {
+            background: #f9f9f9;
+            color: #000000;
+          }
+
+          .nav-item.active {
+            background: #ffa500;
+            color: #ffffff;
+          }
+
+          .sidebar-footer {
+            padding: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+          }
+
+          .github-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #000000;
+            text-decoration: none;
+            transition: color 0.2s;
+          }
+
+          .github-link:hover {
+            color: #ffa500;
+          }
+
+          .main-content {
+            flex: 1;
+            overflow-y: auto;
+            background: #ffffff;
+          }
+        `}</style>
+
+        <FirstTimeSetup onSetupComplete={() => {
+          // Refresh the current view or trigger any necessary updates
+          setCurrentView('dashboard');
+        }} />
       </div>
-
-      <main className="main-content">
-        {renderView()}
-      </main>
-
-      <style jsx>{`
-        .app {
-          display: flex;
-          height: 100vh;
-          background: #f9fafb;
-        }
-
-        .sidebar {
-          width: 260px;
-          background: white;
-          border-right: 1px solid #e5e7eb;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .sidebar-header {
-          padding: 2rem 1.5rem;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .app-logo {
-          width: 100%;
-          max-width: 200px;
-          height: auto;
-          margin-bottom: 0.5rem;
-        }
-
-        .app-version {
-          margin: 0.5rem 0 0 0;
-          color: #9ca3af;
-          font-size: 0.875rem;
-        }
-
-        .app-mode {
-          margin: 0.5rem 0 0 0;
-          padding: 0.25rem 0.5rem;
-          background: ${isNativeApp ? '#10b981' : '#f59e0b'}20;
-          color: ${isNativeApp ? '#10b981' : '#f59e0b'};
-          border-radius: 0.25rem;
-          font-size: 0.75rem;
-          font-weight: 600;
-          display: inline-block;
-        }
-
-        .sidebar-nav {
-          flex: 1;
-          padding: 1.5rem 1rem;
-        }
-
-        .nav-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          width: 100%;
-          padding: 0.75rem 1rem;
-          margin-bottom: 0.5rem;
-          background: none;
-          border: none;
-          border-radius: 0.5rem;
-          color: #6b7280;
-          font-size: 0.9375rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .nav-item:hover {
-          background: #f3f4f6;
-          color: #374151;
-        }
-
-        .nav-item.active {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-        }
-
-        .sidebar-footer {
-          padding: 1.5rem;
-          border-top: 1px solid #e5e7eb;
-        }
-
-        .github-link {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          color: #6b7280;
-          text-decoration: none;
-          transition: color 0.2s;
-        }
-
-        .github-link:hover {
-          color: #374151;
-        }
-
-        .main-content {
-          flex: 1;
-          overflow-y: auto;
-        }
-      `}</style>
-
-      <FirstTimeSetup onSetupComplete={() => {
-        // Refresh the current view or trigger any necessary updates
-        setCurrentView('dashboard');
-      }} />
-    </div>
+    </ErrorBoundary>
   );
 }
 

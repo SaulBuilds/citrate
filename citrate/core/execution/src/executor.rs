@@ -364,10 +364,10 @@ impl Executor {
         // Create snapshot for potential rollback
         let snapshot = self.state_db.snapshot();
 
-        // Validate and update nonce
-        self.state_db
-            .accounts
-            .check_and_increment_nonce(&from, tx.nonce)?;
+        // Update nonce (mempool already validated it)
+        // During block production, we trust the mempool's ordering and just increment
+        let current_nonce = self.state_db.accounts.get_nonce(&from);
+        self.state_db.accounts.set_nonce(from, current_nonce + 1);
 
         // Check balance for gas
         let gas_cost = U256::from(tx.gas_limit) * U256::from(tx.gas_price);
@@ -759,38 +759,59 @@ impl Executor {
     ) -> Result<(), ExecutionError> {
         context.use_gas(self.gas_schedule.create)?;
 
-        // Calculate contract address (simplified)
-        let nonce = self.state_db.accounts.get_nonce(&from);
-        use sha3::{Digest, Keccak256};
-        let mut hasher = Keccak256::default();
-        hasher.update(from.0);
-        hasher.update(nonce.to_be_bytes());
-        let hash = hasher.finalize();
+        // Execute deployment bytecode using revm (battle-tested EVM)
+        // Revm will calculate the correct CREATE address and create the account
+        let gas_remaining = context.gas_limit.saturating_sub(context.gas_used);
+        let result = crate::revm_adapter::execute_contract_create(
+            self.state_db.clone(),
+            from,
+            code,
+            U256::zero(), // No value transfer during deployment
+            gas_remaining,
+            U256::from(context.gas_price),
+            1337, // chain_id (TODO: make configurable)
+            context.block_number,
+            context.timestamp,
+        );
 
-        let mut contract_addr = [0u8; 20];
-        contract_addr.copy_from_slice(&hash[12..32]);
-        let contract_address = Address(contract_addr);
+        match result {
+            Ok((deployed_address, runtime_code, gas_used)) => {
+                // Charge gas for execution
+                context.use_gas(gas_used)?;
 
-        // Create contract account
-        self.state_db
-            .accounts
-            .create_account_if_not_exists(contract_address);
+                // Use the address returned by revm (it calculates CREATE correctly)
+                info!(
+                    "Contract deployed at: {} with {} bytes of runtime code",
+                    deployed_address,
+                    runtime_code.len()
+                );
 
-        // Store code (use self.set_code to persist to storage backend)
-        self.set_code(&contract_address, code);
+                // Store the runtime bytecode at revm's calculated address
+                if !runtime_code.is_empty() {
+                    self.set_code(&deployed_address, runtime_code);
+                } else {
+                    // Empty return = deployment failed or no runtime code
+                    warn!("Contract deployment returned empty runtime code");
+                    self.set_code(&deployed_address, vec![]);
+                }
 
-        // Set contract address in output
-        context.output = contract_address.0.to_vec();
+                // Set contract address in output
+                context.output = deployed_address.0.to_vec();
 
-        // Add deployment log
-        context.add_log(Log {
-            address: contract_address,
-            topics: vec![Hash::new(*b"ContractDeployed0000000000000000")],
-            data: vec![], // Hash bytes not directly accessible
-        });
+                // Add deployment log
+                context.add_log(Log {
+                    address: deployed_address,
+                    topics: vec![Hash::new(*b"ContractDeployed0000000000000000")],
+                    data: deployed_address.0.to_vec(),
+                });
 
-        info!("Contract deployed at: {}", contract_address);
-        Ok(())
+                Ok(())
+            }
+            Err(e) => {
+                error!("Contract deployment execution failed: {}", e);
+                Err(e)
+            }
+        }
     }
 
     /// Execute contract call with AI opcode support

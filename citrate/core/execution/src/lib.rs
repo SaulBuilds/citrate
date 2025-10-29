@@ -8,6 +8,7 @@ pub mod inference;
 pub mod metrics;
 pub mod parallel;
 pub mod precompiles;
+pub mod revm_adapter;
 pub mod state;
 pub mod tensor;
 pub mod types;

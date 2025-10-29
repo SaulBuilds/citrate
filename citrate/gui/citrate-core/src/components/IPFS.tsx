@@ -2,12 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   Database,
   Upload,
-  Download,
   FolderOpen,
   File,
-  Link,
   Copy,
-  Trash2,
   Share,
   Globe,
   Server,
@@ -16,8 +13,6 @@ import {
   HardDrive,
   Users,
   Clock,
-  CheckCircle,
-  AlertCircle,
   RefreshCw,
   Pin,
   Unlink
@@ -61,7 +56,7 @@ interface IPFSPin {
 export const IPFS: React.FC = () => {
   const [files, setFiles] = useState<IPFSFile[]>([]);
   const [nodeInfo, setNodeInfo] = useState<IPFSNode | null>(null);
-  const [pins, setPins] = useState<IPFSPin[]>([]);
+  const [_pins, setPins] = useState<IPFSPin[]>([]);
   const [selectedFile, setSelectedFile] = useState<IPFSFile | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);

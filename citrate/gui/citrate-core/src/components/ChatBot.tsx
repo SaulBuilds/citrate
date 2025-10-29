@@ -5,14 +5,10 @@ import {
   Bot,
   User,
   Settings,
-  Download,
-  Upload,
   Brain,
-  Zap,
   Copy,
   ThumbsUp,
   ThumbsDown,
-  RefreshCw,
   Mic,
   MicOff,
   Image,
@@ -42,7 +38,7 @@ interface ChatAttachment {
 interface ChatModel {
   id: string;
   name: string;
-  provider: 'lattice' | 'openai' | 'anthropic' | 'local';
+  provider: 'citrate' | 'openai' | 'anthropic' | 'local';
   type: 'text' | 'vision' | 'code';
   costPerToken: number;
   maxTokens: number;
@@ -56,7 +52,6 @@ export const ChatBot: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('citrate-gpt-4');
   const [isListening, setIsListening] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [chatHistory, setChatHistory] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,7 +59,7 @@ export const ChatBot: React.FC = () => {
     {
       id: 'citrate-gpt-4',
       name: 'Citrate GPT-4',
-      provider: 'lattice',
+      provider: 'citrate',
       type: 'text',
       costPerToken: 0.00001,
       maxTokens: 8192,
@@ -73,7 +68,7 @@ export const ChatBot: React.FC = () => {
     {
       id: 'citrate-claude-3',
       name: 'Citrate Claude-3',
-      provider: 'lattice',
+      provider: 'citrate',
       type: 'text',
       costPerToken: 0.000008,
       maxTokens: 100000,
@@ -82,7 +77,7 @@ export const ChatBot: React.FC = () => {
     {
       id: 'citrate-vision',
       name: 'Citrate Vision',
-      provider: 'lattice',
+      provider: 'citrate',
       type: 'vision',
       costPerToken: 0.00002,
       maxTokens: 4096,
@@ -134,7 +129,7 @@ export const ChatBot: React.FC = () => {
 
     try {
       // TODO: Integrate with actual MCP service
-      const response = await sendToMCP(input.trim(), selectedModel);
+      const response = await sendToMCP(input.trim());
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -163,7 +158,7 @@ export const ChatBot: React.FC = () => {
     }
   };
 
-  const sendToMCP = async (message: string, modelId: string) => {
+  const sendToMCP = async (message: string) => {
     // Mock MCP API call - replace with actual integration
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
 

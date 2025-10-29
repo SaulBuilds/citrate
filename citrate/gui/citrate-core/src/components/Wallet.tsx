@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { walletService, nodeService } from '../services/tauri';
 import { Account, TxActivity } from '../types';
 import { validateAddress, validateAmount, validatePrivateKey, validateMnemonic } from '../utils/validation';
+import { useRecentAddresses } from '../contexts/AppContext';
 import {
   Wallet as WalletIcon,
   Plus,
@@ -335,7 +336,7 @@ export const Wallet: React.FC = () => {
                   </div>
                 )}
               </div>
-            )))}
+            ))}
               </>
             )}
           </div>
@@ -1168,6 +1169,43 @@ const ImportAccountModal: React.FC<{
           opacity: 0.5;
           cursor: not-allowed;
         }
+
+        .recent-addresses {
+          margin-top: 0.75rem;
+          padding: 0.75rem;
+          background: #f9fafb;
+          border-radius: 0.5rem;
+        }
+
+        .recent-label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #6b7280;
+          margin-bottom: 0.5rem;
+        }
+
+        .recent-buttons {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+
+        .btn-xs {
+          padding: 0.375rem 0.75rem;
+          font-size: 0.875rem;
+        }
+
+        .btn-outline {
+          background: white;
+          color: #374151;
+          border: 1px solid #d1d5db;
+        }
+
+        .btn-outline:hover {
+          background: #f3f4f6;
+          border-color: #9ca3af;
+        }
       `}</style>
     </div>
   );
@@ -1189,6 +1227,9 @@ const SendTransactionModal: React.FC<{
   const [toError, setToError] = useState('');
   const [amountError, setAmountError] = useState('');
 
+  // Recent addresses from AppContext
+  const { recentAddresses, addRecentAddress } = useRecentAddresses();
+
   const handleSend = async () => {
     setLoading(true);
     setError(null);
@@ -1206,6 +1247,10 @@ const SendTransactionModal: React.FC<{
       
       const hash = await walletService.sendTransaction(txRequest, password);
       setTxHash(hash);
+
+      // Add recipient address to recent addresses
+      addRecentAddress(to);
+
       setTimeout(() => {
         onSent();
       }, 2000);
@@ -1258,6 +1303,31 @@ const SendTransactionModal: React.FC<{
             className={toError ? 'input-error' : ''}
           />
           {toError && <div className="error-text">{toError}</div>}
+
+          {/* Recent Addresses */}
+          {recentAddresses.length > 0 && (
+            <div className="recent-addresses">
+              <label className="recent-label">Recent:</label>
+              <div className="recent-buttons">
+                {recentAddresses.slice(0, 5).map((addr, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="btn btn-xs btn-outline"
+                    onClick={() => {
+                      setTo(addr);
+                      // Validate the address
+                      const validation = validateAddress(addr);
+                      setToError(validation.isValid ? '' : validation.error || '');
+                    }}
+                    title={addr}
+                  >
+                    {addr.slice(0, 6)}...{addr.slice(-4)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="form-group">
@@ -1271,7 +1341,7 @@ const SendTransactionModal: React.FC<{
 
               // Validate amount in real-time with balance check
               if (value.trim()) {
-                const validation = validateAmount(value, account.balance);
+                const validation = validateAmount(value, account.balance.toString());
                 setAmountError(validation.isValid ? '' : validation.error || '');
               } else {
                 setAmountError('');
@@ -1412,6 +1482,43 @@ const SendTransactionModal: React.FC<{
         .btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        .recent-addresses {
+          margin-top: 0.75rem;
+          padding: 0.75rem;
+          background: #f9fafb;
+          border-radius: 0.5rem;
+        }
+
+        .recent-label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #6b7280;
+          margin-bottom: 0.5rem;
+        }
+
+        .recent-buttons {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+
+        .btn-xs {
+          padding: 0.375rem 0.75rem;
+          font-size: 0.875rem;
+        }
+
+        .btn-outline {
+          background: white;
+          color: #374151;
+          border: 1px solid #d1d5db;
+        }
+
+        .btn-outline:hover {
+          background: #f3f4f6;
+          border-color: #9ca3af;
         }
       `}</style>
     </div>

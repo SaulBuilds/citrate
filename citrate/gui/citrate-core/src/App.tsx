@@ -9,9 +9,14 @@ import { Models } from './components/Models';
 import { Marketplace } from './components/Marketplace';
 import { ChatBot } from './components/ChatBot';
 import { IPFS } from './components/IPFS';
+import { Contracts } from './components/Contracts';
 import { Settings as SettingsView } from './components/Settings';
 import { FirstTimeSetup } from './components/FirstTimeSetup';
 import ErrorBoundary from './components/ErrorBoundary';
+import { AppProvider, useAppTab } from './contexts/AppContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
 import {
   LayoutDashboard,
   Wallet as WalletIcon,
@@ -20,15 +25,92 @@ import {
   ShoppingBag,
   MessageSquare,
   Database,
+  FileCode,
   Settings,
   Github
 } from 'lucide-react';
 
-type View = 'dashboard' | 'wallet' | 'dag' | 'models' | 'marketplace' | 'chat' | 'ipfs' | 'settings';
-
-function App() {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
+/**
+ * Main App Component (Inner)
+ *
+ * Uses AppContext for state persistence
+ */
+function AppInner() {
+  const { currentTab, setCurrentTab } = useAppTab();
   const isNativeApp = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+
+  // Define keyboard shortcuts
+  const shortcuts: KeyboardShortcut[] = [
+    {
+      key: '/',
+      shift: true,
+      description: 'Show keyboard shortcuts',
+      action: () => setShowShortcutsHelp(true),
+    },
+    {
+      key: 'Escape',
+      description: 'Close modal/dialog',
+      action: () => setShowShortcutsHelp(false),
+    },
+    {
+      key: '1',
+      ctrl: true,
+      description: 'Navigate to Dashboard',
+      action: () => setCurrentTab('dashboard'),
+    },
+    {
+      key: '2',
+      ctrl: true,
+      description: 'Navigate to Wallet',
+      action: () => setCurrentTab('wallet'),
+    },
+    {
+      key: '3',
+      ctrl: true,
+      description: 'Navigate to DAG Explorer',
+      action: () => setCurrentTab('dag'),
+    },
+    {
+      key: '4',
+      ctrl: true,
+      description: 'Navigate to AI Models',
+      action: () => setCurrentTab('models'),
+    },
+    {
+      key: '5',
+      ctrl: true,
+      description: 'Navigate to Marketplace',
+      action: () => setCurrentTab('marketplace'),
+    },
+    {
+      key: '6',
+      ctrl: true,
+      description: 'Navigate to AI Chat',
+      action: () => setCurrentTab('chat'),
+    },
+    {
+      key: '7',
+      ctrl: true,
+      description: 'Navigate to IPFS Storage',
+      action: () => setCurrentTab('ipfs'),
+    },
+    {
+      key: '8',
+      ctrl: true,
+      description: 'Navigate to Contracts',
+      action: () => setCurrentTab('contracts'),
+    },
+    {
+      key: ',',
+      ctrl: true,
+      description: 'Open Settings',
+      action: () => setCurrentTab('settings'),
+    },
+  ];
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts(shortcuts);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -36,7 +118,7 @@ function App() {
       if (hash) {
         try { localStorage.setItem('dag_focus_hash', hash); } catch {}
       }
-      setCurrentView('dag');
+      setCurrentTab('dag');
     };
     window.addEventListener('open-dag-for-hash' as any, handler);
 
@@ -46,7 +128,7 @@ function App() {
     }
 
     return () => window.removeEventListener('open-dag-for-hash' as any, handler);
-  }, [isNativeApp]);
+  }, [isNativeApp, setCurrentTab]);
 
   const initializeApp = async () => {
     try {
@@ -80,7 +162,7 @@ function App() {
   };
 
   const renderView = () => {
-    switch (currentView) {
+    switch (currentTab) {
       case 'dashboard':
         return <Dashboard />;
       case 'wallet':
@@ -95,6 +177,8 @@ function App() {
         return <ChatBot />;
       case 'ipfs':
         return <IPFS />;
+      case 'contracts':
+        return <Contracts />;
       case 'settings':
         return <SettingsView />;
       default:
@@ -103,80 +187,106 @@ function App() {
   };
 
   return (
-    <ErrorBoundary>
+    <>
       <div className="app">
         <div className="sidebar">
-          <div className="sidebar-header">
-            <img src={citrateLogo} alt="Citrate" className="app-logo" />
-            <p className="app-version">v3.0.0</p>
-            <p className="app-mode">{isNativeApp ? '🖥️ Native' : '🌐 Web Mode'}</p>
-          </div>
+        <div className="sidebar-header">
+          <img src={citrateLogo} alt="Citrate" className="app-logo" />
+          <p className="app-version">v3.0.0</p>
+          <p className="app-mode">{isNativeApp ? '🖥️ Native' : '🌐 Web Mode'}</p>
+        </div>
 
-          <nav className="sidebar-nav">
-            <button
-              className={`nav-item ${currentView === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setCurrentView('dashboard')}
-            >
-              <LayoutDashboard size={20} />
-              <span>Dashboard</span>
-            </button>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          <button
+            className={`nav-item ${currentTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('dashboard')}
+            aria-label="Navigate to Dashboard"
+            aria-current={currentTab === 'dashboard' ? 'page' : undefined}
+          >
+            <LayoutDashboard size={20} aria-hidden="true" />
+            <span>Dashboard</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'wallet' ? 'active' : ''}`}
-              onClick={() => setCurrentView('wallet')}
-            >
-              <WalletIcon size={20} />
-              <span>Wallet</span>
-            </button>
+          <button
+            className={`nav-item ${currentTab === 'wallet' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('wallet')}
+            aria-label="Navigate to Wallet"
+            aria-current={currentTab === 'wallet' ? 'page' : undefined}
+          >
+            <WalletIcon size={20} aria-hidden="true" />
+            <span>Wallet</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'dag' ? 'active' : ''}`}
-              onClick={() => setCurrentView('dag')}
-            >
-              <Network size={20} />
-              <span>DAG Explorer</span>
-            </button>
+          <button
+            className={`nav-item ${currentTab === 'dag' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('dag')}
+            aria-label="Navigate to DAG Explorer"
+            aria-current={currentTab === 'dag' ? 'page' : undefined}
+          >
+            <Network size={20} aria-hidden="true" />
+            <span>DAG Explorer</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'models' ? 'active' : ''}`}
-              onClick={() => setCurrentView('models')}
-            >
-              <Brain size={20} />
-              <span>AI Models</span>
-            </button>
+          <button
+            className={`nav-item ${currentTab === 'models' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('models')}
+            aria-label="Navigate to AI Models"
+            aria-current={currentTab === 'models' ? 'page' : undefined}
+          >
+            <Brain size={20} aria-hidden="true" />
+            <span>AI Models</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'marketplace' ? 'active' : ''}`}
-              onClick={() => setCurrentView('marketplace')}
-            >
-              <ShoppingBag size={20} />
-              <span>Marketplace</span>
-            </button>
+          <button
+            className={`nav-item ${currentTab === 'marketplace' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('marketplace')}
+            aria-label="Navigate to Marketplace"
+            aria-current={currentTab === 'marketplace' ? 'page' : undefined}
+          >
+            <ShoppingBag size={20} aria-hidden="true" />
+            <span>Marketplace</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'chat' ? 'active' : ''}`}
-              onClick={() => setCurrentView('chat')}
-            >
-              <MessageSquare size={20} />
-              <span>AI Chat</span>
-            </button>
+          <button
+            className={`nav-item ${currentTab === 'chat' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('chat')}
+            aria-label="Navigate to AI Chat"
+            aria-current={currentTab === 'chat' ? 'page' : undefined}
+          >
+            <MessageSquare size={20} aria-hidden="true" />
+            <span>AI Chat</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'ipfs' ? 'active' : ''}`}
-              onClick={() => setCurrentView('ipfs')}
-            >
-              <Database size={20} />
-              <span>IPFS Storage</span>
-            </button>
+          <button
+            className={`nav-item ${currentTab === 'ipfs' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('ipfs')}
+            aria-label="Navigate to IPFS Storage"
+            aria-current={currentTab === 'ipfs' ? 'page' : undefined}
+          >
+            <Database size={20} aria-hidden="true" />
+            <span>IPFS Storage</span>
+          </button>
 
-            <button
-              className={`nav-item ${currentView === 'settings' ? 'active' : ''}`}
-              onClick={() => setCurrentView('settings')}
-            >
-              <Settings size={20} />
-              <span>Settings</span>
-            </button>
-          </nav>
+          <button
+            className={`nav-item ${currentTab === 'contracts' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('contracts')}
+            aria-label="Navigate to Smart Contracts"
+            aria-current={currentTab === 'contracts' ? 'page' : undefined}
+          >
+            <FileCode size={20} aria-hidden="true" />
+            <span>Contracts</span>
+          </button>
+
+          <button
+            className={`nav-item ${currentTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setCurrentTab('settings')}
+            aria-label="Navigate to Settings"
+            aria-current={currentTab === 'settings' ? 'page' : undefined}
+          >
+            <Settings size={20} aria-hidden="true" />
+            <span>Settings</span>
+          </button>
+        </nav>
 
           <div className="sidebar-footer">
             <a
@@ -191,7 +301,7 @@ function App() {
           </div>
         </div>
 
-        <main className="main-content">
+        <main className="main-content" role="main" aria-label="Main content">
           {renderView()}
         </main>
 
@@ -298,15 +408,37 @@ function App() {
           }
         `}</style>
 
-        <FirstTimeSetup onSetupComplete={() => {
-          // Refresh the current view or trigger any necessary updates
-          setCurrentView('dashboard');
-        }} />
-      </div>
-    </ErrorBoundary>
+      <FirstTimeSetup onSetupComplete={() => {
+        // Refresh the current view or trigger any necessary updates
+        setCurrentTab('dashboard');
+      }} />
+
+      {/* Keyboard Shortcuts Help Modal */}
+      <KeyboardShortcutsHelp
+        shortcuts={shortcuts}
+        isOpen={showShortcutsHelp}
+        onClose={() => setShowShortcutsHelp(false)}
+      />
+    </div>
+    </>
   );
 }
 
-// Settings moved to dedicated component
+/**
+ * App Component (Outer)
+ *
+ * Wraps the app with AppProvider and ErrorBoundary
+ */
+function App() {
+  return (
+    <ErrorBoundary>
+      <AppProvider>
+        <ThemeProvider>
+          <AppInner />
+        </ThemeProvider>
+      </AppProvider>
+    </ErrorBoundary>
+  );
+}
 
 export default App;

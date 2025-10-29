@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { nodeService } from '../services/tauri';
 import type { NodeConfig, NodeStatus, PeerInfoSummary } from '../types';
+import { validateIPv4, validatePort, ValidationResult } from '../utils/validation';
+import { useTheme } from '../contexts/ThemeContext';
+import { Sun, Moon, Monitor } from 'lucide-react';
 
 export const Settings: React.FC = () => {
+  const { themeMode, setThemeMode } = useTheme();
   const [config, setConfig] = useState<NodeConfig | null>(null);
   const [status, setStatus] = useState<NodeStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -17,6 +21,10 @@ export const Settings: React.FC = () => {
   const [netLoading, setNetLoading] = useState(false);
   const [importHost, setImportHost] = useState('127.0.0.1');
   const [seedPath, setSeedPath] = useState('');
+
+  // Validation error states
+  const [bootnodeError, setBootnodeError] = useState('');
+  const [peerError, setPeerError] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -57,6 +65,52 @@ export const Settings: React.FC = () => {
   };
   const reloadBootnodes = async () => {
     try { setBootnodes(await nodeService.getBootnodes()); } catch {}
+  };
+
+  // Validate bootnode/peer format: "ip:port" or "peerId@ip:port"
+  const validateBootnodePeer = (entry: string): ValidationResult => {
+    if (!entry || entry.trim() === '') {
+      return { isValid: false, error: 'Entry is required' };
+    }
+
+    const trimmed = entry.trim();
+
+    // Check for peerId@ip:port format
+    if (trimmed.includes('@')) {
+      const parts = trimmed.split('@');
+      if (parts.length !== 2) {
+        return { isValid: false, error: 'Invalid format. Use peerId@ip:port' };
+      }
+      // Validate the ip:port part
+      const ipPort = parts[1];
+      return validateIpPort(ipPort);
+    }
+
+    // Otherwise validate as ip:port
+    return validateIpPort(trimmed);
+  };
+
+  const validateIpPort = (entry: string): ValidationResult => {
+    const parts = entry.split(':');
+    if (parts.length !== 2) {
+      return { isValid: false, error: 'Invalid format. Use ip:port' };
+    }
+
+    const [ip, portStr] = parts;
+
+    // Validate IP
+    const ipValidation = validateIPv4(ip);
+    if (!ipValidation.isValid) {
+      return ipValidation;
+    }
+
+    // Validate port
+    const portValidation = validatePort(portStr);
+    if (!portValidation.isValid) {
+      return portValidation;
+    }
+
+    return { isValid: true };
   };
 
   const updateField = async (path: string, value: any) => {
@@ -323,6 +377,43 @@ export const Settings: React.FC = () => {
       {error && <div className="alert alert-error">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
+      {/* Appearance Section */}
+      <div className="settings-section">
+        <h3>Appearance</h3>
+        <div className="theme-selector">
+          <label>Theme</label>
+          <div className="theme-buttons">
+            <button
+              type="button"
+              className={`theme-button ${themeMode === 'light' ? 'active' : ''}`}
+              onClick={() => setThemeMode('light')}
+              title="Light theme"
+            >
+              <Sun size={20} />
+              <span>Light</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-button ${themeMode === 'dark' ? 'active' : ''}`}
+              onClick={() => setThemeMode('dark')}
+              title="Dark theme"
+            >
+              <Moon size={20} />
+              <span>Dark</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-button ${themeMode === 'system' ? 'active' : ''}`}
+              onClick={() => setThemeMode('system')}
+              title="Follow system preference"
+            >
+              <Monitor size={20} />
+              <span>System</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="settings-section">
         <h3>Node Configuration</h3>
         <div className="form-grid">
@@ -467,10 +558,29 @@ export const Settings: React.FC = () => {
                     </div>
                   ))}
                   <div className="bootnode-add">
-                    <input type="text" placeholder="peerId@ip:port or ip:port" value={newBootnode}
-                      disabled={disabled}
-                      onChange={e => setNewBootnode(e.target.value)} />
-                    <button className="btn btn-primary btn-sm" onClick={handleAddBootnode} disabled={disabled || netLoading || !newBootnode.trim()}>
+                    <div style={{ flex: 1 }}>
+                      <input
+                        type="text"
+                        placeholder="peerId@ip:port or ip:port"
+                        value={newBootnode}
+                        disabled={disabled}
+                        onChange={e => {
+                          const value = e.target.value;
+                          setNewBootnode(value);
+
+                          // Validate in real-time
+                          if (value.trim()) {
+                            const validation = validateBootnodePeer(value);
+                            setBootnodeError(validation.isValid ? '' : validation.error || '');
+                          } else {
+                            setBootnodeError('');
+                          }
+                        }}
+                        className={bootnodeError ? 'input-error' : ''}
+                      />
+                      {bootnodeError && <div className="error-text">{bootnodeError}</div>}
+                    </div>
+                    <button className="btn btn-primary btn-sm" onClick={handleAddBootnode} disabled={disabled || netLoading || !newBootnode.trim() || !!bootnodeError}>
                       Add Bootnode
                     </button>
                   </div>
@@ -503,9 +613,28 @@ export const Settings: React.FC = () => {
               <div className="peers-header">
                 <span>Connected Peers ({peers.length})</span>
                 <div className="peer-actions">
-                  <input type="text" placeholder="peerId@ip:port or ip:port" value={connectEntry}
-                    onChange={e => setConnectEntry(e.target.value)} />
-                  <button className="btn btn-secondary btn-sm" onClick={handleConnectPeer} disabled={netLoading || !status?.running || !connectEntry.trim()}>
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="text"
+                      placeholder="peerId@ip:port or ip:port"
+                      value={connectEntry}
+                      onChange={e => {
+                        const value = e.target.value;
+                        setConnectEntry(value);
+
+                        // Validate in real-time
+                        if (value.trim()) {
+                          const validation = validateBootnodePeer(value);
+                          setPeerError(validation.isValid ? '' : validation.error || '');
+                        } else {
+                          setPeerError('');
+                        }
+                      }}
+                      className={peerError ? 'input-error' : ''}
+                    />
+                    {peerError && <div className="error-text">{peerError}</div>}
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={handleConnectPeer} disabled={netLoading || !status?.running || !connectEntry.trim() || !!peerError}>
                     Connect Peer
                   </button>
                   <button className="btn btn-secondary btn-sm" onClick={reloadPeers} disabled={netLoading}>Refresh</button>
@@ -600,6 +729,8 @@ export const Settings: React.FC = () => {
         label { display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem; color: #374151; }
         label.full { grid-column: 1 / -1; }
         input, textarea, select { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.6rem 0.75rem; font-size: 0.95rem; }
+        .input-error { border-color: #ef4444 !important; border-width: 2px !important; }
+        .error-text { color: #ef4444; font-size: 0.875rem; margin-top: 0.25rem; }
         textarea { min-height: 80px; resize: vertical; }
         .actions { display: flex; gap: 1rem; }
         .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.25rem; border: none; border-radius: 0.5rem; cursor: pointer; }
@@ -624,6 +755,36 @@ export const Settings: React.FC = () => {
         .import-scaffold { margin-top: 0.75rem; background: #f9fafb; border-radius: 0.5rem; padding: 0.75rem; }
         .import-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
         .import-actions .inline { display: flex; gap: 0.5rem; align-items: center; }
+
+        /* Theme Selector Styles */
+        .theme-selector { display: flex; flex-direction: column; gap: 0.5rem; }
+        .theme-selector > label { font-weight: 500; color: var(--text-primary); }
+        .theme-buttons { display: flex; gap: 0.75rem; }
+        .theme-button {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1rem;
+          border: 2px solid var(--border-primary);
+          border-radius: 0.5rem;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          cursor: pointer;
+          transition: all 200ms ease;
+          font-weight: 500;
+        }
+        .theme-button:hover {
+          border-color: var(--brand-primary);
+          background: var(--bg-secondary);
+        }
+        .theme-button.active {
+          border-color: var(--brand-primary);
+          background: var(--brand-primary);
+          color: white;
+        }
+        .theme-button svg {
+          flex-shrink: 0;
+        }
       `}</style>
     </div>
   );

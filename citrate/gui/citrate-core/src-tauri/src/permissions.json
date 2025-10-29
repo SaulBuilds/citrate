@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/permission-schema.json",
   "identifier": "citrate-commands",
-  "description": "Permissions for Lattice Core custom commands",
+  "description": "Permissions for Citrate Core custom commands",
   "permissions": [
     {
       "identifier": "allow-start-node",
@@ -54,6 +54,7 @@
         "get_accounts",
         "get_account",
         "send_transaction",
+        "eth_call",
         "sign_message",
         "verify_signature",
         "export_private_key",

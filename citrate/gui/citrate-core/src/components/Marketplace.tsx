@@ -2,46 +2,32 @@ import React, { useState, useEffect } from 'react';
 import {
   ShoppingBag,
   Search,
-  Filter,
   Star,
   Download,
   Upload,
-  TrendingUp,
   Eye,
-  Heart,
   DollarSign,
   Tag,
   User,
-  Calendar,
   CheckCircle,
   AlertCircle
 } from 'lucide-react';
-
-interface MarketplaceModel {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  architecture: string;
-  version: string;
-  price: number;
-  currency: 'LAT' | 'ETH';
-  rating: number;
-  reviews: number;
-  downloads: number;
-  size: string;
-  lastUpdated: string;
-  author: string;
-  authorVerified: boolean;
-  tags: string[];
-  featured: boolean;
-  preview?: string;
-  modelType: 'text' | 'image' | 'audio' | 'multimodal';
-  license: 'MIT' | 'Apache-2.0' | 'Commercial' | 'Custom';
-  ipfsCid: string;
-}
+import { SkeletonCard } from './Skeleton';
+import {
+  MarketplaceService,
+  initMarketplaceService,
+  CATEGORIES
+} from '../utils/marketplaceService';
+import {
+  MarketplaceModel,
+  loadMarketplaceModels,
+  getMockMarketplaceModels,
+  isMarketplaceAvailable
+} from '../utils/marketplaceHelpers';
+import { useWallet } from '../context/WalletContext';
 
 export const Marketplace: React.FC = () => {
+  const wallet = useWallet();
   const [models, setModels] = useState<MarketplaceModel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -49,96 +35,91 @@ export const Marketplace: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedModel, setSelectedModel] = useState<MarketplaceModel | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [marketplaceService, setMarketplaceService] = useState<MarketplaceService | null>(null);
+  const [useMockData, setUseMockData] = useState(true);
 
+  // Convert CATEGORIES to UI-friendly format with 'all' option
   const categories = [
-    'all', 'text-generation', 'image-generation', 'classification',
-    'translation', 'summarization', 'audio-processing', 'computer-vision'
+    'all',
+    ...CATEGORIES.map(cat => cat.name.toLowerCase().replace(/\s+/g, '-'))
   ];
 
+  // Initialize marketplace service on mount
   useEffect(() => {
-    loadMarketplaceModels();
+    const initMarketplace = async () => {
+      try {
+        // Initialize marketplace service
+        const service = await initMarketplaceService();
+        setMarketplaceService(service);
+
+        // Check if marketplace contract is available
+        const available = await isMarketplaceAvailable(service);
+
+        if (!available) {
+          console.warn('[Marketplace] Contract not available, using mock data');
+          setUseMockData(true);
+          setError('Marketplace contract not deployed. Showing example models.');
+        } else {
+          console.log('[Marketplace] Contract available, loading real data');
+          setUseMockData(false);
+          setError(null);
+        }
+      } catch (err: any) {
+        console.error('[Marketplace] Initialization failed:', err);
+        setUseMockData(true);
+        setError('Failed to initialize marketplace. Showing example models.');
+      }
+
+      // Load initial data
+      await loadModels();
+    };
+
+    initMarketplace();
   }, []);
 
-  const loadMarketplaceModels = async () => {
+  const loadModels = async () => {
     setLoading(true);
     try {
-      // TODO: Integrate with actual marketplace discovery engine
-      const mockModels: MarketplaceModel[] = [
-        {
-          id: 'gpt-4-fine-tuned',
-          name: 'GPT-4 Fine-tuned for Code',
-          description: 'Advanced language model fine-tuned specifically for code generation and debugging',
-          category: 'text-generation',
-          architecture: 'transformer',
-          version: '1.2.0',
-          price: 0.05,
-          currency: 'LAT',
-          rating: 4.8,
-          reviews: 1247,
-          downloads: 15689,
-          size: '13.5 GB',
-          lastUpdated: '2024-01-15',
-          author: 'AI Research Lab',
-          authorVerified: true,
-          tags: ['coding', 'debugging', 'typescript', 'python'],
-          featured: true,
-          modelType: 'text',
-          license: 'MIT',
-          ipfsCid: 'QmXoYpizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco'
-        },
-        {
-          id: 'stable-diffusion-v3',
-          name: 'Stable Diffusion v3.0',
-          description: 'High-quality image generation model with improved coherence and style control',
-          category: 'image-generation',
-          architecture: 'diffusion',
-          version: '3.0.1',
-          price: 0.15,
-          currency: 'LAT',
-          rating: 4.9,
-          reviews: 2891,
-          downloads: 45231,
-          size: '8.2 GB',
-          lastUpdated: '2024-01-20',
-          author: 'Stability AI',
-          authorVerified: true,
-          tags: ['art', 'design', 'creative', 'high-res'],
-          featured: true,
-          modelType: 'image',
-          license: 'Commercial',
-          ipfsCid: 'QmYoZpizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6use'
-        },
-        {
-          id: 'whisper-multilingual',
-          name: 'Whisper Multilingual ASR',
-          description: 'Automatic speech recognition supporting 100+ languages with high accuracy',
-          category: 'audio-processing',
-          architecture: 'transformer',
-          version: '2.1.0',
-          price: 0.02,
-          currency: 'LAT',
-          rating: 4.7,
-          reviews: 892,
-          downloads: 8934,
-          size: '1.8 GB',
-          lastUpdated: '2024-01-10',
-          author: 'OpenAI Community',
-          authorVerified: false,
-          tags: ['speech', 'multilingual', 'transcription'],
-          featured: false,
-          modelType: 'audio',
-          license: 'Apache-2.0',
-          ipfsCid: 'QmZoApizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6usr'
-        }
-      ];
+      if (useMockData || !marketplaceService) {
+        // Use mock data for development/demo
+        console.log('[Marketplace] Loading mock data');
+        const mockModels = getMockMarketplaceModels();
+        setModels(mockModels);
+      } else {
+        // Load real data from contract
+        console.log('[Marketplace] Loading models from contract');
+        const loadedModels = await loadMarketplaceModels(marketplaceService, {
+          featured: sortBy === 'popular',
+          topRated: sortBy === 'rating',
+          limit: 50
+        });
 
-      setModels(mockModels);
-    } catch (error) {
-      console.error('Failed to load marketplace models:', error);
+        if (loadedModels.length === 0) {
+          console.warn('[Marketplace] No models found, falling back to mock data');
+          setModels(getMockMarketplaceModels());
+          setUseMockData(true);
+        } else {
+          setModels(loadedModels);
+        }
+      }
+      setError(null);
+    } catch (err: any) {
+      console.error('[Marketplace] Failed to load models:', err);
+      setError(err.message || 'Failed to load marketplace models');
+      // Fallback to mock data on error
+      setModels(getMockMarketplaceModels());
     } finally {
       setLoading(false);
     }
   };
+
+  // Reload models when sort order changes
+  useEffect(() => {
+    if (marketplaceService && !useMockData) {
+      loadModels();
+    }
+  }, [sortBy]);
 
   const filteredModels = models
     .filter(model =>
@@ -167,18 +148,60 @@ export const Marketplace: React.FC = () => {
     return `${price.toFixed(3)} ${currency}`;
   };
 
-  const handleDownload = async (model: MarketplaceModel) => {
+  const handlePurchase = async (model: MarketplaceModel) => {
+    if (!marketplaceService || useMockData) {
+      alert(`Marketplace demo: Would purchase "${model.name}" for ${model.price} ${model.currency}\n\nIPFS CID: ${model.ipfsCid}\n\nThis feature requires a deployed marketplace contract.`);
+      return;
+    }
+
+    if (!wallet.selectedAddress) {
+      alert('Please select a wallet address first');
+      return;
+    }
+
     try {
-      console.log(`Downloading model: ${model.name}`);
-      // TODO: Integrate with actual model download/deployment
-      alert(`Downloading ${model.name} from IPFS: ${model.ipfsCid}`);
-    } catch (error) {
-      console.error('Failed to download model:', error);
+      console.log(`[Marketplace] Purchasing access to: ${model.name}`);
+
+      // Get password for transaction signing
+      const password = prompt('Enter wallet password to purchase model access:');
+      if (!password) {
+        console.log('[Marketplace] Purchase cancelled');
+        return;
+      }
+
+      // Purchase access via marketplace contract
+      const txHash = await marketplaceService.purchaseAccess(
+        {
+          modelId: model.id,
+          buyer: wallet.selectedAddress
+        },
+        {
+          from: wallet.selectedAddress,
+          value: (BigInt(Math.floor(model.price * 1e18))).toString(), // Convert ETH to wei
+          password
+        }
+      );
+
+      console.log('[Marketplace] Purchase transaction sent:', txHash);
+      alert(`Purchase successful!\n\nTransaction: ${txHash}\n\nYou can now download the model from IPFS: ${model.ipfsCid}`);
+
+      // TODO: Implement actual IPFS download
+      // await downloadFromIPFS(model.ipfsCid);
+    } catch (error: any) {
+      console.error('[Marketplace] Purchase failed:', error);
+      alert(`Purchase failed: ${error.message || error}`);
     }
   };
 
   return (
     <div className="marketplace">
+      {error && (
+        <div className="error-banner">
+          <AlertCircle size={20} />
+          <span>{error}</span>
+        </div>
+      )}
+
       <div className="marketplace-header">
         <h2>AI Model Marketplace</h2>
         <button className="btn btn-primary">
@@ -239,7 +262,14 @@ export const Marketplace: React.FC = () => {
 
       <div className={`models-container ${viewMode}`}>
         {loading ? (
-          <div className="loading">Loading marketplace models...</div>
+          <>
+            <SkeletonCard height="380px" />
+            <SkeletonCard height="380px" />
+            <SkeletonCard height="380px" />
+            <SkeletonCard height="380px" />
+            <SkeletonCard height="380px" />
+            <SkeletonCard height="380px" />
+          </>
         ) : (
           <>
             {filteredModels.map(model => (
@@ -299,11 +329,11 @@ export const Marketplace: React.FC = () => {
                     className="btn btn-primary"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDownload(model);
+                      handlePurchase(model);
                     }}
                   >
-                    <Download size={16} />
-                    Download
+                    <ShoppingBag size={16} />
+                    Purchase
                   </button>
                   <button className="btn btn-secondary">
                     <Eye size={16} />
@@ -328,7 +358,7 @@ export const Marketplace: React.FC = () => {
         <ModelDetailsModal
           model={selectedModel}
           onClose={() => setSelectedModel(null)}
-          onDownload={handleDownload}
+          onPurchase={handlePurchase}
         />
       )}
 
@@ -337,6 +367,24 @@ export const Marketplace: React.FC = () => {
           padding: 2rem;
           background: #f9fafb;
           min-height: 100vh;
+        }
+
+        .error-banner {
+          background: #fef3c7;
+          border: 1px solid #fbbf24;
+          border-radius: 0.75rem;
+          padding: 1rem 1.5rem;
+          margin-bottom: 1.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          color: #92400e;
+          font-size: 0.9375rem;
+        }
+
+        .error-banner svg {
+          flex-shrink: 0;
+          color: #f59e0b;
         }
 
         .marketplace-header {
@@ -626,8 +674,8 @@ export const Marketplace: React.FC = () => {
 const ModelDetailsModal: React.FC<{
   model: MarketplaceModel;
   onClose: () => void;
-  onDownload: (model: MarketplaceModel) => void;
-}> = ({ model, onClose, onDownload }) => {
+  onPurchase: (model: MarketplaceModel) => void;
+}> = ({ model, onClose, onPurchase }) => {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal large" onClick={e => e.stopPropagation()}>
@@ -704,10 +752,10 @@ const ModelDetailsModal: React.FC<{
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => onDownload(model)}
+            onClick={() => onPurchase(model)}
           >
-            <Download size={16} />
-            Download & Deploy
+            <ShoppingBag size={16} />
+            Purchase Access
           </button>
         </div>
       </div>

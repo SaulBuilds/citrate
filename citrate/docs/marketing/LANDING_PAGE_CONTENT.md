@@ -348,35 +348,35 @@ contract DynamicNFT is ERC721 {
 
 ## Roadmap
 
-### ✅ Phase 1: Foundation (Completed)
+### ✅ Phase 1: Foundation (Q2 2025 - Completed)
 - GhostDAG consensus implementation
 - EVM-compatible execution layer
 - Genesis block and testnet launch
 
-### ✅ Phase 2: Core Infrastructure (Completed)
+### ✅ Phase 2: Core Infrastructure (Q3 2025 - Completed)
 - Model registry smart contracts
 - IPFS/Arweave integration
 - Basic MCP endpoints
 
-### ✅ Phase 3: Developer Tools (Completed)
+### ✅ Phase 3: Developer Tools (Q4 2025 - Completed)
 - TypeScript SDK
 - Python SDK
 - CLI wallet
 - Block explorer
 
-### 🚧 Phase 4: Model Marketplace (In Progress - Week 3)
+### 🚧 Phase 4: Model Marketplace (Q1 2026 - In Progress)
 - Model marketplace contracts
 - Discovery and search engine
 - Rating and review system
 - Payment processing
 
-### 📅 Phase 5: Advanced Features (Q1 2025)
+### 📅 Phase 5: Advanced Features (Q2 2026)
 - Federated learning framework
 - ZK proof integration
 - LoRA fine-tuning at scale
 - Cross-chain bridges
 
-### 📅 Phase 6: Mainnet Launch (Q2 2025)
+### 📅 Phase 6: Mainnet Launch (Q3-Q4 2026)
 - Security audits
 - Mainnet genesis
 - Validator onboarding

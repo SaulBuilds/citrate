@@ -25,6 +25,14 @@ struct LegacyTransaction {
 impl LegacyTransaction {
     /// Decode from RLP bytes
     fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        // Helper to pad signature components from variable-length RLP bytes
+        let pad_sig = |bytes: Vec<u8>| -> H256 {
+            let mut padded = [0u8; 32];
+            let start = 32 - bytes.len().min(32);
+            padded[start..].copy_from_slice(&bytes[..bytes.len().min(32)]);
+            H256::from(padded)
+        };
+
         Ok(LegacyTransaction {
             nonce: rlp.val_at(0)?,
             gas_price: rlp.val_at(1)?,
@@ -40,8 +48,8 @@ impl LegacyTransaction {
             value: rlp.val_at(4)?,
             data: rlp.val_at(5)?,
             v: rlp.val_at(6)?,
-            r: rlp.val_at(7)?,
-            s: rlp.val_at(8)?,
+            r: pad_sig(rlp.val_at(7)?),
+            s: pad_sig(rlp.val_at(8)?),
         })
     }
 }
@@ -322,8 +330,19 @@ fn decode_eip1559_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
     eprintln!("  Access list entries: {}", access_list.len());
 
     let y_parity: u64 = rlp.val_at(9).map_err(|e| format!("yParity: {:?}", e))?;
-    let r_h: H256 = rlp.val_at(10).map_err(|e| format!("r: {:?}", e))?;
-    let s_h: H256 = rlp.val_at(11).map_err(|e| format!("s: {:?}", e))?;
+
+    // Pad signature components from variable-length RLP bytes
+    let r_bytes: Vec<u8> = rlp.val_at(10).map_err(|e| format!("r: {:?}", e))?;
+    let mut r_padded = [0u8; 32];
+    let r_start = 32 - r_bytes.len().min(32);
+    r_padded[r_start..].copy_from_slice(&r_bytes[..r_bytes.len().min(32)]);
+    let r_h = H256::from(r_padded);
+
+    let s_bytes: Vec<u8> = rlp.val_at(11).map_err(|e| format!("s: {:?}", e))?;
+    let mut s_padded = [0u8; 32];
+    let s_start = 32 - s_bytes.len().min(32);
+    s_padded[s_start..].copy_from_slice(&s_bytes[..s_bytes.len().min(32)]);
+    let s_h = H256::from(s_padded);
 
     // Build the signing payload per EIP-1559 (without yParity,r,s)
     let mut s = RlpStream::new_list(9);
@@ -512,8 +531,19 @@ fn decode_eip2930_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
     eprintln!("  Access list entries: {}", access_list.len());
 
     let y_parity: u64 = rlp.val_at(8).map_err(|e| format!("yParity: {:?}", e))?;
-    let r_h: H256 = rlp.val_at(9).map_err(|e| format!("r: {:?}", e))?;
-    let s_h: H256 = rlp.val_at(10).map_err(|e| format!("s: {:?}", e))?;
+
+    // Pad signature components from variable-length RLP bytes
+    let r_bytes: Vec<u8> = rlp.val_at(9).map_err(|e| format!("r: {:?}", e))?;
+    let mut r_padded = [0u8; 32];
+    let r_start = 32 - r_bytes.len().min(32);
+    r_padded[r_start..].copy_from_slice(&r_bytes[..r_bytes.len().min(32)]);
+    let r_h = H256::from(r_padded);
+
+    let s_bytes: Vec<u8> = rlp.val_at(10).map_err(|e| format!("s: {:?}", e))?;
+    let mut s_padded = [0u8; 32];
+    let s_start = 32 - s_bytes.len().min(32);
+    s_padded[s_start..].copy_from_slice(&s_bytes[..s_bytes.len().min(32)]);
+    let s_h = H256::from(s_padded);
 
     // Build the signing payload per EIP-2930 (without yParity,r,s)
     let mut s = RlpStream::new_list(8);

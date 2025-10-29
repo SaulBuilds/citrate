@@ -547,7 +547,7 @@ function ModelAnalytics({ modelId }) {
 
 ## 🔮 **Roadmap**
 
-### Completed ✅
+### Completed ✅ (Q4 2025)
 - [x] Citrate Studio IDE
 - [x] VS Code Extension
 - [x] Documentation Portal
@@ -557,17 +557,17 @@ function ModelAnalytics({ modelId }) {
 - [x] Model Registry Explorer
 - [x] Network Visualization
 
-### Phase 3 (Current)
+### Current Phase (Q1 2026)
 - [ ] Mobile development tools
 - [ ] Browser wallet integration
 - [ ] Advanced analytics platform
-- [ ] Multi-chain support
+- [ ] Model marketplace integration
 
-### Phase 4 (Q2 2024)
-- [ ] AI model marketplace
+### Future Phases (Q2-Q4 2026)
 - [ ] Federated learning tools
 - [ ] Enterprise deployment tools
 - [ ] Advanced security features
+- [ ] Multi-chain development support
 
 ---
 

@@ -1244,12 +1244,12 @@ function runInference(ModelId id, bytes input) external payable {
 **Current Phase**: Testnet (public since Q4 2024)
 
 **Roadmap**:
-- ✅ **Phase 1**: Consensus + execution (completed)
-- ✅ **Phase 2**: Core infrastructure (completed)
-- ✅ **Phase 3**: Developer tools (completed)
-- 🚧 **Phase 4**: Model marketplace (in progress, Week 3)
-- 📅 **Phase 5**: Advanced features (Q1 2025)
-- 📅 **Phase 6**: Mainnet launch (Q2 2025)
+- ✅ **Phase 1**: Consensus + execution (Q2 2025 - completed)
+- ✅ **Phase 2**: Core infrastructure (Q3 2025 - completed)
+- ✅ **Phase 3**: Developer tools (Q4 2025 - completed)
+- 🚧 **Phase 4**: Model marketplace (Q1 2026 - in progress)
+- 📅 **Phase 5**: Advanced features (Q2 2026)
+- 📅 **Phase 6**: Mainnet launch (Q3-Q4 2026)
 
 **Mainnet Prerequisites**:
 1. ✅ Testnet running stably for 6+ months
@@ -1259,11 +1259,11 @@ function runInference(ModelId id, bytes input) external payable {
 5. ⏳ Governance framework tested
 6. ⏳ Emergency pause mechanism tested
 
-**Timeline**: Targeting **April-June 2025** for mainnet genesis.
+**Timeline**: Targeting **Q3-Q4 2026** for mainnet genesis.
 
 ### What's coming in Phase 5?
 
-**Advanced Features (Q1 2025)**:
+**Advanced Features (Q2 2026)**:
 
 1. **Federated Learning Framework**:
    - Train models collaboratively without sharing data

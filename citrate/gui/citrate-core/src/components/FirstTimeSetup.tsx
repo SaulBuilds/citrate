@@ -136,7 +136,7 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
         {step === 'welcome' && (
           <div className="text-center">
             <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-              <Wallet className="w-8 h-8" style={{color: '#ffa500'}} />
+              <Wallet className="w-8 h-8" style={{color: 'var(--brand-primary)'}} />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Welcome to Citrate!
@@ -151,20 +151,20 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
                 Secure wallet with 12-word recovery phrase
               </div>
               <div className="flex items-center text-sm text-gray-700">
-                <Key className="w-4 h-4 mr-2" style={{color: '#ffa500'}} />
+                <Key className="w-4 h-4 mr-2" style={{color: 'var(--brand-primary)'}} />
                 Automatic reward address configuration
               </div>
               <div className="flex items-center text-sm text-gray-700">
-                <CheckCircle className="w-4 h-4 mr-2" style={{color: '#ffa500'}} />
+                <CheckCircle className="w-4 h-4 mr-2" style={{color: 'var(--brand-primary)'}} />
                 Start earning tokens immediately
               </div>
             </div>
             <button
               onClick={() => setStep('setup')}
               className="w-full text-white py-3 rounded-lg font-medium transition-colors"
-              style={{backgroundColor: '#ffa500'}}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ff8800'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffa500'}
+              style={{backgroundColor: 'var(--brand-primary)'}}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--brand-hover)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--brand-primary)'}
             >
               Set Up My Wallet
             </button>
@@ -176,7 +176,7 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
           <div>
             <div className="text-center mb-6">
               <div className="mx-auto w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-                <Shield className="w-8 h-8" style={{color: '#ffa500'}} />
+                <Shield className="w-8 h-8" style={{color: 'var(--brand-primary)'}} />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
                 Create Your Secure Wallet
@@ -302,9 +302,9 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
               onClick={handleSetupWallet}
               disabled={loading || !password || !confirmPassword}
               className="w-full disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-lg font-medium transition-colors"
-              style={{backgroundColor: (loading || !password || !confirmPassword) ? '#9ca3af' : '#ffa500'}}
-              onMouseEnter={(e) => (!loading && password && confirmPassword) && (e.currentTarget.style.backgroundColor = '#ff8800')}
-              onMouseLeave={(e) => (!loading && password && confirmPassword) && (e.currentTarget.style.backgroundColor = '#ffa500')}
+              style={{backgroundColor: (loading || !password || !confirmPassword) ? '#9ca3af' : 'var(--brand-primary)'}}
+              onMouseEnter={(e) => (!loading && password && confirmPassword) && (e.currentTarget.style.backgroundColor = 'var(--brand-hover)')}
+              onMouseLeave={(e) => (!loading && password && confirmPassword) && (e.currentTarget.style.backgroundColor = 'var(--brand-primary)')}
             >
               {loading ? 'Creating Wallet...' : 'Create Secure Wallet'}
             </button>
@@ -418,9 +418,9 @@ export const FirstTimeSetup: React.FC<FirstTimeSetupProps> = ({ onSetupComplete 
               onClick={handleComplete}
               disabled={!confirmed}
               className="w-full disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition-colors"
-              style={{backgroundColor: confirmed ? '#ffa500' : '#9ca3af'}}
-              onMouseEnter={(e) => confirmed && (e.currentTarget.style.backgroundColor = '#ff8800')}
-              onMouseLeave={(e) => confirmed && (e.currentTarget.style.backgroundColor = '#ffa500')}
+              style={{backgroundColor: confirmed ? 'var(--brand-primary)' : '#9ca3af'}}
+              onMouseEnter={(e) => confirmed && (e.currentTarget.style.backgroundColor = 'var(--brand-hover)')}
+              onMouseLeave={(e) => confirmed && (e.currentTarget.style.backgroundColor = 'var(--brand-primary)')}
             >
               Complete Setup & Start Earning
             </button>

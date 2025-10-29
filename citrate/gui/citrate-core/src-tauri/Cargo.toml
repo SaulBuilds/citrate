@@ -28,7 +28,7 @@ thiserror = "1.0"
 bincode = "1.3"
 reqwest = { version = "0.11", features = ["json"] }
 
-# Lattice node integration - properly linked to the actual implementations
+# Citrate node integration - properly linked to the actual implementations
 citrate-consensus = { path = "../../../core/consensus" }
 citrate-execution = { path = "../../../core/execution" }
 citrate-storage = { path = "../../../core/storage" }

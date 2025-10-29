@@ -1745,10 +1745,10 @@ fn prune_old_state(height: u64) {
 ```
 
 **Future Scaling Roadmap**:
-- Phase 1 (current): Single shard, 12,000 TPS
-- Phase 2 (Q2 2025): 4 shards, 48,000 TPS
-- Phase 3 (Q4 2025): 16 shards, 192,000 TPS
-- Phase 4 (2026+): Dynamic sharding, 1M+ TPS
+- Phase 1 (Q2-Q3 2025): Single shard, 12,000 TPS
+- Phase 2 (Q4 2025-Q1 2026): 4 shards, 48,000 TPS
+- Phase 3 (Q2-Q3 2026): 16 shards, 192,000 TPS
+- Phase 4 (Q4 2026+): Dynamic sharding, 1M+ TPS
 
 ### 9.3 Storage Requirements
 

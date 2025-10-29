@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { nodeService } from '../services/tauri';
 import { NodeStatus } from '../types';
-import { 
-  Server, 
-  Users, 
-  Box, 
-  Wifi, 
+import {
+  Server,
+  Users,
+  Box,
+  Wifi,
   WifiOff,
   Play,
   Square,
@@ -13,11 +13,13 @@ import {
   Activity
 } from 'lucide-react';
 import { Network as NetworkIcon } from 'lucide-react';
+import { SkeletonStats, SkeletonTable } from './Skeleton';
 
 export const Dashboard: React.FC = () => {
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null);
   const [prevStatus, setPrevStatus] = useState<{ ts: number; height: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [txOverview, setTxOverview] = useState<{ pending: number; last_block: number }>({ pending: 0, last_block: 0 });
   const [mempool, setMempool] = useState<Array<{hash: string; from: string; to?: string; value: string; nonce: number}>>([]);
@@ -57,6 +59,11 @@ export const Dashboard: React.FC = () => {
       } catch {}
     } catch (err) {
       console.error('Failed to fetch node status:', err);
+    } finally {
+      // Mark initial loading as complete
+      if (initialLoading) {
+        setInitialLoading(false);
+      }
     }
   };
 
@@ -117,59 +124,72 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header">
+      <header className="dashboard-header">
         <h1>Dashboard</h1>
-        <div className="node-controls">
+        <div className="node-controls" role="group" aria-label="Node controls">
           {nodeStatus?.running ? (
-            <button 
-              onClick={handleStopNode} 
+            <button
+              onClick={handleStopNode}
               disabled={loading}
               className="btn btn-danger"
+              aria-label="Stop node"
+              aria-busy={loading}
             >
-              <Square size={16} />
+              <Square size={16} aria-hidden="true" />
               Stop Node
             </button>
           ) : (
-            <button 
-              onClick={handleStartNode} 
+            <button
+              onClick={handleStartNode}
               disabled={loading}
               className="btn btn-primary"
+              aria-label="Start node"
+              aria-busy={loading}
             >
-              <Play size={16} />
+              <Play size={16} aria-hidden="true" />
               Start Node
             </button>
           )}
         </div>
-      </div>
+      </header>
       {/* Mempool Snapshot */}
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <div className="card-header"><h3>Mempool (top {Math.min(10, mempool.length)} of {txOverview.pending})</h3></div>
+      <section className="card" style={{ marginTop: '1rem' }} aria-label="Mempool transactions">
+        <div className="card-header"><h3>Mempool {!initialLoading && `(top ${Math.min(10, mempool.length)} of ${txOverview.pending})`}</h3></div>
         <div className="card-body">
-          {mempool.length === 0 && <div className="muted">No pending transactions</div>}
-          {mempool.length > 0 && (
-            <div className="mono" style={{ display: 'grid', gridTemplateColumns: 'auto auto auto auto', gap: '0.5rem' }}>
-              <div>Hash</div><div>From</div><div>To</div><div>Value</div>
-              {mempool.map((t, i) => (
-                <React.Fragment key={t.hash + i}>
-                  <div>{t.hash.slice(0, 10)}…</div>
-                  <div>{t.from.slice(0, 10)}…</div>
-                  <div>{t.to ? t.to.slice(0, 10) + '…' : '—'}</div>
-                  <div>{Number(t.value || '0').toLocaleString()}</div>
-                </React.Fragment>
-              ))}
-            </div>
+          {initialLoading ? (
+            <SkeletonTable rows={5} columns={4} />
+          ) : (
+            <>
+              {mempool.length === 0 && <div className="muted">No pending transactions</div>}
+              {mempool.length > 0 && (
+                <div className="mono" style={{ display: 'grid', gridTemplateColumns: 'auto auto auto auto', gap: '0.5rem' }}>
+                  <div>Hash</div><div>From</div><div>To</div><div>Value</div>
+                  {mempool.map((t, i) => (
+                    <React.Fragment key={t.hash + i}>
+                      <div>{t.hash.slice(0, 10)}…</div>
+                      <div>{t.from.slice(0, 10)}…</div>
+                      <div>{t.to ? t.to.slice(0, 10) + '…' : '—'}</div>
+                      <div>{Number(t.value || '0').toLocaleString()}</div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
-      </div>
+      </section>
 
       {error && (
-        <div className="alert alert-error">
+        <div className="alert alert-error" role="alert" aria-live="assertive">
           {error}
         </div>
       )}
 
-      <div className="stats-grid">
-        <div className="stat-card">
+      {initialLoading ? (
+        <SkeletonStats count={8} />
+      ) : (
+        <section className="stats-grid" role="region" aria-label="Node statistics">
+          <div className="stat-card">
           <div className="stat-icon">
             {nodeStatus?.running ? (
               <Wifi className="text-green" />
@@ -270,7 +290,8 @@ export const Dashboard: React.FC = () => {
             <span className="stat-detail">{txOverview.last_block} in last block</span>
           </div>
         </div>
-      </div>
+        </section>
+      )}
 
       <style jsx>{`
         .dashboard {
@@ -352,7 +373,7 @@ export const Dashboard: React.FC = () => {
         }
 
         .stat-card {
-          background: white;
+          background: var(--bg-primary);
           border-radius: 1rem;
           padding: 1.5rem;
           display: flex;
@@ -370,39 +391,39 @@ export const Dashboard: React.FC = () => {
         .stat-icon {
           padding: 0.75rem;
           border-radius: 0.75rem;
-          background: #f3f4f6;
+          background: var(--bg-tertiary);
         }
 
         .stat-content h3 {
           margin: 0 0 0.5rem 0;
           font-size: 0.875rem;
           font-weight: 500;
-          color: #6b7280;
+          color: var(--text-secondary);
         }
 
         .stat-value {
           margin: 0;
           font-size: 1.5rem;
           font-weight: 600;
-          color: #111827;
+          color: var(--text-primary);
         }
 
         .stat-detail {
           font-size: 0.75rem;
-          color: #9ca3af;
+          color: var(--text-muted);
         }
 
         .text-green { color: #10b981; }
-        .text-gray { color: #6b7280; }
+        .text-gray { color: var(--text-secondary); }
         .text-blue { color: #3b82f6; }
         .text-purple { color: #8b5cf6; }
         .text-orange { color: #f97316; }
         .text-yellow { color: #f59e0b; }
-        .card { background: white; border: 1px solid #e5e7eb; border-radius: 0.5rem; }
-        .card-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e5e7eb; }
+        .card { background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 0.5rem; }
+        .card-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-primary); }
         .card-body { padding: 1rem 1.5rem; }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.85rem; }
-        .muted { color: #9ca3af; }
+        .muted { color: var(--text-muted); }
       `}</style>
     </div>
   );

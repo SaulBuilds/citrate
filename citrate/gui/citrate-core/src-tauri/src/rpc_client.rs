@@ -165,6 +165,32 @@ impl RpcClient {
         Ok(gas_price)
     }
 
+    /// Make a read-only call to a contract (eth_call)
+    pub async fn call_contract(
+        &self,
+        to: &str,
+        data: &str,
+        from: Option<&str>,
+    ) -> Result<String> {
+        let mut call_obj = json!({
+            "to": to,
+            "data": data
+        });
+
+        if let Some(from_addr) = from {
+            call_obj["from"] = json!(from_addr);
+        }
+
+        let params = json!([call_obj, "latest"]);
+        let result = self.call("eth_call", params).await?;
+
+        let result_hex = result
+            .as_str()
+            .ok_or_else(|| anyhow!("Invalid eth_call response"))?;
+
+        Ok(result_hex.to_string())
+    }
+
     /// Check if the RPC endpoint is accessible
     pub async fn health_check(&self) -> Result<()> {
         // Try to get chain ID as a simple health check

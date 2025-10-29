@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { modelService } from '../services/tauri';
 import { ModelInfo, ModelDeployment, InferenceRequest } from '../types';
-import { 
-  Brain, 
-  Upload, 
-  Play, 
+import {
+  Brain,
+  Upload,
+  Play,
   Download,
   Activity,
   Clock,
   Zap
 } from 'lucide-react';
+import { SkeletonCard } from './Skeleton';
 
 export const Models: React.FC = () => {
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -62,60 +63,71 @@ export const Models: React.FC = () => {
       </div>
 
       <div className="models-grid">
-        {models.map(model => (
-          <div 
-            key={model.id}
-            className="model-card"
-            onClick={() => setSelectedModel(model)}
-          >
-            <div className="model-header">
-              <Brain size={24} className="text-purple" />
-              <div className="model-status">
-                <span className={`status-badge ${getStatusColor(model.status)}`}>
-                  {model.status}
-                </span>
-              </div>
-            </div>
-
-            <h3>{model.name}</h3>
-            <p className="model-architecture">{model.architecture}</p>
-
-            <div className="model-stats">
-              <div className="stat">
-                <Activity size={14} />
-                <span>{model.totalInferences} inferences</span>
-              </div>
-              <div className="stat">
-                <Clock size={14} />
-                <span>v{model.version}</span>
-              </div>
-            </div>
-
-            <div className="model-footer">
-              <span className="deploy-date">
-                Deployed: {formatTimestamp(model.deploymentTime)}
-              </span>
-              <button 
-                className="btn-sm btn-primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedModel(model);
-                  setShowInferenceModal(true);
-                }}
+        {loading ? (
+          <>
+            <SkeletonCard height="240px" />
+            <SkeletonCard height="240px" />
+            <SkeletonCard height="240px" />
+            <SkeletonCard height="240px" />
+          </>
+        ) : (
+          <>
+            {models.map(model => (
+              <div
+                key={model.id}
+                className="model-card"
+                onClick={() => setSelectedModel(model)}
               >
-                <Zap size={14} />
-                Run
-              </button>
-            </div>
-          </div>
-        ))}
+                <div className="model-header">
+                  <Brain size={24} className="text-purple" />
+                  <div className="model-status">
+                    <span className={`status-badge ${getStatusColor(model.status)}`}>
+                      {model.status}
+                    </span>
+                  </div>
+                </div>
 
-        {models.length === 0 && !loading && (
-          <div className="empty-state">
-            <Brain size={48} className="text-gray" />
-            <p>No models deployed</p>
-            <p className="text-muted">Deploy your first AI model to get started</p>
-          </div>
+                <h3>{model.name}</h3>
+                <p className="model-architecture">{model.architecture}</p>
+
+                <div className="model-stats">
+                  <div className="stat">
+                    <Activity size={14} />
+                    <span>{model.totalInferences} inferences</span>
+                  </div>
+                  <div className="stat">
+                    <Clock size={14} />
+                    <span>v{model.version}</span>
+                  </div>
+                </div>
+
+                <div className="model-footer">
+                  <span className="deploy-date">
+                    Deployed: {formatTimestamp(model.deploymentTime)}
+                  </span>
+                  <button
+                    className="btn-sm btn-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedModel(model);
+                      setShowInferenceModal(true);
+                    }}
+                  >
+                    <Zap size={14} />
+                    Run
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {models.length === 0 && (
+              <div className="empty-state">
+                <Brain size={48} className="text-gray" />
+                <p>No models deployed</p>
+                <p className="text-muted">Deploy your first AI model to get started</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

@@ -59,13 +59,16 @@ async fn start_node(state: State<'_, AppState>) -> Result<String, String> {
                 });
             }
             // Initialize DAG manager with node's storage and ghostdag
-            if let (Some(storage), Some(ghostdag)) = (
-                state.node_manager.get_storage().await,
-                state.node_manager.get_ghostdag().await,
-            ) {
+            let storage_opt = state.node_manager.get_storage().await;
+            let ghostdag_opt = state.node_manager.get_ghostdag().await;
+
+            tracing::info!("DAG manager initialization: storage={}, ghostdag={}",
+                storage_opt.is_some(), ghostdag_opt.is_some());
+
+            if let (Some(storage), Some(ghostdag)) = (storage_opt, ghostdag_opt) {
                 let dag_manager = Arc::new(DAGManager::new(storage.clone(), ghostdag.clone()));
                 *state.dag_manager.write().await = Some(dag_manager.clone());
-                info!("DAG manager initialized");
+                info!("DAG manager initialized successfully");
 
                 // Start a task to periodically refresh DAG manager to pick up synced blocks
                 let _dag_for_refresh = dag_manager.clone();
@@ -83,6 +86,8 @@ async fn start_node(state: State<'_, AppState>) -> Result<String, String> {
                         }
                     }
                 });
+            } else {
+                tracing::warn!("DAG manager NOT initialized - storage or ghostdag unavailable");
             }
 
             info!("Node started successfully");
@@ -749,6 +754,97 @@ async fn send_transaction(
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct EthCallRequest {
+    to: String,
+    data: String,
+    from: Option<String>,
+}
+
+#[tauri::command]
+async fn eth_call(
+    state: State<'_, AppState>,
+    request: EthCallRequest,
+) -> Result<String, String> {
+    // Check if we're connected to external RPC
+    let external_rpc = state.external_rpc.read().await;
+    if let Some(rpc_client) = external_rpc.as_ref() {
+        // Use external RPC to make the call
+        info!("Making eth_call via external RPC to {}", request.to);
+
+        let result = rpc_client
+            .call_contract(
+                &request.to,
+                &request.data,
+                request.from.as_deref(),
+            )
+            .await
+            .map_err(|e| format!("eth_call failed: {}", e))?;
+
+        info!("eth_call result: {}", result);
+        Ok(result)
+    } else {
+        // Use embedded node executor
+        info!("Making eth_call via embedded executor to {}", request.to);
+
+        // Get executor
+        let executor = state
+            .node_manager
+            .get_executor()
+            .await
+            .ok_or_else(|| "Executor not available".to_string())?;
+
+        // Prepare call parameters
+        let from_addr = if let Some(from) = &request.from {
+            hex::decode(from.trim_start_matches("0x"))
+                .map_err(|e| format!("Invalid from address: {}", e))?
+        } else {
+            vec![0u8; 20] // Zero address if from not specified
+        };
+
+        let to_addr = hex::decode(request.to.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid to address: {}", e))?;
+
+        let call_data = hex::decode(request.data.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid call data: {}", e))?;
+
+        // Execute the call (read-only, no state changes)
+        // Convert addresses to [u8; 20] and [u8; 32] format
+        let from_array: [u8; 20] = from_addr
+            .try_into()
+            .map_err(|_| "Invalid from address length".to_string())?;
+
+        let to_array: [u8; 20] = to_addr
+            .try_into()
+            .map_err(|_| "Invalid to address length".to_string())?;
+
+        // Create a public key from the from address (embed in 32-byte format)
+        let mut from_pubkey = [0u8; 32];
+        from_pubkey[..20].copy_from_slice(&from_array);
+
+        let mut to_pubkey = [0u8; 32];
+        to_pubkey[..20].copy_from_slice(&to_array);
+
+        use citrate_primitives::{Address, PublicKey};
+
+        let result = executor
+            .execute_call(
+                Address::from_public_key(&PublicKey(from_pubkey)),
+                Address::from_public_key(&PublicKey(to_pubkey)),
+                call_data,
+                0, // value (not sending any ETH)
+                10_000_000, // gas limit (generous for read calls)
+            )
+            .await
+            .map_err(|e| format!("Call execution failed: {}", e))?;
+
+        // Return result as hex string
+        let result_hex = format!("0x{}", hex::encode(&result));
+        info!("eth_call result: {}", result_hex);
+        Ok(result_hex)
+    }
+}
+
 #[tauri::command]
 async fn sign_message(
     state: State<'_, AppState>,
@@ -1112,6 +1208,7 @@ pub fn run() {
             perform_first_time_setup,
             get_account,
             send_transaction,
+            eth_call,
             sign_message,
             verify_signature,
             export_private_key,

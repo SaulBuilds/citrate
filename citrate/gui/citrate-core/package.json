@@ -19,6 +19,8 @@
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-opener": "^2",
     "@types/react-window": "^1.8.8",
+    "ethers": "^6.15.0",
+    "flexsearch": "^0.8.212",
     "lucide-react": "^0.542.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

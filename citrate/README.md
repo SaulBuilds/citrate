@@ -1295,31 +1295,49 @@ Report security issues to: security@citrate.ai
 
 ## Roadmap
 
-### Phase 1: Foundation ✅ (Completed)
+### Phase 1: Foundation ✅ (Q2 2025 - Completed)
 - [x] GhostDAG consensus implementation
 - [x] EVM-compatible execution engine
 - [x] P2P networking layer
 - [x] Basic smart contract support
 - [x] CLI wallet and tools
 
-### Phase 2: AI Integration 🚀 (Current - Q4 2024)
+### Phase 2: Core Infrastructure ✅ (Q3 2025 - Completed)
 - [x] Model Context Protocol integration
 - [x] CoreML inference engine
 - [x] IPFS model storage
 - [x] Model registry contracts
 - [x] JavaScript and Python SDKs
+
+### Phase 3: Developer Tools ✅ (Q4 2025 - Completed)
+- [x] Block explorer
+- [x] Tauri GUI wallet
+- [x] Documentation portal
+- [x] Testing frameworks
+- [x] CI/CD pipelines
+
+### Phase 4: Model Marketplace 🚧 (Q1 2026 - In Progress)
+- [ ] Decentralized model marketplace
+- [ ] Discovery and search engine
+- [ ] Rating and review system
+- [ ] Payment processing
+- [ ] Advanced inference optimizations
+
+### Phase 5: Advanced Features 📅 (Q2 2026)
 - [ ] Metal GPU training support
 - [ ] Advanced ZKP integration
 - [ ] Cross-chain bridges
-
-### Phase 3: Production Launch 🎯 (Q1 2025)
-- [ ] Mainnet launch with economic incentives
-- [ ] Decentralized model marketplace
-- [ ] Advanced inference optimizations
+- [ ] Federated learning framework
 - [ ] Enterprise partnerships
+
+### Phase 6: Mainnet Launch 🎯 (Q3-Q4 2026)
+- [ ] Security audits (3 independent firms)
+- [ ] Mainnet genesis
+- [ ] Economic incentives activation
+- [ ] Validator onboarding (100+ nodes)
 - [ ] Mobile SDK releases
 
-### Phase 4: Scale & Innovation 🌟 (Q2-Q4 2025)
+### Phase 7: Scale & Innovation 🌟 (2027+)
 - [ ] Sharding for 100,000+ TPS
 - [ ] On-chain training capabilities
 - [ ] Global model CDN

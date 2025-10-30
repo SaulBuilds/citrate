@@ -784,64 +784,9 @@ async fn eth_call(
         info!("eth_call result: {}", result);
         Ok(result)
     } else {
-        // Use embedded node executor
-        info!("Making eth_call via embedded executor to {}", request.to);
-
-        // Get executor
-        let executor = state
-            .node_manager
-            .get_executor()
-            .await
-            .ok_or_else(|| "Executor not available".to_string())?;
-
-        // Prepare call parameters
-        let from_addr = if let Some(from) = &request.from {
-            hex::decode(from.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid from address: {}", e))?
-        } else {
-            vec![0u8; 20] // Zero address if from not specified
-        };
-
-        let to_addr = hex::decode(request.to.trim_start_matches("0x"))
-            .map_err(|e| format!("Invalid to address: {}", e))?;
-
-        let call_data = hex::decode(request.data.trim_start_matches("0x"))
-            .map_err(|e| format!("Invalid call data: {}", e))?;
-
-        // Execute the call (read-only, no state changes)
-        // Convert addresses to [u8; 20] and [u8; 32] format
-        let from_array: [u8; 20] = from_addr
-            .try_into()
-            .map_err(|_| "Invalid from address length".to_string())?;
-
-        let to_array: [u8; 20] = to_addr
-            .try_into()
-            .map_err(|_| "Invalid to address length".to_string())?;
-
-        // Create a public key from the from address (embed in 32-byte format)
-        let mut from_pubkey = [0u8; 32];
-        from_pubkey[..20].copy_from_slice(&from_array);
-
-        let mut to_pubkey = [0u8; 32];
-        to_pubkey[..20].copy_from_slice(&to_array);
-
-        use citrate_primitives::{Address, PublicKey};
-
-        let result = executor
-            .execute_call(
-                Address::from_public_key(&PublicKey(from_pubkey)),
-                Address::from_public_key(&PublicKey(to_pubkey)),
-                call_data,
-                0, // value (not sending any ETH)
-                10_000_000, // gas limit (generous for read calls)
-            )
-            .await
-            .map_err(|e| format!("Call execution failed: {}", e))?;
-
-        // Return result as hex string
-        let result_hex = format!("0x{}", hex::encode(&result));
-        info!("eth_call result: {}", result_hex);
-        Ok(result_hex)
+        // Embedded node executor path not yet implemented
+        // TODO: Implement eth_call support for embedded executor when API is available
+        Err("eth_call requires external RPC connection. Please configure external_rpc in settings.".to_string())
     }
 }
 

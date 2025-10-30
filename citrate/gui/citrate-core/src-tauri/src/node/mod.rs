@@ -742,6 +742,15 @@ impl NodeManager {
         self.ghostdag.read().await.clone()
     }
 
+    /// Expose executor for local calls
+    pub async fn get_executor(&self) -> Option<Arc<Executor>> {
+        self.node
+            .read()
+            .await
+            .as_ref()
+            .map(|node| node.executor.clone())
+    }
+
     /// Expose mempool for local submissions
     pub async fn get_mempool(&self) -> Option<Arc<RwLock<Mempool>>> {
         self.node
@@ -1775,7 +1784,7 @@ impl Default for NodeConfig {
         Self {
             data_dir: dirs::data_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("citrate")
+                .join("citrate-gui")
                 .to_string_lossy()
                 .to_string(),
             network: "devnet".to_string(),

@@ -36,7 +36,18 @@ export const Settings: React.FC = () => {
           nodeService.getBootnodes().catch(() => []),
           nodeService.getPeers().catch(() => []),
         ]);
-        if (cfg) setConfig(cfg);
+        if (cfg) {
+          // Ensure consensus field exists with defaults
+          if (!cfg.consensus) {
+            cfg.consensus = {
+              kParameter: 18,
+              pruningWindow: 100000,
+              blockTimeSeconds: 2,
+              finalityDepth: 12
+            };
+          }
+          setConfig(cfg);
+        }
         if (stat) setStatus(stat);
         setBootnodes(bn || []);
         setPeers(ps || []);
@@ -53,6 +64,15 @@ export const Settings: React.FC = () => {
   const loadConfig = async () => {
     try {
       const cfg = await nodeService.getConfig();
+      // Ensure consensus field exists with defaults
+      if (cfg && !cfg.consensus) {
+        cfg.consensus = {
+          kParameter: 18,
+          pruningWindow: 100000,
+          blockTimeSeconds: 2,
+          finalityDepth: 12
+        };
+      }
       setConfig(cfg);
     } catch {}
   };

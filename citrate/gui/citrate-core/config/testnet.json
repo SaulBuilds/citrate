@@ -1,6 +1,7 @@
 {
   "dataDir": "./gui-data/testnet",
   "network": "testnet",
+  "externalRpc": "http://localhost:8545",
   "rpcPort": 8545,
   "wsPort": 8546,
   "p2pPort": 30303,
@@ -8,8 +9,8 @@
   "maxPeers": 200,
   "bootnodes": [],
   "rewardAddress": null,
-  "enableNetwork": true,
-  "discovery": true,
+  "enableNetwork": false,
+  "discovery": false,
   "mempool": {
   "minGasPrice": 1000000000,
   "maxPerSender": 200,

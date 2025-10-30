@@ -38,6 +38,7 @@ citrate-sequencer = { path = "../../../core/sequencer" }
 citrate-mcp = { path = "../../../core/mcp" }
 citrate-economics = { path = "../../../core/economics" }
 citrate-wallet = { path = "../../../wallet" }
+primitives = { path = "../../../core/primitives" }
 
 # Security & Crypto
 ed25519-dalek = "2.1"

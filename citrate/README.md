@@ -536,7 +536,7 @@ pub const BLOCK_TIME_MS: u64 = 1500; // 1.5 second blocks
 pub const FINALITY_DEPTH: u64 = 12;
 ```
 
-#### 3. Update Branding
+#### 3. Update Branding ()
 
 ```bash
 # Replace logos and branding
@@ -1269,13 +1269,6 @@ git push origin feature/amazing-feature
 - [x] Cryptographic primitives review
 - [ ] Economic model analysis (in progress)
 
-### Bug Bounty Program
-We offer rewards for security vulnerabilities:
-- **Critical**: $10,000 - $50,000
-- **High**: $5,000 - $10,000
-- **Medium**: $1,000 - $5,000
-- **Low**: $100 - $1,000
-
 Report security issues to: security@citrate.ai
 
 ## Community & Support
@@ -1295,49 +1288,31 @@ Report security issues to: security@citrate.ai
 
 ## Roadmap
 
-### Phase 1: Foundation ✅ (Q2 2025 - Completed)
+### Phase 1: Foundation ✅ (Completed)
 - [x] GhostDAG consensus implementation
 - [x] EVM-compatible execution engine
 - [x] P2P networking layer
 - [x] Basic smart contract support
 - [x] CLI wallet and tools
 
-### Phase 2: Core Infrastructure ✅ (Q3 2025 - Completed)
+### Phase 2: AI Integration 🚀 (Current - Q4 2024)
 - [x] Model Context Protocol integration
 - [x] CoreML inference engine
 - [x] IPFS model storage
 - [x] Model registry contracts
 - [x] JavaScript and Python SDKs
-
-### Phase 3: Developer Tools ✅ (Q4 2025 - Completed)
-- [x] Block explorer
-- [x] Tauri GUI wallet
-- [x] Documentation portal
-- [x] Testing frameworks
-- [x] CI/CD pipelines
-
-### Phase 4: Model Marketplace 🚧 (Q1 2026 - In Progress)
-- [ ] Decentralized model marketplace
-- [ ] Discovery and search engine
-- [ ] Rating and review system
-- [ ] Payment processing
-- [ ] Advanced inference optimizations
-
-### Phase 5: Advanced Features 📅 (Q2 2026)
 - [ ] Metal GPU training support
 - [ ] Advanced ZKP integration
 - [ ] Cross-chain bridges
-- [ ] Federated learning framework
-- [ ] Enterprise partnerships
 
-### Phase 6: Mainnet Launch 🎯 (Q3-Q4 2026)
-- [ ] Security audits (3 independent firms)
-- [ ] Mainnet genesis
-- [ ] Economic incentives activation
-- [ ] Validator onboarding (100+ nodes)
+### Phase 3: Production Launch 🎯 (Q1 2025)
+- [ ] Mainnet launch with economic incentives
+- [ ] Decentralized model marketplace
+- [ ] Advanced inference optimizations
+- [ ] Enterprise partnerships
 - [ ] Mobile SDK releases
 
-### Phase 7: Scale & Innovation 🌟 (2027+)
+### Phase 4: Scale & Innovation 🌟 (Q2-Q4 2025)
 - [ ] Sharding for 100,000+ TPS
 - [ ] On-chain training capabilities
 - [ ] Global model CDN

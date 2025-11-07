@@ -428,6 +428,21 @@ impl WalletManager {
         Ok(())
     }
 
+    /// Delete an account (removes from accounts list and keychain)
+    pub async fn delete_account(&self, address: &str) -> Result<()> {
+        // Remove from accounts list
+        let mut accounts = self.accounts.write().await;
+        accounts.retain(|a| a.address != address);
+        drop(accounts);
+        self.save_accounts().await?;
+
+        // Delete from keychain
+        self.keystore.delete_key(address)?;
+
+        info!("Deleted account: {}", address);
+        Ok(())
+    }
+
     fn derive_address(&self, public_key: &VerifyingKey) -> String {
         // Use keccak256 hash of public key for Ethereum-compatible address
         use sha3::{Digest, Keccak256};
@@ -595,7 +610,6 @@ impl SecureKeyStore {
         ))
     }
 
-    #[allow(dead_code)]
     fn delete_key(&self, address: &str) -> Result<()> {
         // Delete the address-specific entry
         let entry = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address))?;

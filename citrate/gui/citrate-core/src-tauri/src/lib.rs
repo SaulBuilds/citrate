@@ -44,6 +44,7 @@ async fn start_node(state: State<'_, AppState>) -> Result<String, String> {
     info!("start_node command received");
     tracing::error!("DEBUG: start_node called"); // Add visible debug output
 
+    // Always start embedded node for mining and earning rewards
     match state.node_manager.start().await {
         Ok(_) => {
             // Auto-connect to bootnodes if networking is enabled
@@ -117,6 +118,7 @@ async fn stop_node(state: State<'_, AppState>) -> Result<String, String> {
 
 #[tauri::command]
 async fn get_node_status(state: State<'_, AppState>) -> Result<NodeStatus, String> {
+    // Always use embedded node status
     state
         .node_manager
         .get_status()
@@ -421,7 +423,19 @@ async fn disconnect_external_rpc(state: State<'_, AppState>) -> Result<String, S
 async fn switch_to_testnet(state: State<'_, AppState>) -> Result<String, String> {
     info!("Switching GUI to testnet mode");
 
-    // Stop current node if running
+    // Get current config
+    let current_config = state.node_manager.get_config().await;
+
+    // Check if already in testnet mode with correct settings
+    if current_config.network == "testnet"
+        && current_config.mempool.chain_id == 42069
+        && current_config.bootnodes.contains(&"127.0.0.1:30303".to_string()) {
+        info!("Already in testnet mode with correct configuration, skipping");
+        return Ok("Already in testnet mode".to_string());
+    }
+
+    // Only stop node if we're actually changing networks
+    info!("Network configuration changed, stopping node to apply new settings");
     let _ = state.node_manager.stop().await;
 
     // Get current config and configure for testnet
@@ -435,12 +449,8 @@ async fn switch_to_testnet(state: State<'_, AppState>) -> Result<String, String>
         .await
         .map_err(|e| e.to_string())?;
 
-    // Start node with testnet configuration
-    state
-        .node_manager
-        .start()
-        .await
-        .map_err(|e| e.to_string())?;
+    // DON'T auto-start node here - let start_node handle it
+    // This allows external RPC to be used when configured
 
     info!(
         "GUI switched to testnet mode - Chain ID: {}, P2P: {}",
@@ -448,7 +458,7 @@ async fn switch_to_testnet(state: State<'_, AppState>) -> Result<String, String>
     );
 
     Ok(format!(
-        "Connected to testnet - Chain ID: {}, P2P Port: {}",
+        "Testnet mode configured - Chain ID: {}, P2P Port: {} (node not started)",
         config.mempool.chain_id, config.p2p_port
     ))
 }
@@ -653,6 +663,18 @@ async fn get_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, String
 }
 
 #[tauri::command]
+async fn delete_account(
+    state: State<'_, AppState>,
+    address: String,
+) -> Result<(), String> {
+    state
+        .wallet_manager
+        .delete_account(&address)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn is_first_time_setup(state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.wallet_manager.is_first_time_setup().await)
 }
@@ -702,56 +724,28 @@ async fn send_transaction(
     request: TransactionRequest,
     password: String,
 ) -> Result<String, String> {
-    // Check if we're connected to external RPC
-    let external_rpc = state.external_rpc.read().await;
-    if let Some(rpc_client) = external_rpc.as_ref() {
-        // Use external RPC to send transaction
-        info!("Sending transaction via external RPC");
+    // Always use embedded node for transactions
+    let tx = state
+        .wallet_manager
+        .create_signed_transaction(request.clone(), &password)
+        .await
+        .map_err(|e| e.to_string())?;
+    let tx_hash_hex = hex::encode(tx.hash.as_bytes());
 
-        // Create and sign transaction
-        let tx = state
-            .wallet_manager
-            .create_signed_transaction(request.clone(), &password)
+    // Add to local mempool
+    if let Some(mempool) = state.node_manager.get_mempool().await {
+        let _ = mempool
+            .read()
             .await
-            .map_err(|e| e.to_string())?;
-
-        // Serialize transaction to hex for eth_sendRawTransaction
-        let tx_bytes = bincode::serialize(&tx)
-            .map_err(|e| format!("Failed to serialize transaction: {}", e))?;
-        let tx_hex = format!("0x{}", hex::encode(&tx_bytes));
-
-        // Send via external RPC
-        let tx_hash = rpc_client
-            .send_raw_transaction(&tx_hex)
-            .await
-            .map_err(|e| format!("Failed to send transaction: {}", e))?;
-
-        info!("Transaction sent via external RPC: {}", tx_hash);
-        Ok(tx_hash)
-    } else {
-        // Use embedded node (original behavior)
-        let tx = state
-            .wallet_manager
-            .create_signed_transaction(request.clone(), &password)
-            .await
-            .map_err(|e| e.to_string())?;
-        let tx_hash_hex = hex::encode(tx.hash.as_bytes());
-
-        // Add to local mempool
-        if let Some(mempool) = state.node_manager.get_mempool().await {
-            let _ = mempool
-                .read()
-                .await
-                .add_transaction(tx.clone(), TxClass::Standard)
-                .await;
-        }
-        // Broadcast to peers
-        let _ = state
-            .node_manager
-            .broadcast_network(NetworkMessage::NewTransaction { transaction: tx })
+            .add_transaction(tx.clone(), TxClass::Standard)
             .await;
-        Ok(tx_hash_hex)
     }
+    // Broadcast to peers
+    let _ = state
+        .node_manager
+        .broadcast_network(NetworkMessage::NewTransaction { transaction: tx })
+        .await;
+    Ok(tx_hash_hex)
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -766,28 +760,9 @@ async fn eth_call(
     state: State<'_, AppState>,
     request: EthCallRequest,
 ) -> Result<String, String> {
-    // Check if we're connected to external RPC
-    let external_rpc = state.external_rpc.read().await;
-    if let Some(rpc_client) = external_rpc.as_ref() {
-        // Use external RPC to make the call
-        info!("Making eth_call via external RPC to {}", request.to);
-
-        let result = rpc_client
-            .call_contract(
-                &request.to,
-                &request.data,
-                request.from.as_deref(),
-            )
-            .await
-            .map_err(|e| format!("eth_call failed: {}", e))?;
-
-        info!("eth_call result: {}", result);
-        Ok(result)
-    } else {
-        // Embedded node executor path not yet implemented
-        // TODO: Implement eth_call support for embedded executor when API is available
-        Err("eth_call requires external RPC connection. Please configure external_rpc in settings.".to_string())
-    }
+    // TODO: Implement eth_call support for embedded executor
+    // For now, return an error indicating this feature is pending
+    Err("eth_call support is not yet implemented for embedded node. Coming soon!".to_string())
 }
 
 #[tauri::command]
@@ -1149,6 +1124,7 @@ pub fn run() {
             import_account,
             import_account_from_mnemonic,
             get_accounts,
+            delete_account,
             is_first_time_setup,
             perform_first_time_setup,
             get_account,

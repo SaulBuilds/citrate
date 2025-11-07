@@ -10,7 +10,8 @@ import {
   Play,
   Square,
   Hash,
-  Activity
+  Activity,
+  Pickaxe
 } from 'lucide-react';
 import { Network as NetworkIcon } from 'lucide-react';
 import { SkeletonStats, SkeletonTable } from './Skeleton';
@@ -21,8 +22,10 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [txOverview, setTxOverview] = useState<{ pending: number; last_block: number }>({ pending: 0, last_block: 0 });
   const [mempool, setMempool] = useState<Array<{hash: string; from: string; to?: string; value: string; nonce: number}>>([]);
+  const [rewardAddress, setRewardAddress] = useState<string | null>(null);
 
   useEffect(() => {
     // Initial status fetch
@@ -56,6 +59,8 @@ export const Dashboard: React.FC = () => {
         setTxOverview(await nodeService.getTxOverview());
         const mp = await (nodeService as any).getMempoolPending?.(10);
         if (mp) setMempool(mp);
+        const addr = await (nodeService as any).getRewardAddress?.();
+        if (addr) setRewardAddress(addr);
       } catch {}
     } catch (err) {
       console.error('Failed to fetch node status:', err);
@@ -71,10 +76,18 @@ export const Dashboard: React.FC = () => {
     console.log('Start node button clicked');
     setLoading(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       console.log('Calling nodeService.start()');
       const result = await nodeService.start();
       console.log('Node start result:', result);
+
+      // Show success message
+      setSuccessMessage(result);
+
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccessMessage(null), 5000);
+
       await fetchStatus();
     } catch (err: any) {
       console.error('Failed to start node:', err);
@@ -134,9 +147,10 @@ export const Dashboard: React.FC = () => {
               className="btn btn-danger"
               aria-label="Stop node"
               aria-busy={loading}
+              style={{ opacity: loading ? 0.6 : 1, cursor: loading ? 'wait' : 'pointer' }}
             >
-              <Square size={16} aria-hidden="true" />
-              Stop Node
+              {loading ? '⏳' : <Square size={16} aria-hidden="true" />}
+              {loading ? 'Stopping...' : 'Stop Node'}
             </button>
           ) : (
             <button
@@ -145,9 +159,10 @@ export const Dashboard: React.FC = () => {
               className="btn btn-primary"
               aria-label="Start node"
               aria-busy={loading}
+              style={{ opacity: loading ? 0.6 : 1, cursor: loading ? 'wait' : 'pointer' }}
             >
-              <Play size={16} aria-hidden="true" />
-              Start Node
+              {loading ? '⏳' : <Play size={16} aria-hidden="true" />}
+              {loading ? 'Connecting...' : 'Start Node'}
             </button>
           )}
         </div>
@@ -182,6 +197,18 @@ export const Dashboard: React.FC = () => {
       {error && (
         <div className="alert alert-error" role="alert" aria-live="assertive">
           {error}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="alert alert-success" role="alert" aria-live="polite" style={{
+          background: '#10b981',
+          color: 'white',
+          padding: '1rem',
+          borderRadius: '0.5rem',
+          marginBottom: '1rem'
+        }}>
+          ✓ {successMessage}
         </div>
       )}
 
@@ -288,6 +315,26 @@ export const Dashboard: React.FC = () => {
             <h3>Txs</h3>
             <p className="stat-value">{txOverview.pending} pending</p>
             <span className="stat-detail">{txOverview.last_block} in last block</span>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Pickaxe className={rewardAddress && nodeStatus?.running ? "text-yellow" : "text-gray"} />
+          </div>
+          <div className="stat-content">
+            <h3>Mining Status</h3>
+            <p className={`stat-value ${rewardAddress && nodeStatus?.running ? 'text-green' : 'text-gray'}`}>
+              {rewardAddress && nodeStatus?.running ? '⛏️ Active' : '⏸️ Inactive'}
+            </p>
+            {rewardAddress && (
+              <span className="stat-detail mono" title={rewardAddress}>
+                {rewardAddress.slice(0, 10)}...{rewardAddress.slice(-8)}
+              </span>
+            )}
+            {!rewardAddress && (
+              <span className="stat-detail">No reward address set</span>
+            )}
           </div>
         </div>
         </section>
@@ -418,7 +465,7 @@ export const Dashboard: React.FC = () => {
         .text-blue { color: #3b82f6; }
         .text-purple { color: #8b5cf6; }
         .text-orange { color: #f97316; }
-        .text-yellow { color: #f59e0b; }
+        .text-yellow { color: #eab308; }
         .card { background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 0.5rem; }
         .card-header { padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-primary); }
         .card-body { padding: 1rem 1.5rem; }

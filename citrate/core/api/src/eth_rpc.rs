@@ -878,6 +878,8 @@ pub fn register_eth_methods(
             ghostdag_params: Default::default(),
             transactions: vec![],
             signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Create a pseudo-transaction

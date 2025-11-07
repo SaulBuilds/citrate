@@ -1,7 +1,7 @@
 {
   "dataDir": "./gui-data/testnet",
   "network": "testnet",
-  "externalRpc": "http://localhost:8545",
+  "externalRpc": "http://testnet-rpc.citrate.ai:8545",
   "rpcPort": 8545,
   "wsPort": 8546,
   "p2pPort": 30303,

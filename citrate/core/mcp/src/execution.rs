@@ -2,6 +2,7 @@
 
 // Model executor for running AI models
 use crate::cache::ModelCache;
+use crate::gguf_engine::{GGUFEngine, GGUFEngineConfig, ModelType as GGUFModelType};
 use crate::registry::ModelRegistry;
 use crate::types::{ExecutionProof, ModelId};
 use crate::verification::ExecutionVerifier;
@@ -33,6 +34,7 @@ pub struct ModelExecutor {
     verifier: Arc<ExecutionVerifier>,
     registry: Arc<ModelRegistry>,
     ipfs: Mutex<IPFSService>,
+    gguf_engine: Arc<GGUFEngine>,
 }
 
 impl ModelExecutor {
@@ -43,12 +45,21 @@ impl ModelExecutor {
         registry: Arc<ModelRegistry>,
         ipfs: IPFSService,
     ) -> Self {
+        // Initialize GGUF engine with default config
+        let gguf_config = GGUFEngineConfig::default();
+        let gguf_engine = GGUFEngine::new(gguf_config)
+            .unwrap_or_else(|e| {
+                warn!("Failed to initialize GGUF engine: {}", e);
+                panic!("GGUF engine initialization failed");
+            });
+
         Self {
             vm,
             cache,
             verifier,
             registry,
             ipfs: Mutex::new(ipfs),
+            gguf_engine: Arc::new(gguf_engine),
         }
     }
 
@@ -221,19 +232,123 @@ impl ModelExecutor {
         })
     }
 
-    /// Execute in VM
-    async fn execute_in_vm(&self, _context: &ExecutionContext) -> Result<(Vec<u8>, u64)> {
-        // Placeholder for VM execution
-        // In real implementation, this would:
-        // 1. Load model into VM memory
-        // 2. Set up input tensors
-        // 3. Execute forward pass
-        // 4. Return output tensors
+    /// Execute in VM (now using GGUF engine)
+    async fn execute_in_vm(&self, context: &ExecutionContext) -> Result<(Vec<u8>, u64)> {
+        // Load the model
+        let model = self.load_model(context.model_id).await?;
 
-        let output = vec![0u8; 100]; // Placeholder output
-        let gas_used = 1_000_000; // Placeholder gas
+        // Determine model type from metadata or use heuristics
+        let model_type = self.determine_model_type(&model)?;
 
-        Ok((output, gas_used))
+        // Get or create model path on disk
+        let model_path = self
+            .gguf_engine
+            .load_model_from_bytes(
+                &hex::encode(&context.model_id.0[..8]),
+                &model.weights,
+            )
+            .await?;
+
+        // Parse input data
+        let input_json: serde_json::Value = serde_json::from_slice(&context.input)
+            .unwrap_or_else(|_| {
+                // Fallback: try to interpret as string
+                serde_json::json!({
+                    "prompt": String::from_utf8_lossy(&context.input)
+                })
+            });
+
+        // Execute based on model type
+        let output_data = match model_type {
+            GGUFModelType::Embedding => {
+                // Extract text inputs for embedding
+                let texts = if let Some(text) = input_json.get("text").and_then(|v| v.as_str()) {
+                    vec![text.to_string()]
+                } else if let Some(arr) = input_json.get("input").and_then(|v| v.as_array()) {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .collect()
+                } else {
+                    vec![input_json.to_string()]
+                };
+
+                // Generate embeddings
+                let embeddings = self.gguf_engine.generate_embeddings(&model_path, &texts).await?;
+
+                // Serialize embeddings as output
+                serde_json::to_vec(&embeddings)?
+            }
+            GGUFModelType::TextGeneration => {
+                // Extract prompt and parameters
+                let prompt = input_json
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                let max_tokens = input_json
+                    .get("max_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(512) as usize;
+
+                let temperature = input_json
+                    .get("temperature")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.7) as f32;
+
+                // Generate text
+                let generated_text = self
+                    .gguf_engine
+                    .generate_text(&model_path, prompt, max_tokens, temperature)
+                    .await?;
+
+                // Serialize response
+                serde_json::to_vec(&serde_json::json!({
+                    "text": generated_text,
+                    "model": hex::encode(&context.model_id.0[..8]),
+                }))?
+            }
+        };
+
+        // Estimate gas based on output size and model size
+        let gas_used = self.estimate_gas(&model, &output_data);
+
+        Ok((output_data, gas_used))
+    }
+
+    /// Determine model type from metadata
+    fn determine_model_type(&self, model: &Model) -> Result<GGUFModelType> {
+        // Try to parse metadata
+        if let Ok(metadata_json) = serde_json::from_slice::<serde_json::Value>(&model.metadata) {
+            if let Some(model_type) = metadata_json.get("model_type").and_then(|v| v.as_str()) {
+                return match model_type {
+                    "embedding" | "embeddings" => Ok(GGUFModelType::Embedding),
+                    "text_generation" | "llm" | "chat" => Ok(GGUFModelType::TextGeneration),
+                    _ => Ok(GGUFModelType::TextGeneration), // Default to text generation
+                };
+            }
+        }
+
+        // Heuristic: small models (<500MB) are likely embeddings
+        if model.weights.len() < 500_000_000 {
+            Ok(GGUFModelType::Embedding)
+        } else {
+            Ok(GGUFModelType::TextGeneration)
+        }
+    }
+
+    /// Estimate gas cost based on model and output size
+    fn estimate_gas(&self, model: &Model, output: &[u8]) -> u64 {
+        // Base gas cost
+        let base_gas = 100_000u64;
+
+        // Model size factor (1 gas per KB)
+        let model_gas = (model.weights.len() / 1024) as u64;
+
+        // Output size factor (10 gas per byte)
+        let output_gas = (output.len() * 10) as u64;
+
+        base_gas + model_gas + output_gas
     }
 
     /// Execute training in VM

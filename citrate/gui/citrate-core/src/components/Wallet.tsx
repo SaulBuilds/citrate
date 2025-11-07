@@ -247,33 +247,56 @@ export const Wallet: React.FC = () => {
 
                 <div className="account-footer">
                   <span className="nonce">Nonce: {account.nonce}</span>
-                  <button
-                    className="btn-sm btn-primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedAccount(account);
-                      setShowSendModal(true);
-                    }}
-                  >
-                    <Send size={14} />
-                    Send
-                  </button>
-                  <button
-                    className="btn-sm btn-secondary"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        await nodeService.setRewardAddress(account.address);
-                        copyToClipboard(account.address, 'reward');
-                        alert('Reward address set to this account. Block producer will use it.');
-                      } catch (err) {
-                        console.error('Failed to set reward address', err);
-                        alert('Failed to set reward address');
-                      }
-                    }}
-                  >
-                    Set Rewards
-                  </button>
+                  <div className="account-actions">
+                    <button
+                      className="btn-sm btn-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedAccount(account);
+                        setShowSendModal(true);
+                      }}
+                    >
+                      <Send size={14} />
+                      Send
+                    </button>
+                    <button
+                      className="btn-sm btn-secondary"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await nodeService.setRewardAddress(account.address);
+                          copyToClipboard(account.address, 'reward');
+                          alert('Reward address set to this account. Block producer will use it.');
+                        } catch (err) {
+                          console.error('Failed to set reward address', err);
+                          alert('Failed to set reward address');
+                        }
+                      }}
+                    >
+                      Set Rewards
+                    </button>
+                    <button
+                      className="btn-sm btn-danger"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Delete account "${account.label}"?\n\nWARNING: Make sure you have backed up your private key or mnemonic phrase! This action CANNOT be undone.\n\nAddress: ${account.address}`)) {
+                          try {
+                            await walletService.deleteAccount(account.address);
+                            await loadAccounts();
+                            if (selectedAccount?.address === account.address) {
+                              setSelectedAccount(null);
+                            }
+                            alert('Account deleted successfully. You can restore it using your private key or mnemonic phrase.');
+                          } catch (err) {
+                            console.error('Failed to delete account', err);
+                            alert(`Failed to delete account: ${err}`);
+                          }
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -480,13 +503,27 @@ export const Wallet: React.FC = () => {
         }
 
         .btn-primary {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: var(--brand-primary);
           color: white;
         }
 
+        .btn-primary:hover {
+          background: var(--brand-hover);
+        }
+
         .btn-secondary {
-          background: #f3f4f6;
-          color: #374151;
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+
+        .btn-danger {
+          background: var(--error);
+          color: white;
+        }
+
+        .btn-danger:hover {
+          background: var(--error);
+          opacity: 0.9;
         }
 
         .btn-sm {
@@ -501,10 +538,10 @@ export const Wallet: React.FC = () => {
         }
 
         .account-card {
-          background: white;
+          background: var(--bg-primary);
           border-radius: 1rem;
           padding: 1.5rem;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 4px 6px var(--shadow);
           cursor: pointer;
           transition: all 0.2s;
           border: 2px solid transparent;
@@ -512,11 +549,11 @@ export const Wallet: React.FC = () => {
 
         .account-card:hover {
           transform: translateY(-4px);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+          box-shadow: 0 8px 16px var(--shadow-lg);
         }
 
         .account-card.selected {
-          border-color: #667eea;
+          border-color: var(--brand-primary);
         }
 
         .account-header {
@@ -537,7 +574,7 @@ export const Wallet: React.FC = () => {
           align-items: center;
           justify-content: space-between;
           padding: 0.75rem;
-          background: #f9fafb;
+          background: var(--bg-secondary);
           border-radius: 0.5rem;
           margin-bottom: 1rem;
           font-family: monospace;
@@ -559,24 +596,34 @@ export const Wallet: React.FC = () => {
         }
 
         .balance-label {
-          color: #6b7280;
+          color: var(--text-secondary);
           font-size: 0.875rem;
         }
 
         .balance-value {
           font-size: 1.25rem;
           font-weight: 600;
+          color: var(--text-primary);
         }
 
         .account-footer {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .account-actions {
+          display: flex;
+          gap: 0.5rem;
+          flex-wrap: wrap;
         }
 
         .nonce {
-          color: #9ca3af;
+          color: var(--text-muted);
           font-size: 0.875rem;
+          width: 100%;
         }
 
         .empty-state {
@@ -589,25 +636,25 @@ export const Wallet: React.FC = () => {
           margin: 0.5rem 0;
         }
 
-        .text-gray { color: #6b7280; }
-        .text-green { color: #10b981; }
-        .text-muted { color: #9ca3af; }
+        .text-gray { color: var(--text-muted); }
+        .text-green { color: var(--success); }
+        .text-muted { color: var(--text-muted); }
 
         /* Activity & Sign/Verify */
         .activity { margin-top: 2rem; }
-        .activity h3 { margin: 0 0 0.75rem 0; }
+        .activity h3 { margin: 0 0 0.75rem 0; color: var(--text-primary); }
         .activity-list { display: flex; flex-direction: column; gap: 0.5rem; }
-        .tx { display: flex; justify-content: space-between; align-items: center; background: #f9fafb; border-radius: 0.5rem; padding: 0.75rem; }
+        .tx { display: flex; justify-content: space-between; align-items: center; background: var(--bg-secondary); border-radius: 0.5rem; padding: 0.75rem; }
         .tx .meta { display: flex; gap: 0.5rem; align-items: center; }
         .badge { padding: 0.15rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600; }
-        .badge-yellow { background: #fef3c7; color: #92400e; }
-        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-yellow { background: var(--warning-bg); color: var(--warning); }
+        .badge-green { background: var(--success-bg); color: var(--success); }
         .sign-verify { margin-top: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        .sign-verify h3 { grid-column: 1 / -1; margin: 0; }
-        .sign-box, .verify-box { background: white; border-radius: 0.75rem; padding: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .sign-verify h3 { grid-column: 1 / -1; margin: 0; color: var(--text-primary); }
+        .sign-box, .verify-box { background: var(--bg-primary); border-radius: 0.75rem; padding: 1rem; box-shadow: 0 1px 2px var(--shadow); border: 1px solid var(--border-primary); }
         .signature { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
-        .verify-result.ok { color: #065f46; }
-        .verify-result.bad { color: #991b1b; }
+        .verify-result.ok { color: var(--success); }
+        .verify-result.bad { color: var(--error); }
       `}</style>
     </div>
   );
@@ -768,15 +815,17 @@ const CreateAccountModal: React.FC<{
         }
 
         .modal {
-          background: white;
+          background: var(--bg-primary);
           border-radius: 1rem;
           padding: 2rem;
           width: 90%;
           max-width: 500px;
+          border: 1px solid var(--border-primary);
         }
 
         .modal h3 {
           margin: 0 0 1.5rem 0;
+          color: var(--text-primary);
         }
 
         .form-group {
@@ -787,30 +836,33 @@ const CreateAccountModal: React.FC<{
           display: block;
           margin-bottom: 0.5rem;
           font-weight: 500;
+          color: var(--text-primary);
         }
 
         .form-group input {
           width: 100%;
           padding: 0.75rem;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border-primary);
           border-radius: 0.5rem;
           font-size: 1rem;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
         }
 
         .input-error {
-          border-color: #ef4444 !important;
+          border-color: var(--error) !important;
           border-width: 2px !important;
         }
 
         .error-text {
-          color: #ef4444;
+          color: var(--error);
           font-size: 0.875rem;
           margin-top: 0.25rem;
         }
 
         .error-message {
-          background: #fee;
-          color: #c00;
+          background: var(--error-bg);
+          color: var(--error);
           padding: 0.75rem;
           border-radius: 0.5rem;
           margin-bottom: 1rem;
@@ -832,21 +884,25 @@ const CreateAccountModal: React.FC<{
         }
 
         .btn-primary {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: var(--brand-primary);
           color: white;
         }
 
+        .btn-primary:hover {
+          background: var(--brand-hover);
+        }
+
         .btn-secondary {
-          background: #f3f4f6;
-          color: #374151;
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
         }
 
         .btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
-        .warning { background: #fff7ed; color: #7c2d12; border: 1px solid #fdba74; padding: 0.75rem; border-radius: 0.5rem; }
-        .reveal { margin: 1rem 0; padding: 1rem; background: #fef9c3; border: 1px dashed #f59e0b; border-radius: 0.5rem; text-align: center; color: #92400e; }
+        .warning { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); padding: 0.75rem; border-radius: 0.5rem; }
+        .reveal { margin: 1rem 0; padding: 1rem; background: var(--warning-bg); border: 1px dashed var(--warning); border-radius: 0.5rem; text-align: center; color: var(--warning); }
         .cred { display: flex; flex-direction: column; gap: 0.5rem; }
         .row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
       `}</style>
@@ -896,12 +952,12 @@ const ImportAccountModal: React.FC<{
 
   const getPasswordStrengthColor = (strength: number): string => {
     switch (strength) {
-      case 0: return '#ef4444';
-      case 1: return '#f97316';
-      case 2: return '#f59e0b';
-      case 3: return '#84cc16';
-      case 4: return '#10b981';
-      default: return '#e5e7eb';
+      case 0: return 'var(--error)';
+      case 1: return 'var(--warning)';
+      case 2: return 'var(--brand-primary)';
+      case 3: return 'var(--success)';
+      case 4: return 'var(--success)';
+      default: return 'var(--border-primary)';
     }
   };
 
@@ -1031,7 +1087,7 @@ const ImportAccountModal: React.FC<{
                       borderRadius: '2px',
                       backgroundColor: level < passwordStrength
                         ? getPasswordStrengthColor(passwordStrength)
-                        : '#e5e7eb',
+                        : 'var(--border-primary)',
                       transition: 'background-color 0.3s'
                     }}
                   />
@@ -1092,15 +1148,17 @@ const ImportAccountModal: React.FC<{
         }
 
         .modal {
-          background: white;
+          background: var(--bg-primary);
           border-radius: 1rem;
           padding: 2rem;
           width: 90%;
           max-width: 500px;
+          border: 1px solid var(--border-primary);
         }
 
         .modal h3 {
           margin: 0 0 1.5rem 0;
+          color: var(--text-primary);
         }
 
         .form-group {
@@ -1111,30 +1169,33 @@ const ImportAccountModal: React.FC<{
           display: block;
           margin-bottom: 0.5rem;
           font-weight: 500;
+          color: var(--text-primary);
         }
 
         .form-group input {
           width: 100%;
           padding: 0.75rem;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border-primary);
           border-radius: 0.5rem;
           font-size: 1rem;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
         }
 
         .input-error {
-          border-color: #ef4444 !important;
+          border-color: var(--error) !important;
           border-width: 2px !important;
         }
 
         .error-text {
-          color: #ef4444;
+          color: var(--error);
           font-size: 0.875rem;
           margin-top: 0.25rem;
         }
 
         .error-message {
-          background: #fee;
-          color: #c00;
+          background: var(--error-bg);
+          color: var(--error);
           padding: 0.75rem;
           border-radius: 0.5rem;
           margin-bottom: 1rem;
@@ -1156,13 +1217,17 @@ const ImportAccountModal: React.FC<{
         }
 
         .btn-primary {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: var(--brand-primary);
           color: white;
         }
 
+        .btn-primary:hover {
+          background: var(--brand-hover);
+        }
+
         .btn-secondary {
-          background: #f3f4f6;
-          color: #374151;
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
         }
 
         .btn:disabled {
@@ -1173,7 +1238,7 @@ const ImportAccountModal: React.FC<{
         .recent-addresses {
           margin-top: 0.75rem;
           padding: 0.75rem;
-          background: #f9fafb;
+          background: var(--bg-secondary);
           border-radius: 0.5rem;
         }
 
@@ -1181,7 +1246,7 @@ const ImportAccountModal: React.FC<{
           display: block;
           font-size: 0.875rem;
           font-weight: 500;
-          color: #6b7280;
+          color: var(--text-secondary);
           margin-bottom: 0.5rem;
         }
 
@@ -1197,14 +1262,14 @@ const ImportAccountModal: React.FC<{
         }
 
         .btn-outline {
-          background: white;
-          color: #374151;
-          border: 1px solid #d1d5db;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          border: 1px solid var(--border-primary);
         }
 
         .btn-outline:hover {
-          background: #f3f4f6;
-          border-color: #9ca3af;
+          background: var(--bg-tertiary);
+          border-color: var(--border-secondary);
         }
       `}</style>
     </div>
@@ -1393,15 +1458,17 @@ const SendTransactionModal: React.FC<{
         }
 
         .modal {
-          background: white;
+          background: var(--bg-primary);
           border-radius: 1rem;
           padding: 2rem;
           width: 90%;
           max-width: 500px;
+          border: 1px solid var(--border-primary);
         }
 
         .modal h3 {
           margin: 0 0 1.5rem 0;
+          color: var(--text-primary);
         }
 
         .form-group {
@@ -1412,43 +1479,46 @@ const SendTransactionModal: React.FC<{
           display: block;
           margin-bottom: 0.5rem;
           font-weight: 500;
+          color: var(--text-primary);
         }
 
         .form-group input {
           width: 100%;
           padding: 0.75rem;
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--border-primary);
           border-radius: 0.5rem;
           font-size: 1rem;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
         }
 
         .form-group input:disabled {
-          background: #f9fafb;
-          color: #6b7280;
+          background: var(--bg-tertiary);
+          color: var(--text-muted);
         }
 
         .input-error {
-          border-color: #ef4444 !important;
+          border-color: var(--error) !important;
           border-width: 2px !important;
         }
 
         .error-text {
-          color: #ef4444;
+          color: var(--error);
           font-size: 0.875rem;
           margin-top: 0.25rem;
         }
 
         .error-message {
-          background: #fee;
-          color: #c00;
+          background: var(--error-bg);
+          color: var(--error);
           padding: 0.75rem;
           border-radius: 0.5rem;
           margin-bottom: 1rem;
         }
 
         .success-message {
-          background: #d4edda;
-          color: #155724;
+          background: var(--success-bg);
+          color: var(--success);
           padding: 0.75rem;
           border-radius: 0.5rem;
           margin-bottom: 1rem;
@@ -1470,13 +1540,17 @@ const SendTransactionModal: React.FC<{
         }
 
         .btn-primary {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: var(--brand-primary);
           color: white;
         }
 
+        .btn-primary:hover {
+          background: var(--brand-hover);
+        }
+
         .btn-secondary {
-          background: #f3f4f6;
-          color: #374151;
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
         }
 
         .btn:disabled {
@@ -1487,7 +1561,7 @@ const SendTransactionModal: React.FC<{
         .recent-addresses {
           margin-top: 0.75rem;
           padding: 0.75rem;
-          background: #f9fafb;
+          background: var(--bg-secondary);
           border-radius: 0.5rem;
         }
 
@@ -1495,7 +1569,7 @@ const SendTransactionModal: React.FC<{
           display: block;
           font-size: 0.875rem;
           font-weight: 500;
-          color: #6b7280;
+          color: var(--text-secondary);
           margin-bottom: 0.5rem;
         }
 
@@ -1511,14 +1585,14 @@ const SendTransactionModal: React.FC<{
         }
 
         .btn-outline {
-          background: white;
-          color: #374151;
-          border: 1px solid #d1d5db;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          border: 1px solid var(--border-primary);
         }
 
         .btn-outline:hover {
-          background: #f3f4f6;
-          border-color: #9ca3af;
+          background: var(--bg-tertiary);
+          border-color: var(--border-secondary);
         }
       `}</style>
     </div>

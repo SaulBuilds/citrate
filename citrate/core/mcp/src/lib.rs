@@ -3,6 +3,7 @@
 // MCP Service coordinator
 pub mod cache;
 pub mod execution;
+pub mod gguf_engine;
 pub mod provider;
 pub mod registry;
 pub mod types;

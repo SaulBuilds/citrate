@@ -1,6 +1,6 @@
 // citrate/core/api/src/server.rs
 
-use crate::{economics_rpc, eth_rpc};
+use crate::{ai_rpc, economics_rpc, eth_rpc};
 use crate::methods::{AiApi, ChainApi, MempoolApi, NetworkApi, StateApi, TransactionApi};
 use crate::metrics::rpc_request;
 use crate::types::{
@@ -325,6 +325,14 @@ impl RpcServer {
 
         // Register economics-related RPC methods
         economics_rpc::register_economics_methods(&mut io_handler, economics_manager, Some(mempool.clone()));
+
+        // Register AI-related RPC methods
+        ai_rpc::register_ai_methods(
+            &mut io_handler,
+            storage.clone(),
+            mempool.clone(),
+            executor.clone(),
+        );
 
         // ========== Chain Methods ==========
 
@@ -1505,6 +1513,8 @@ impl RpcServer {
                 ghostdag_params: Default::default(),
                 transactions: vec![],
                 signature: citrate_consensus::types::Signature::new([0; 64]),
+                embedded_models: vec![],
+                required_pins: vec![],
             };
             let tx = citrate_consensus::types::Transaction {
                 hash: citrate_consensus::types::Hash::default(),

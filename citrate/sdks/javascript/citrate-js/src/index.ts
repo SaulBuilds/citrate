@@ -24,12 +24,13 @@ export { splitSecretBytes, reconstructSecretBytes, GF256, ShamirSecretSharing } 
 // Error classes
 export * from './errors/CitrateError';
 
-// React hooks (if React is available)
-export * from './react/hooks';
-
 // Utils
 export * from './utils/constants';
 export * from './utils/validation';
 
+// React hooks (only if React is installed)
+// Import separately: import { useCitrateClient } from 'citrate-js/dist/react/hooks'
+// export * from './react/hooks'; // Commented out to avoid requiring React as dependency
+
 // Version
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';

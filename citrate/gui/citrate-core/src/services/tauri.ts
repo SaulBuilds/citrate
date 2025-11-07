@@ -675,8 +675,11 @@ export const walletService = {
     safeInvoke<Account>('import_account_from_mnemonic', { mnemonic, label, password }),
   
   getAccounts: () => safeInvoke<Account[]>('get_accounts'),
-  
-  getAccount: (address: string) => 
+
+  deleteAccount: (address: string) =>
+    safeInvoke<void>('delete_account', { address }),
+
+  getAccount: (address: string) =>
     safeInvoke<Account | null>('get_account', { address }),
   
   signMessage: (message: string, address: string, password: string) =>

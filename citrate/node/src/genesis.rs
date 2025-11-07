@@ -1,5 +1,7 @@
 use citrate_consensus::types::{
-    Block, BlockHeader, GhostDagParams, Hash, PublicKey, Signature, VrfProof,
+    Block, BlockHeader, EmbeddedModel, GhostDagParams, Hash, ModelId as ConsensusModelId,
+    ModelMetadata as ConsensusModelMetadata, ModelType, PublicKey, RequiredModel, Signature,
+    VrfProof,
 };
 use citrate_economics::genesis::GenesisConfig as EconomicsGenesisConfig;
 use citrate_execution::executor::Executor;
@@ -78,6 +80,44 @@ impl Default for GenesisConfig {
     }
 }
 
+/// Create embedded BGE-M3 model for genesis block
+fn create_embedded_bge_m3() -> EmbeddedModel {
+    // Include BGE-M3 Q4 GGUF model (417MB)
+    const BGE_M3_Q4: &[u8] = include_bytes!("../assets/bge-m3-q4.gguf");
+
+    EmbeddedModel {
+        model_id: ConsensusModelId::from_name("bge-m3"),
+        model_type: ModelType::Embeddings,
+        weights: BGE_M3_Q4.to_vec(),
+        metadata: ConsensusModelMetadata {
+            name: "BGE-M3 Embeddings".to_string(),
+            version: "1.0.0".to_string(),
+            context_length: 8192,
+            embedding_dim: Some(1024),
+            license: "MIT".to_string(),
+            framework: Some("GGUF".to_string()),
+        },
+    }
+}
+
+/// Create required model for Mistral 7B Instruct v0.3
+/// Model is pinned on IPFS and validators must maintain the pin
+fn create_required_mistral_7b() -> RequiredModel {
+    // SHA256: 1270d22c0fbb3d092fb725d4d96c457b7b687a5f5a715abe1e818da303e562b6
+    let sha256_bytes: [u8; 32] = [
+        0x12, 0x70, 0xd2, 0x2c, 0x0f, 0xbb, 0x3d, 0x09, 0x2f, 0xb7, 0x25, 0xd4, 0xd9, 0x6c, 0x45, 0x7b,
+        0x7b, 0x68, 0x7a, 0x5f, 0x5a, 0x71, 0x5a, 0xbe, 0x1e, 0x81, 0x8d, 0xa3, 0x03, 0xe5, 0x62, 0xb6,
+    ];
+
+    RequiredModel::new(
+        ConsensusModelId::from_name("mistral-7b-instruct-v0.3"),
+        "QmUsYyxg71bV8USRQ6Ccm3SdMqeWgEEVnCYkgNDaxvBTZB".to_string(), // IPFS CID
+        Hash::new(sha256_bytes),   // SHA256 hash of GGUF file
+        4_367_438_912,             // 4.1 GB (exact file size)
+        1_000_000_000_000_000_000_000, // 1000 LATT slash penalty
+    )
+}
+
 /// Create genesis block
 pub fn create_genesis_block(config: &GenesisConfig) -> Block {
     let header = BlockHeader {
@@ -97,6 +137,17 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Block {
         },
     };
 
+    // Create embedded models for genesis
+    let embedded_models = vec![create_embedded_bge_m3()];
+
+    // Create required pin models (validators must pin these)
+    let required_pins = vec![create_required_mistral_7b()];
+
+    tracing::info!("Creating genesis block with {} embedded models ({} MB total)",
+        embedded_models.len(),
+        embedded_models.iter().map(|m| m.size_bytes()).sum::<usize>() / 1_000_000
+    );
+
     Block {
         header,
         state_root: Hash::default(),
@@ -106,6 +157,8 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Block {
         ghostdag_params: GhostDagParams::default(),
         transactions: vec![],
         signature: Signature::new([0; 64]),
+        embedded_models,
+        required_pins,
     }
 }
 

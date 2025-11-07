@@ -54,9 +54,21 @@ impl NodeManager {
 
     pub async fn start(&self) -> Result<()> {
         info!("Starting Citrate node");
+
+        // Check if node is already running - if so, just return success (idempotent)
+        {
+            let node_guard = self.node.read().await;
+            if node_guard.is_some() {
+                info!("Node is already running, returning success");
+                return Ok(());
+            }
+        }
+
         let mut node_guard = self.node.write().await;
+        // Double-check after acquiring write lock
         if node_guard.is_some() {
-            return Err(anyhow::anyhow!("Node is already running"));
+            info!("Node started by another thread, returning success");
+            return Ok(());
         }
 
         let mut config = self.config.read().await.clone();
@@ -602,14 +614,15 @@ impl NodeManager {
 
         // Only start block producer if:
         // 1. We have a reward address
-        // 2. We're NOT in testnet/mainnet mode (only for devnet)
-        let should_produce_blocks = reward_address.is_some() && config.network == "devnet";
+        // 2. We're in devnet or testnet mode (mainnet requires different consensus)
+        let should_produce_blocks = reward_address.is_some() &&
+            (config.network == "devnet" || config.network == "testnet");
 
         let (block_producer_handle, block_producer_running) = if should_produce_blocks {
             if let Some(addr) = reward_address {
                 info!(
-                    "Starting block producer for devnet with reward address {}",
-                    addr
+                    "Starting block producer for {} with reward address {}",
+                    config.network, addr
                 );
                 let wm = self.wallet_manager.read().await.clone();
                 let producer = crate::block_producer::BlockProducer::new(
@@ -632,14 +645,7 @@ impl NodeManager {
                 (None, None)
             }
         } else {
-            if config.network != "devnet" {
-                info!(
-                    "Block production disabled - syncing from {} network",
-                    config.network
-                );
-            } else {
-                warn!("No reward address set, block production disabled");
-            }
+            warn!("No reward address set, block production disabled. Please configure a wallet to start earning rewards.");
             (None, None)
         };
 
@@ -668,10 +674,6 @@ impl NodeManager {
     }
 
     pub async fn stop(&self) -> Result<()> {
-        // First clear external references to storage
-        *self.storage.write().await = None;
-        *self.ghostdag.write().await = None;
-
         let mut node_guard = self.node.write().await;
         if let Some(mut node) = node_guard.take() {
             info!("Stopping Citrate node");
@@ -730,6 +732,11 @@ impl NodeManager {
 
             info!("Citrate node stopped and cleaned up");
         }
+
+        // Clear all cached Arc references to ensure locks are released
+        *self.storage.write().await = None;
+        *self.ghostdag.write().await = None;
+        *self.sync_manager.write().await = None;
 
         Ok(())
     }

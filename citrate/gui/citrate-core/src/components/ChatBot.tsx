@@ -13,8 +13,11 @@ import {
   MicOff,
   Image,
   Code,
-  FileText
+  FileText,
+  RefreshCw
 } from 'lucide-react';
+import { useAvailableModels } from '../hooks/useAvailableModels';
+import { invoke } from '@tauri-apps/api/core';
 
 interface ChatMessage {
   id: string;
@@ -49,50 +52,27 @@ export const ChatBot: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('citrate-gpt-4');
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [isListening, setIsListening] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(512);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const availableModels: ChatModel[] = [
-    {
-      id: 'citrate-gpt-4',
-      name: 'Citrate GPT-4',
-      provider: 'citrate',
-      type: 'text',
-      costPerToken: 0.00001,
-      maxTokens: 8192,
-      available: true
-    },
-    {
-      id: 'citrate-claude-3',
-      name: 'Citrate Claude-3',
-      provider: 'citrate',
-      type: 'text',
-      costPerToken: 0.000008,
-      maxTokens: 100000,
-      available: true
-    },
-    {
-      id: 'citrate-vision',
-      name: 'Citrate Vision',
-      provider: 'citrate',
-      type: 'vision',
-      costPerToken: 0.00002,
-      maxTokens: 4096,
-      available: true
-    },
-    {
-      id: 'local-llama',
-      name: 'Local Llama 3.1',
-      provider: 'local',
-      type: 'text',
-      costPerToken: 0,
-      maxTokens: 8192,
-      available: false
+  // Use the availableModels hook
+  const { models: availableModels, loading: modelsLoading, refresh: refreshModels } = useAvailableModels();
+
+  // Set default model when models are loaded
+  useEffect(() => {
+    if (availableModels.length > 0 && !selectedModel) {
+      // Prefer Mistral 7B for text generation if available
+      const defaultModel = availableModels.find(m => m.id === 'mistral-7b-instruct-v0.3')
+        || availableModels.find(m => m.type === 'text' && m.available)
+        || availableModels[0];
+      setSelectedModel(defaultModel.id);
     }
-  ];
+  }, [availableModels, selectedModel]);
 
   useEffect(() => {
     // Initialize with welcome message
@@ -159,25 +139,68 @@ export const ChatBot: React.FC = () => {
   };
 
   const sendToMCP = async (message: string) => {
-    // Mock MCP API call - replace with actual integration
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-
-    const responses = [
-      {
-        content: `I can help you with that! Based on your request about "${message}", here are some suggestions:\n\n• Consider using the Citrate Model Registry to find pre-trained models\n• You can deploy custom models using our IPFS storage system\n• For smart contracts, I recommend starting with our Solidity templates\n\nWould you like me to provide more specific guidance on any of these areas?`,
-        tokens: 127,
-        cost: 0.00127,
-        thinking: 'User is asking about AI/blockchain integration. Providing helpful overview.'
-      },
-      {
-        content: `Here's a code example for deploying an AI model on Citrate:\n\n\`\`\`solidity\npragma solidity ^0.8.19;\n\nimport "./IAIModel.sol";\n\ncontract ModelDeployment {\n    mapping(bytes32 => IAIModel) public models;\n    \n    function deployModel(\n        string memory name,\n        string memory ipfsCid,\n        uint256 price\n    ) external returns (bytes32 modelId) {\n        modelId = keccak256(abi.encode(name, msg.sender, block.timestamp));\n        models[modelId] = IAIModel(address(new ModelContract(name, ipfsCid, price)));\n        emit ModelDeployed(modelId, msg.sender, name);\n    }\n}\n\`\`\`\n\nThis contract allows you to deploy AI models with IPFS storage integration. Would you like me to explain any part of this code?`,
-        tokens: 189,
-        cost: 0.00189,
-        thinking: 'User wants code example. Providing Solidity smart contract for AI model deployment.'
+    try {
+      // Get selected model info
+      const model = availableModels.find(m => m.id === selectedModel);
+      if (!model) {
+        throw new Error('No model selected');
       }
-    ];
 
-    return responses[Math.floor(Math.random() * responses.length)];
+      console.log('[ChatBot] Sending message to model:', model.name);
+
+      // Build chat completion request
+      const requestPayload = {
+        jsonrpc: '2.0',
+        method: 'citrate_chatCompletion',
+        params: [{
+          model: model.id,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful AI assistant specialized in blockchain and AI development on the Citrate platform.'
+            },
+            {
+              role: 'user',
+              content: message
+            }
+          ],
+          max_tokens: maxTokens,
+          temperature: temperature
+        }],
+        id: Date.now()
+      };
+
+      console.log('[ChatBot] Request:', JSON.stringify(requestPayload, null, 2));
+
+      // Call the RPC endpoint via Tauri
+      const response = await invoke<any>('rpc_call', {
+        request: requestPayload
+      });
+
+      console.log('[ChatBot] Response:', response);
+
+      // Parse response
+      if (response.error) {
+        throw new Error(response.error.message || 'RPC error');
+      }
+
+      const result = response.result;
+
+      // Extract content from OpenAI-compatible response format
+      const content = result.choices?.[0]?.message?.content || 'No response generated';
+      const tokens = result.usage?.total_tokens || 0;
+      const promptTokens = result.usage?.prompt_tokens || 0;
+
+      return {
+        content,
+        tokens,
+        cost: 0, // Free for now
+        thinking: `Using ${model.name} (${promptTokens} prompt tokens)`
+      };
+    } catch (error) {
+      console.error('[ChatBot] Error calling MCP:', error);
+      throw new Error(`Failed to generate response: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -206,7 +229,7 @@ export const ChatBot: React.FC = () => {
   };
 
   const getModelInfo = (modelId: string) => {
-    return availableModels.find(m => m.id === modelId) || availableModels[0];
+    return availableModels.find(m => m.id === modelId);
   };
 
   return (
@@ -221,13 +244,32 @@ export const ChatBot: React.FC = () => {
             value={selectedModel}
             onChange={(e) => setSelectedModel(e.target.value)}
             className="model-selector"
+            disabled={modelsLoading}
           >
-            {availableModels.map(model => (
-              <option key={model.id} value={model.id} disabled={!model.available}>
-                {model.name} {!model.available && '(Unavailable)'}
-              </option>
-            ))}
+            {modelsLoading ? (
+              <option>Loading models...</option>
+            ) : availableModels.length === 0 ? (
+              <option>No models available</option>
+            ) : (
+              availableModels.map(model => (
+                <option key={model.id} value={model.id} disabled={!model.available}>
+                  {model.name}
+                  {!model.available && ' (Unavailable)'}
+                  {model.available && model.provider === 'genesis' && ' ⚡'}
+                  {model.available && model.provider === 'ipfs' && ' 📦'}
+                  {model.inferencePrice !== '0' && ` ($${(parseInt(model.inferencePrice) / 1e18).toFixed(6)})`}
+                </option>
+              ))
+            )}
           </select>
+          <button
+            className="btn btn-icon"
+            onClick={refreshModels}
+            disabled={modelsLoading}
+            title="Refresh models"
+          >
+            <RefreshCw size={16} className={modelsLoading ? 'spinning' : ''} />
+          </button>
           <button
             className="btn btn-secondary"
             onClick={() => setShowSettings(!showSettings)}
@@ -241,19 +283,43 @@ export const ChatBot: React.FC = () => {
         <div className="settings-panel">
           <h3>Chat Settings</h3>
           <div className="setting-group">
-            <label>Temperature</label>
-            <input type="range" min="0" max="1" step="0.1" defaultValue="0.7" />
+            <label>Temperature: {temperature.toFixed(1)}</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+            />
           </div>
           <div className="setting-group">
             <label>Max Tokens</label>
-            <input type="number" defaultValue="2048" min="1" max="8192" />
+            <input
+              type="number"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+              min="1"
+              max="4096"
+            />
           </div>
           <div className="setting-group">
-            <label>System Prompt</label>
-            <textarea
-              rows={3}
-              defaultValue="You are a helpful AI assistant specialized in blockchain and AI development on the Citrate platform."
-            />
+            <label>Selected Model</label>
+            <div className="model-info">
+              {selectedModel && getModelInfo(selectedModel) ? (
+                <>
+                  <div><strong>Name:</strong> {getModelInfo(selectedModel)?.name}</div>
+                  <div><strong>Provider:</strong> {getModelInfo(selectedModel)?.provider}</div>
+                  <div><strong>Type:</strong> {getModelInfo(selectedModel)?.type}</div>
+                  <div><strong>Framework:</strong> {getModelInfo(selectedModel)?.framework}</div>
+                  {getModelInfo(selectedModel)?.metadata?.maxTokens && (
+                    <div><strong>Max Tokens:</strong> {getModelInfo(selectedModel)?.metadata?.maxTokens}</div>
+                  )}
+                </>
+              ) : (
+                <div>No model selected</div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -736,6 +802,56 @@ export const ChatBot: React.FC = () => {
 
         .btn-secondary:hover {
           background: #e5e7eb;
+        }
+
+        .btn-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.5rem;
+          border: none;
+          border-radius: 0.5rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          background: #f3f4f6;
+          color: #374151;
+        }
+
+        .btn-icon:hover:not(:disabled) {
+          background: #e5e7eb;
+        }
+
+        .btn-icon:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .spinning {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .model-info {
+          background: #f9fafb;
+          padding: 0.75rem;
+          border-radius: 0.5rem;
+          font-size: 0.875rem;
+        }
+
+        .model-info > div {
+          padding: 0.25rem 0;
+        }
+
+        .model-info strong {
+          font-weight: 600;
+          color: #374151;
+          margin-right: 0.5rem;
         }
       `}</style>
     </div>

@@ -184,6 +184,8 @@ impl BlockBuilder {
             ghostdag_params: GhostDagParams::default(),
             transactions,
             signature: Signature::new([1; 64]), // Placeholder signature
+            embedded_models: vec![], // Empty for non-genesis blocks
+            required_pins: vec![],   // Empty for non-genesis blocks
         };
 
         // Calculate block hash

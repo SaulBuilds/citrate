@@ -36,10 +36,10 @@ interface ThemeProviderProps {
  * Manages theme state, persistence, and application
  */
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  // Load theme mode from storage, default to 'system'
+  // Load theme mode from storage, default to 'dark'
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
     const stored = getStorageItem(StorageKeys.THEME);
-    return stored || 'system';
+    return stored || 'dark';
   });
 
   // Resolve current theme (light or dark)

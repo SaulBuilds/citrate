@@ -28,6 +28,10 @@ primitive-types = "0.12"
 hex = "0.4"
 chrono = "0.4"
 
+# GGUF inference dependencies
+dirs = "5.0"
+num_cpus = "1.16"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"

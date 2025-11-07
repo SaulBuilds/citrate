@@ -22,7 +22,9 @@ pruning = false
 keep_blocks = 100000
 
 [mining]
-enabled = true
-coinbase = "0000000000000000000000000000000000000000000000000000000000000000"
+# Disabled to let GUI users mine and earn all rewards
+# Re-enable this if you want the testnet node to also compete for blocks
+enabled = false
+coinbase = "4E2380b2f63B2Af3B270611cE779e1Db4CcA64c6000000000000000000000000"
 target_block_time = 2
 min_gas_price = 1000000000

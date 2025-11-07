@@ -340,6 +340,8 @@ impl BlockProducer {
             ghostdag_params: citrate_consensus::types::GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         let blue_set = self.ghostdag.calculate_blue_set(&temp_block).await?;
@@ -403,6 +405,8 @@ impl BlockProducer {
             ghostdag_params: self.ghostdag.params().clone(),
             transactions,
             signature: Signature::new([1; 64]), // Dummy signature for devnet
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Process economics if available, otherwise use basic rewards
@@ -583,6 +587,8 @@ impl BlockProducer {
             ghostdag_params: self.ghostdag.params().clone(),
             transactions: vec![],
             signature: Signature::new([0; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Execute each transaction

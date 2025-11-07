@@ -20,6 +20,8 @@ mod artifact;
 mod config;
 mod genesis;
 mod inference;
+mod model_manager;
+mod model_verifier;
 mod producer;
 
 use config::NodeConfig;
@@ -94,6 +96,46 @@ enum Commands {
 
     /// Generate a new keypair for signing
     Keygen,
+
+    /// Manage AI models (download, pin, list)
+    Model {
+        #[command(subcommand)]
+        command: ModelCommands,
+    },
+
+    /// Show genesis block information
+    GenesisInfo,
+}
+
+#[derive(Subcommand)]
+enum ModelCommands {
+    /// List all pinned models
+    List,
+
+    /// Show status of a specific model
+    Status {
+        /// IPFS CID of the model
+        cid: String,
+    },
+
+    /// Manually pin a model by CID
+    Pin {
+        /// IPFS CID of the model to pin
+        cid: String,
+    },
+
+    /// Unpin a model by CID
+    Unpin {
+        /// IPFS CID of the model to unpin
+        cid: String,
+    },
+
+    /// Automatically pin all required models from genesis
+    AutoPin {
+        /// Data directory
+        #[arg(short, long, value_name = "DIR")]
+        data_dir: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -119,12 +161,21 @@ async fn main() -> Result<()> {
             generate_keypair();
             return Ok(());
         }
+        Some(Commands::Model { command }) => {
+            handle_model_command(command, cli.data_dir.clone()).await?;
+            return Ok(());
+        }
+        Some(Commands::GenesisInfo) => {
+            show_genesis_info()?;
+            return Ok(());
+        }
         None => {
             // Run normal node
         }
     }
 
     // Load or create config
+    let has_config_file = cli.config.is_some();
     let config = if let Some(config_path) = cli.config {
         NodeConfig::from_file(&config_path)?
     } else {
@@ -155,7 +206,13 @@ async fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Invalid RPC address: {}", e))?;
     }
     config.network.max_peers = cli.max_peers;
-    config.chain.chain_id = cli.chain_id;
+
+    // Only override chain_id if no config file was provided
+    // This allows config file to set chain_id when using --config flag
+    if !has_config_file {
+        // No config file provided, use CLI arg (or its default)
+        config.chain.chain_id = cli.chain_id;
+    }
 
     if let Some(coinbase) = cli.coinbase {
         config.mining.coinbase = coinbase;
@@ -200,6 +257,129 @@ async fn main() -> Result<()> {
 
     // Start node
     start_node(config).await
+}
+
+async fn handle_model_command(command: ModelCommands, data_dir: Option<PathBuf>) -> Result<()> {
+    use model_manager::{ModelManager, ModelManagerConfig};
+
+    let models_dir = data_dir.clone()
+        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".citrate"))
+        .join("models");
+
+    let config = ModelManagerConfig {
+        models_dir: models_dir.clone(),
+        ..Default::default()
+    };
+
+    let manager = ModelManager::new(config).await
+        .map_err(|e| anyhow::anyhow!("Failed to create model manager: {}", e))?;
+
+    match command {
+        ModelCommands::List => {
+            info!("Fetching list of pinned models...");
+            let models = manager.list_pinned_models().await;
+
+            if models.is_empty() {
+                println!("No models currently pinned.");
+                println!("Run 'citrate model auto-pin' to automatically pin required models.");
+            } else {
+                println!("\nPinned Models:");
+                println!("{:-<100}", "");
+                for model in models {
+                    println!("Model ID: {}", model.model_id);
+                    println!("CID:      {}", model.cid);
+                    println!("Size:     {} MB", model.size_bytes / 1_000_000);
+                    println!("Path:     {}", model.file_path.display());
+                    println!("Status:   {:?}", model.status);
+                    println!("{:-<100}", "");
+                }
+            }
+        }
+
+        ModelCommands::Status { cid } => {
+            info!("Checking status of model: {}", cid);
+            match manager.get_model_status(&cid).await {
+                Some(status) => {
+                    println!("Model CID: {}", cid);
+                    println!("Status: {:?}", status);
+
+                    if let Some(path) = manager.get_model_path(&cid).await {
+                        println!("Path: {}", path.display());
+                    }
+                }
+                None => {
+                    println!("Model {} is not pinned.", cid);
+                    println!("Run 'citrate model pin {}' to pin it.", cid);
+                }
+            }
+        }
+
+        ModelCommands::Pin { cid } => {
+            println!("Manually pinning model {} is not yet implemented.", cid);
+            println!("Please use 'citrate model auto-pin' to pin required models from genesis.");
+        }
+
+        ModelCommands::Unpin { cid } => {
+            info!("Unpinning model: {}", cid);
+            manager.unpin_model(&cid).await
+                .map_err(|e| anyhow::anyhow!("Failed to unpin model: {}", e))?;
+            println!("Successfully unpinned model {}", cid);
+        }
+
+        ModelCommands::AutoPin { data_dir: cmd_data_dir } => {
+            let data_dir = cmd_data_dir
+                .or(data_dir)
+                .unwrap_or_else(|| dirs::home_dir().unwrap().join(".citrate"));
+
+            info!("Initializing genesis to get required models...");
+
+            // Load genesis config to get required models
+            let genesis_config = GenesisConfig {
+                timestamp: 0,
+                chain_id: 1337,
+                initial_accounts: vec![],
+            };
+
+            let genesis_block = genesis::create_genesis_block(&genesis_config);
+
+            if genesis_block.required_pins.is_empty() {
+                println!("No required models found in genesis block.");
+                return Ok(());
+            }
+
+            println!("\nRequired Models from Genesis:");
+            for model in &genesis_block.required_pins {
+                println!("  - {} (CID: {}, Size: {} MB)",
+                    model.model_id.0,
+                    model.ipfs_cid,
+                    model.size_bytes / 1_000_000
+                );
+            }
+
+            println!("\nChecking IPFS daemon...");
+            if let Err(e) = manager.check_ipfs_daemon().await {
+                eprintln!("Error: {}", e);
+                println!("\nPlease ensure IPFS is installed and running:");
+                println!("  1. Install IPFS: https://docs.ipfs.tech/install/");
+                println!("  2. Start daemon: ipfs daemon");
+                return Err(anyhow::anyhow!("IPFS daemon not available"));
+            }
+
+            println!("IPFS daemon is running ✓\n");
+            println!("Starting automatic model pinning...");
+            println!("This may take a while for large models (up to {} MB total)\n",
+                genesis_block.required_pins.iter().map(|m| m.size_bytes).sum::<u64>() / 1_000_000
+            );
+
+            manager.auto_pin_required_models(&genesis_block.required_pins).await
+                .map_err(|e| anyhow::anyhow!("Failed to auto-pin models: {}", e))?;
+
+            println!("\n✓ All required models have been pinned successfully!");
+            println!("Models stored in: {}", models_dir.display());
+        }
+    }
+
+    Ok(())
 }
 
 async fn init_chain(chain_id: u64) -> Result<()> {
@@ -276,6 +456,76 @@ fn generate_keypair() {
     println!("New keypair generated:");
     println!("Private key: {}", hex::encode(signing_key.to_bytes()));
     println!("Public key:  {}", hex::encode(verifying_key.to_bytes()));
+}
+
+fn show_genesis_info() -> Result<()> {
+    println!("=========================================");
+    println!("Genesis Block Information");
+    println!("=========================================");
+    println!();
+
+    info!("Creating genesis block...");
+    let genesis_config = genesis::GenesisConfig {
+        timestamp: 0,
+        chain_id: 1337,
+        initial_accounts: vec![],
+    };
+
+    let genesis = genesis::create_genesis_block(&genesis_config);
+
+    println!("Block Details:");
+    println!("  Height: {}", genesis.header.height);
+    println!("  Timestamp: {}", genesis.header.timestamp);
+    println!("  Chain ID: {}", genesis_config.chain_id);
+    println!("  Block Hash: {}", hex::encode(genesis.header.block_hash.as_bytes()));
+    println!();
+
+    // Embedded models
+    println!("Embedded Models ({}):", genesis.embedded_models.len());
+    let mut total_embedded_size = 0u64;
+    for model in &genesis.embedded_models {
+        let size_bytes = model.size_bytes();
+        let size_mb = size_bytes as f64 / (1024.0 * 1024.0);
+        total_embedded_size += size_bytes as u64;
+        println!("  - Model ID: {}", model.model_id);
+        println!("    Type: {:?}", model.model_type);
+        println!("    Size: {:.2} MB ({} bytes)", size_mb, size_bytes);
+        println!("    Metadata: {} v{}", model.metadata.name, model.metadata.version);
+        println!();
+    }
+
+    let total_embedded_mb = total_embedded_size as f64 / (1024.0 * 1024.0);
+    println!("Total Embedded Size: {:.2} MB ({} bytes)", total_embedded_mb, total_embedded_size);
+    println!();
+
+    // Required pins (IPFS models)
+    println!("Required IPFS Pins ({}):", genesis.required_pins.len());
+    let mut total_ipfs_size = 0u64;
+    for pin in &genesis.required_pins {
+        let size_mb = pin.size_bytes as f64 / (1024.0 * 1024.0);
+        let size_gb = size_mb / 1024.0;
+        total_ipfs_size += pin.size_bytes;
+
+        println!("  - Model ID: {}", pin.model_id);
+        println!("    IPFS CID: {}", pin.ipfs_cid);
+        println!("    Size: {:.2} GB ({:.2} MB)", size_gb, size_mb);
+        println!("    SHA256: {}", hex::encode(pin.sha256_hash.as_bytes()));
+        println!();
+    }
+
+    let total_ipfs_gb = total_ipfs_size as f64 / (1024.0 * 1024.0 * 1024.0);
+    println!("Total IPFS Required: {:.2} GB", total_ipfs_gb);
+    println!();
+
+    // Overall summary
+    println!("=========================================");
+    println!("Summary:");
+    println!("  Embedded in genesis: {:.2} MB", total_embedded_mb);
+    println!("  Required to pin: {:.2} GB", total_ipfs_gb);
+    println!("  Total AI models: {} embedded + {} IPFS", genesis.embedded_models.len(), genesis.required_pins.len());
+    println!("=========================================");
+
+    Ok(())
 }
 
 async fn start_node(config: NodeConfig) -> Result<()> {

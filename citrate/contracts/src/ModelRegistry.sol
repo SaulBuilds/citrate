@@ -328,7 +328,46 @@ contract ModelRegistry is IModelRegistry, AccessControl, ReentrancyGuard {
         Model storage model = models[modelHash];
         return model.owner == user || modelPermissions[modelHash][user];
     }
-    
+
+    /**
+     * @notice Get all model hashes
+     * @return Array of all model hashes
+     */
+    function getAllModelHashes() external view returns (bytes32[] memory) {
+        return allModelHashes;
+    }
+
+    /**
+     * @notice Get basic info for multiple models (for UI listing)
+     * @param modelHashes Array of model hashes to fetch
+     * @return names Model names
+     * @return frameworks Model frameworks
+     * @return prices Inference prices
+     * @return activeStates Active status for each model
+     */
+    function getModelsInfo(bytes32[] calldata modelHashes) external view returns (
+        string[] memory names,
+        string[] memory frameworks,
+        uint256[] memory prices,
+        bool[] memory activeStates
+    ) {
+        uint256 length = modelHashes.length;
+        names = new string[](length);
+        frameworks = new string[](length);
+        prices = new uint256[](length);
+        activeStates = new bool[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            Model storage model = models[modelHashes[i]];
+            names[i] = model.name;
+            frameworks[i] = model.framework;
+            prices[i] = model.inferencePrice;
+            activeStates[i] = model.isActive;
+        }
+
+        return (names, frameworks, prices, activeStates);
+    }
+
     // Internal functions for precompile interaction
     
     function _registerWithPrecompile(bytes32 modelHash, string memory ipfsCID) internal {

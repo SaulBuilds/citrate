@@ -35,19 +35,67 @@ export const DAGVisualization: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await dagService.getData(100);
-      setDagData(data);
-      // If a focus hash is set, try to focus it
+
       try {
-        const focus = localStorage.getItem('dag_focus_hash');
-        if (focus && data && data.nodes.length > 0) {
-          const n = data.nodes.find(n => n.hash.toLowerCase() === focus.toLowerCase());
-          if (n) {
-            setSelectedNode(n);
-            dagService.getBlockDetails(n.hash).then(setBlockDetails).catch(() => setBlockDetails(null));
+        // Try to get DAG data from embedded node
+        const data = await dagService.getData(100);
+        setDagData(data);
+
+        // If a focus hash is set, try to focus it
+        try {
+          const focus = localStorage.getItem('dag_focus_hash');
+          if (focus && data && data.nodes.length > 0) {
+            const n = data.nodes.find(n => n.hash.toLowerCase() === focus.toLowerCase());
+            if (n) {
+              setSelectedNode(n);
+              dagService.getBlockDetails(n.hash).then(setBlockDetails).catch(() => setBlockDetails(null));
+            }
           }
+        } catch {}
+      } catch (dagError) {
+        // Fallback: use RPC to create simple block list for external connections
+        console.log('DAG service unavailable (external RPC mode), using block list fallback');
+        const { invoke } = await import('@tauri-apps/api/core');
+
+        try {
+          const status: any = await invoke('get_status');
+          const blockHeight = status.block_height || 0;
+
+          // Create mock DAG data from recent blocks
+          const nodes: DAGNode[] = [];
+          const startHeight = Math.max(0, blockHeight - 20);
+
+          for (let i = startHeight; i <= blockHeight; i++) {
+            nodes.push({
+              hash: `block_${i}`,
+              height: i,
+              timestamp: Date.now() - ((blockHeight - i) * 2000),
+              parents: i > 0 ? [`block_${i-1}`] : [],
+              selected_parent: i > 0 ? `block_${i-1}` : null,
+              blue_score: i,
+              is_blue: true,
+              tx_count: 0
+            });
+          }
+
+          setDagData({
+            nodes: nodes.reverse(),
+            edges: [],
+            statistics: {
+              totalBlocks: blockHeight + 1,
+              maxHeight: blockHeight,
+              currentTips: 1,
+              blueBlocks: blockHeight + 1,
+              redBlocks: 0,
+              averageBlueScore: blockHeight / 2
+            }
+          });
+
+          setError('Using external RPC - showing recent blocks (DAG visualization unavailable)');
+        } catch (rpcError) {
+          throw dagError; // Re-throw original error if fallback also fails
         }
-      } catch {}
+      }
     } catch (err: any) {
       console.error('Failed to load DAG data:', err);
       setError(err.toString());

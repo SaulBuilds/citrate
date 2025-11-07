@@ -84,10 +84,10 @@ export const lightTheme: Theme = {
  * Dark Theme
  */
 export const darkTheme: Theme = {
-  // Backgrounds
-  bgPrimary: '#1a1a1a',
-  bgSecondary: '#242424',
-  bgTertiary: '#2d2d2d',
+  // Backgrounds - Pure black for better contrast
+  bgPrimary: '#000000',
+  bgSecondary: '#0a0a0a',
+  bgTertiary: '#1a1a1a',
 
   // Text
   textPrimary: '#ffffff',

@@ -159,6 +159,14 @@ pub struct Block {
     pub ghostdag_params: GhostDagParams,
     pub transactions: Vec<Transaction>,
     pub signature: Signature,
+
+    /// AI models embedded in genesis block only (empty for all other blocks)
+    #[serde(default)]
+    pub embedded_models: Vec<EmbeddedModel>,
+
+    /// Required model pins (genesis block only, empty for all other blocks)
+    #[serde(default)]
+    pub required_pins: Vec<RequiredModel>,
 }
 
 impl Block {
@@ -263,6 +271,169 @@ impl Transaction {
         // Combine type weight with gas price for final priority
         (type_weight * 1_000_000) + self.gas_price
     }
+}
+
+// ============================================================================
+// AI Model Types for Genesis Block (Hybrid Architecture)
+// ============================================================================
+
+/// Unique identifier for AI models
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ModelId(pub String);
+
+impl ModelId {
+    pub fn from_name(name: &str) -> Self {
+        Self(name.to_string())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ModelId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Type of AI model
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModelType {
+    /// Embedding model for semantic search
+    Embeddings,
+    /// Small language model (< 1B params)
+    TinyLLM,
+    /// General purpose LLM
+    GeneralLLM,
+    /// Code-specialized model
+    CodeLLM,
+    /// Vision-language model
+    VisionLLM,
+    /// Diffusion model for image generation
+    Diffusion,
+}
+
+/// Metadata about an AI model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelMetadata {
+    /// Human-readable name
+    pub name: String,
+    /// Version string (e.g., "1.0.0")
+    pub version: String,
+    /// Context length in tokens
+    pub context_length: u32,
+    /// Embedding dimension (for embedding models)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_dim: Option<u32>,
+    /// License (MIT, Apache 2.0, Llama 3.1, etc.)
+    pub license: String,
+    /// Model framework (GGUF, SafeTensors, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub framework: Option<String>,
+}
+
+/// Model embedded directly in genesis block
+/// These models are stored in-block and always available
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedModel {
+    /// Unique model identifier
+    pub model_id: ModelId,
+    /// Type of model
+    pub model_type: ModelType,
+    /// Raw model weights (GGUF format)
+    pub weights: Vec<u8>,
+    /// Model metadata
+    pub metadata: ModelMetadata,
+}
+
+impl EmbeddedModel {
+    /// Get the size of the model in bytes
+    pub fn size_bytes(&self) -> usize {
+        self.weights.len()
+    }
+
+    /// Calculate SHA256 hash of model weights
+    pub fn weights_hash(&self) -> Hash {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&self.weights);
+        let result = hasher.finalize();
+        Hash::from_bytes(&result)
+    }
+}
+
+/// Model required to be pinned on IPFS by validators
+/// These models are verified via consensus but stored off-chain
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequiredModel {
+    /// Unique model identifier
+    pub model_id: ModelId,
+    /// IPFS content identifier
+    pub ipfs_cid: String,
+    /// SHA256 hash for verification
+    pub sha256_hash: Hash,
+    /// Size in bytes
+    pub size_bytes: u64,
+    /// Whether validators MUST pin this model
+    pub must_pin: bool,
+    /// Penalty in LATT tokens for not pinning
+    pub slash_penalty: u128,
+    /// Grace period in hours for new validators
+    #[serde(default = "default_grace_period")]
+    pub grace_period_hours: u64,
+}
+
+fn default_grace_period() -> u64 {
+    24 // 24 hours default
+}
+
+impl RequiredModel {
+    /// Create a new required model entry
+    pub fn new(
+        model_id: ModelId,
+        ipfs_cid: String,
+        sha256_hash: Hash,
+        size_bytes: u64,
+        slash_penalty: u128,
+    ) -> Self {
+        Self {
+            model_id,
+            ipfs_cid,
+            sha256_hash,
+            size_bytes,
+            must_pin: true,
+            slash_penalty,
+            grace_period_hours: default_grace_period(),
+        }
+    }
+}
+
+/// Status of a validator's model pin
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PinStatus {
+    /// Model is pinned and verified
+    Pinned,
+    /// Model is not pinned
+    Unpinned,
+    /// Pin status not yet verified
+    Unverified,
+}
+
+/// Record of a validator's pin check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorPinCheck {
+    /// Validator's public key
+    pub validator: PublicKey,
+    /// Model CID being checked
+    pub model_cid: String,
+    /// Last check timestamp
+    pub last_check: u64,
+    /// Current status
+    pub status: PinStatus,
+    /// Last challenge-response proof
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_proof: Option<Vec<u8>>,
 }
 
 /// Blue set information for a block

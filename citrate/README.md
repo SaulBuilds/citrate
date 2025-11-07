@@ -168,8 +168,57 @@ IPFS environment variables used by the node:
 - `CITRATE_IPFS_API` (single provider) or `CITRATE_IPFS_PROVIDERS` (comma‑separated) for artifact add/pin/status.
   - Example: `export CITRATE_IPFS_API=http://127.0.0.1:5001`
 
+### 3. AI Model Management
 
-### 3. Network Deployment Options
+Citrate requires AI models to be pinned locally for inference. The genesis block includes:
+- **BGE-M3 Embeddings** (437 MB) - Embedded directly in genesis for semantic search
+- **Mistral 7B Instruct v0.3** (4.3 GB) - Required IPFS pin for LLM inference
+
+#### Automatic Model Pinning (Recommended)
+
+The easiest way to set up AI models is using the automated CLI:
+
+```bash
+# Ensure IPFS is running
+ipfs daemon &
+
+# Automatically download and pin all required models
+./target/release/citrate model auto-pin
+
+# This will:
+# ✓ Download Mistral 7B from IPFS (4.3 GB)
+# ✓ Verify SHA256 integrity
+# ✓ Pin the model in IPFS
+# ✓ Store locally at ~/.citrate/models/
+```
+
+#### Model Management Commands
+
+```bash
+# List all pinned models
+./target/release/citrate model list
+
+# Check specific model status
+./target/release/citrate model status <CID>
+
+# Unpin a model (if needed)
+./target/release/citrate model unpin <CID>
+```
+
+#### Models Included in Genesis
+
+| Model | Size | Type | Storage | Purpose |
+|-------|------|------|---------|---------|
+| BGE-M3 | 437 MB | Embeddings | Genesis Block | Semantic search, text embeddings |
+| Mistral 7B v0.3 | 4.3 GB | LLM | IPFS Required Pin | Chat, instruction following, code generation |
+
+**Model Details:**
+- **Format:** GGUF Q4_K_M quantization for optimal size/quality
+- **License:** Apache 2.0 (fully open source)
+- **Verification:** SHA256 hash verification on download
+- **Auto-Update:** Validators must maintain pins or face slashing
+
+### 4. Network Deployment Options
 
 #### Option A: Join Existing Testnet (Recommended for Development)
 

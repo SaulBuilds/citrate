@@ -20,6 +20,56 @@ npm install citrate-js
 yarn add citrate-js
 ```
 
+## Prerequisites
+
+Before using the SDK, ensure you have a running Citrate node with AI models pinned:
+
+### 1. Install Citrate Node
+
+```bash
+# Clone and build the node
+git clone https://github.com/citrate-ai/citrate.git
+cd citrate
+cargo build --release
+```
+
+### 2. Setup IPFS
+
+```bash
+# Install and start IPFS
+brew install ipfs  # macOS
+ipfs init
+ipfs daemon &
+```
+
+### 3. Pin Required AI Models
+
+Citrate requires AI models to be pinned for inference. Use the automated CLI:
+
+```bash
+# Automatically download and pin all required models (4.3 GB)
+./target/release/citrate model auto-pin
+
+# Verify models are pinned
+./target/release/citrate model list
+```
+
+**Models included:**
+- **BGE-M3** (437 MB): Embeddings for semantic search
+- **Mistral 7B** (4.3 GB): LLM for chat and completions
+
+### 4. Start the Node
+
+```bash
+# Run local devnet
+./target/release/citrate devnet
+
+# Or connect to testnet
+./target/release/citrate --config config/testnet.toml
+```
+
+Your node will be available at `http://localhost:8545` for the SDK to connect to.
+
 ## Quick Start
 
 ### Basic Usage

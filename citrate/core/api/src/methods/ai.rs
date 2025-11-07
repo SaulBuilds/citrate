@@ -732,14 +732,59 @@ impl AiApi {
         // Generate a temporary response ID
         let response_id = format!("chatcmpl-{}", chrono::Utc::now().timestamp_millis());
 
-        // For now, return a structured response with mock data
-        // The MCP layer is ready to execute when models are loaded
-        let generated_text = format!(
-            "I'm Claude Code, the AI assistant for Citrate blockchain. \
-             Your request is being processed through the decentralized inference network. \
-             Model: {} | Prompt tokens: {}",
-            request.model, prompt_tokens
-        );
+        // Execute actual inference using GGUF engine directly
+        // This is a pragmatic approach for testing - use model files from ./models/
+        use citrate_mcp::gguf_engine::{GGUFEngine, GGUFEngineConfig};
+        use std::path::PathBuf;
+
+        // Map model name to file path
+        let model_path = match request.model.as_str() {
+            "mistral-7b-instruct-v0.3" | "mistral-7b" => {
+                PathBuf::from("./models/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf")
+            }
+            "bge-m3" => {
+                PathBuf::from("./models/bge-m3-q4.gguf")
+            }
+            _ => {
+                // Try to find model file by name
+                PathBuf::from(format!("./models/{}.gguf", request.model))
+            }
+        };
+
+        // Check if model file exists
+        if !model_path.exists() {
+            return Err(ApiError::InternalError(format!(
+                "Model file not found: {}. Available models: mistral-7b-instruct-v0.3, bge-m3",
+                model_path.display()
+            )));
+        }
+
+        // Create GGUF engine for inference
+        let gguf_config = GGUFEngineConfig {
+            llama_cpp_path: PathBuf::from(
+                std::env::var("LLAMA_CPP_PATH")
+                    .unwrap_or_else(|_| "/Users/soleilklosowski/llama.cpp".to_string())
+            ),
+            models_dir: PathBuf::from(".citrate/models"),
+            context_size: 4096,
+            threads: 4,
+        };
+        let gguf_engine = GGUFEngine::new(gguf_config)
+            .map_err(|e| ApiError::InternalError(format!("Failed to initialize GGUF engine: {}", e)))?;
+
+        // Generate text using llama.cpp
+        let generated_text = gguf_engine
+            .generate_text(
+                &model_path,
+                &prompt,
+                request.max_tokens.unwrap_or(512) as usize,
+                request.temperature.unwrap_or(0.7),
+            )
+            .await
+            .map_err(|e| ApiError::InternalError(format!("GGUF inference failed: {}", e)))?;
+
+        // Estimate actual token counts from the response
+        let completion_tokens = (generated_text.len() / 4) as u32;
 
         Ok(ChatCompletionResponse {
             id: response_id,
@@ -756,8 +801,8 @@ impl AiApi {
             }],
             usage: TokenUsage {
                 prompt_tokens,
-                completion_tokens: 50, // Estimated
-                total_tokens: prompt_tokens + 50,
+                completion_tokens,
+                total_tokens: prompt_tokens + completion_tokens,
             },
         })
     }

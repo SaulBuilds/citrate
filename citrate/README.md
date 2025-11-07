@@ -168,55 +168,96 @@ IPFS environment variables used by the node:
 - `CITRATE_IPFS_API` (single provider) or `CITRATE_IPFS_PROVIDERS` (comma‑separated) for artifact add/pin/status.
   - Example: `export CITRATE_IPFS_API=http://127.0.0.1:5001`
 
-### 3. AI Model Management
+### 3. AI Model Management & llama.cpp Setup
 
-Citrate requires AI models to be pinned locally for inference. The genesis block includes:
+Citrate uses **llama.cpp** for real LLM inference with GGUF models. The genesis block includes:
 - **BGE-M3 Embeddings** (437 MB) - Embedded directly in genesis for semantic search
-- **Mistral 7B Instruct v0.3** (4.3 GB) - Required IPFS pin for LLM inference
+- **Mistral 7B Instruct v0.3** (4.07 GB) - GGUF model for LLM inference
 
-#### Automatic Model Pinning (Recommended)
-
-The easiest way to set up AI models is using the automated CLI:
+#### Step 1: Install llama.cpp
 
 ```bash
-# Ensure IPFS is running
-ipfs daemon &
+# Clone and build llama.cpp with Metal GPU support
+cd ~
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
 
-# Automatically download and pin all required models
-./target/release/citrate model auto-pin
+# Build with Metal acceleration (Apple Silicon)
+rm -rf build && mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DLLAMA_METAL=ON
+make -j8 llama-cli llama-embedding
 
-# This will:
-# ✓ Download Mistral 7B from IPFS (4.3 GB)
-# ✓ Verify SHA256 integrity
-# ✓ Pin the model in IPFS
-# ✓ Store locally at ~/.citrate/models/
+# Set environment variable (add to ~/.zshrc or ~/.bashrc)
+export LLAMA_CPP_PATH="$HOME/llama.cpp"
+
+# Verify installation
+~/llama.cpp/build/bin/llama-cli --version
 ```
 
-#### Model Management Commands
+**Build time:** ~2-5 minutes on Apple Silicon
+
+#### Step 2: Download AI Models
 
 ```bash
-# List all pinned models
-./target/release/citrate model list
+# Create models directory
+mkdir -p ~/Downloads/citrate/citrate/models
+cd ~/Downloads/citrate/citrate/models
 
-# Check specific model status
-./target/release/citrate model status <CID>
+# Download Mistral 7B Instruct v0.3 (4.07 GB)
+wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf
 
-# Unpin a model (if needed)
-./target/release/citrate model unpin <CID>
+# Or using curl
+curl -L -o Mistral-7B-Instruct-v0.3-Q4_K_M.gguf \
+  https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf
+
+# Verify download
+ls -lh Mistral-7B-Instruct-v0.3-Q4_K_M.gguf  # Should show ~4.07 GB
 ```
 
-#### Models Included in Genesis
+**Download time:** 5-15 minutes depending on connection speed
+
+#### Step 3: Test Inference
+
+```bash
+# Start devnet node (from citrate/ directory)
+./target/release/citrate --data-dir .citrate-devnet devnet
+
+# In another terminal, test LLM inference
+curl -X POST http://localhost:8545 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "citrate_chatCompletion",
+    "params": [{
+      "model": "mistral-7b-instruct-v0.3",
+      "messages": [
+        {"role": "user", "content": "What is 2 + 2?"}
+      ],
+      "max_tokens": 50,
+      "temperature": 0.3
+    }],
+    "id": 1
+  }' | jq -r '.result.choices[0].message.content'
+
+# Expected output: "The sum of 2 plus 2 is 4."
+```
+
+**Inference latency:** ~2-5s on Apple M2 Max
+
+📚 **Detailed Setup Guide:** See [docs/guides/ai-inference-setup.md](docs/guides/ai-inference-setup.md) for troubleshooting, performance benchmarks, and advanced configuration.
+
+#### Models Included
 
 | Model | Size | Type | Storage | Purpose |
 |-------|------|------|---------|---------|
 | BGE-M3 | 437 MB | Embeddings | Genesis Block | Semantic search, text embeddings |
-| Mistral 7B v0.3 | 4.3 GB | LLM | IPFS Required Pin | Chat, instruction following, code generation |
+| Mistral 7B v0.3 | 4.07 GB | LLM | Local GGUF | Chat, instruction following, code generation |
 
 **Model Details:**
 - **Format:** GGUF Q4_K_M quantization for optimal size/quality
+- **Inference:** Powered by llama.cpp with Metal GPU acceleration
 - **License:** Apache 2.0 (fully open source)
-- **Verification:** SHA256 hash verification on download
-- **Auto-Update:** Validators must maintain pins or face slashing
+- **Performance:** 2-5s latency on Apple Silicon M2/M3
 
 ### 4. Network Deployment Options
 

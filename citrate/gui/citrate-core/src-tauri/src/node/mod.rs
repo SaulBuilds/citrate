@@ -1383,6 +1383,8 @@ fn create_genesis_block() -> Block {
         ghostdag_params: GhostDagParams::default(),
         transactions: vec![],
         signature: Signature::new([0u8; 64]),
+        embedded_models: vec![],
+        required_pins: vec![],
     }
 }
 
@@ -1499,6 +1501,8 @@ async fn run_block_producer(
             ghostdag_params: GhostDagParams::default(),
             transactions: txs, // Include transactions from mempool
             signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Store block

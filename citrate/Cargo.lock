@@ -1478,6 +1478,7 @@ dependencies = [
  "citrate-consensus",
  "citrate-economics",
  "citrate-execution",
+ "citrate-mcp",
  "citrate-network",
  "citrate-sequencer",
  "citrate-storage",

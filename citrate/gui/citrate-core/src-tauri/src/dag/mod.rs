@@ -423,6 +423,8 @@ impl DAGManager {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         }
     }
 }

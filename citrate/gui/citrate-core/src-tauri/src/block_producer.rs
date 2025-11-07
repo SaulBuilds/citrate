@@ -192,6 +192,8 @@ impl BlockProducer {
             ghostdag_params: GhostDagParams::default(),
             transactions,
             signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Add block to DAG
@@ -275,6 +277,8 @@ impl BlockProducer {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Add genesis to DAG and storage
@@ -347,6 +351,8 @@ impl BlockProducer {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         for tx in transactions {

@@ -24,6 +24,7 @@ citrate-network = { path = "../network" }
 citrate-execution = { path = "../execution" }
 citrate-storage = { path = "../storage" }
 citrate-economics = { path = "../economics" }
+citrate-mcp = { path = "../mcp" }
 
 # RPC Server
 jsonrpc-core = "18.0"

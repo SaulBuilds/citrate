@@ -57,6 +57,11 @@ package-lock.json
 **/models/**/*.pt
 **/models/**/*.pth
 **/models/**/*.h5
+**/models/**/*.gguf
+**/models/**/onnx/
+citrate/models/
+models/
+**/node/assets/*.gguf
 
 # Tauri bundles (covered by target/, but kept for clarity)
 **/bundle/

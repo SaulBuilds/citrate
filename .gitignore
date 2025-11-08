@@ -45,7 +45,8 @@ docs-portal/build/
 
 # Forge/Foundry deployment artifacts
 **/broadcast/
-**/cache/
+contracts/cache/
+forge-cache/
 **/script/
 **/TestContract.sol
 package-lock.json

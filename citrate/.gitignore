@@ -1,5 +1,6 @@
-# Compiler files
-cache/
+# Compiler files (Foundry/Forge)
+# Note: This is for Solidity compilation cache, not Rust source code
+# Use specific paths to avoid ignoring source code modules named 'cache'
 out/
 
 # Ignores development broadcast logs

@@ -136,7 +136,9 @@ brew install ipfs rocksdb llvm
 rustup update stable
 
 # Build all components (takes 5-10 minutes)
-cargo build --release
+# Note: The standard build does NOT embed the genesis AI model
+# This allows fast builds for contributors
+cargo build --workspace --release
 
 # Install development tools
 brew install foundry  # For smart contracts

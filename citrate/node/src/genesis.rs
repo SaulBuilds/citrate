@@ -82,8 +82,14 @@ impl Default for GenesisConfig {
 
 /// Create embedded BGE-M3 model for genesis block
 fn create_embedded_bge_m3() -> EmbeddedModel {
-    // Include BGE-M3 Q4 GGUF model (417MB)
+    // Only embed the actual model when the feature flag is enabled
+    // This allows contributors to build without downloading the 417 MB model file
+    // The genesis block is loaded from the blockchain database at runtime
+    #[cfg(feature = "embed-genesis-model")]
     const BGE_M3_Q4: &[u8] = include_bytes!("../assets/bge-m3-q4.gguf");
+
+    #[cfg(not(feature = "embed-genesis-model"))]
+    const BGE_M3_Q4: &[u8] = &[];
 
     EmbeddedModel {
         model_id: ConsensusModelId::from_name("bge-m3"),

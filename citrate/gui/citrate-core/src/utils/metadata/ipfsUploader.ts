@@ -3,20 +3,22 @@
  *
  * Handles uploading model metadata to IPFS and updating on-chain references.
  * Features:
- * - Multiple gateway support with fallbacks
+ * - Multiple gateway support with fallbacks (Pinata, local IPFS node, Web3.Storage)
  * - Exponential backoff retry logic
- * - Progress tracking
+ * - Progress tracking with stage updates
  * - Validation before upload
- * - On-chain metadata URI updates
+ * - On-chain metadata URI updates via contract calls
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import {
   IPFSMetadataFetcher,
   DEFAULT_GATEWAYS,
   DEFAULT_RETRY_CONFIG,
   RetryConfig,
 } from '../search/ipfsMetadataFetcher';
-import { EnrichedModelMetadata, ValidationResult } from '../types/reviews';
+import { EnrichedModelMetadata } from '../types/reviews';
+// ValidationResult type is imported but used in validateModelMetadata signature matching
 import { validateModelMetadata } from './validation';
 
 // ============================================================================
@@ -26,8 +28,26 @@ import { validateModelMetadata } from './validation';
 const PINATA_API_KEY = import.meta.env.VITE_PINATA_API_KEY || '';
 const PINATA_SECRET_KEY = import.meta.env.VITE_PINATA_SECRET_KEY || '';
 const PINATA_JWT = import.meta.env.VITE_PINATA_JWT || '';
+const WEB3_STORAGE_TOKEN = import.meta.env.VITE_WEB3_STORAGE_TOKEN || '';
 
 const PINATA_UPLOAD_URL = 'https://api.pinata.cloud/pinning/pinJSONToIPFS';
+const WEB3_STORAGE_UPLOAD_URL = 'https://api.web3.storage/upload';
+
+// Tauri IPFS command result types
+interface IpfsAddResult {
+  cid: string;
+  size: number;
+  name: string;
+}
+
+interface IpfsStatus {
+  running: boolean;
+  peer_id: string | null;
+  addresses: string[];
+  repo_size: number;
+  num_peers: number;
+  num_pins: number;
+}
 
 // ============================================================================
 // Types
@@ -213,18 +233,135 @@ export class IPFSUploader {
   }
 
   /**
-   * Fallback IPFS upload method (using public gateway)
+   * Fallback IPFS upload method - tries multiple backends in order:
+   * 1. Local IPFS node via Tauri
+   * 2. Web3.Storage API
+   * 3. Direct HTTP to local IPFS API
    */
   private async uploadToIPFSFallback(
     metadata: EnrichedModelMetadata
   ): Promise<string> {
-    // This is a simplified fallback - in production, you would use:
-    // - Web3.Storage (https://web3.storage/)
-    // - NFT.Storage (https://nft.storage/)
-    // - Infura IPFS API
-    // - Local IPFS node
+    const jsonContent = JSON.stringify(metadata, null, 2);
+    const contentBytes = new TextEncoder().encode(jsonContent);
 
-    throw new Error('IPFS fallback upload not configured. Please set up Pinata credentials or configure an alternative IPFS service.');
+    // Try 1: Upload via local IPFS node through Tauri commands
+    try {
+      const status = await invoke<IpfsStatus>('ipfs_status');
+      if (status.running) {
+        const result = await invoke<IpfsAddResult>('ipfs_add', {
+          data: Array.from(contentBytes),
+          name: `${metadata.name || 'model'}-metadata.json`,
+        });
+        if (result.cid) {
+          console.log('[IPFSUploader] Uploaded via local IPFS node:', result.cid);
+          // Also pin the content to ensure persistence
+          try {
+            await invoke('ipfs_pin', { cid: result.cid });
+          } catch (pinError) {
+            console.warn('[IPFSUploader] Failed to pin CID, but upload succeeded:', pinError);
+          }
+          return result.cid;
+        }
+      }
+    } catch (tauriError) {
+      console.warn('[IPFSUploader] Local IPFS via Tauri failed:', tauriError);
+    }
+
+    // Try 2: Web3.Storage if token is configured
+    if (WEB3_STORAGE_TOKEN) {
+      try {
+        const cid = await this.uploadToWeb3Storage(jsonContent);
+        console.log('[IPFSUploader] Uploaded via Web3.Storage:', cid);
+        return cid;
+      } catch (web3Error) {
+        console.warn('[IPFSUploader] Web3.Storage upload failed:', web3Error);
+      }
+    }
+
+    // Try 3: Direct HTTP to local IPFS API (in case Tauri command isn't available)
+    try {
+      const cid = await this.uploadViaLocalIPFSAPI(contentBytes);
+      console.log('[IPFSUploader] Uploaded via local IPFS HTTP API:', cid);
+      return cid;
+    } catch (localError) {
+      console.warn('[IPFSUploader] Local IPFS HTTP API failed:', localError);
+    }
+
+    // All methods failed
+    throw new Error(
+      'IPFS upload failed: No available upload method. Please either:\n' +
+      '1. Start a local IPFS node (ipfs daemon)\n' +
+      '2. Set VITE_PINATA_JWT or VITE_PINATA_API_KEY environment variables\n' +
+      '3. Set VITE_WEB3_STORAGE_TOKEN environment variable'
+    );
+  }
+
+  /**
+   * Upload to Web3.Storage API
+   */
+  private async uploadToWeb3Storage(jsonContent: string): Promise<string> {
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const formData = new FormData();
+    formData.append('file', blob, 'metadata.json');
+
+    const response = await fetch(WEB3_STORAGE_UPLOAD_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${WEB3_STORAGE_TOKEN}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Web3.Storage upload failed: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    if (!result.cid) {
+      throw new Error('Web3.Storage did not return a CID');
+    }
+
+    return result.cid;
+  }
+
+  /**
+   * Upload directly to local IPFS HTTP API
+   */
+  private async uploadViaLocalIPFSAPI(content: Uint8Array): Promise<string> {
+    const formData = new FormData();
+    const blob = new Blob([content], { type: 'application/json' });
+    formData.append('file', blob);
+
+    // Try common local IPFS API endpoints
+    const endpoints = [
+      'http://localhost:5001/api/v0/add',
+      'http://127.0.0.1:5001/api/v0/add',
+      'http://localhost:5002/api/v0/add', // Alternative port
+    ];
+
+    let lastError: Error | null = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.Hash) {
+            return result.Hash;
+          }
+        }
+      } catch (error) {
+        lastError = error as Error;
+        continue;
+      }
+    }
+
+    throw lastError || new Error('Local IPFS API not available');
   }
 
   /**
@@ -251,6 +388,9 @@ export class IPFSUploader {
 
   /**
    * Update model metadata URI on-chain
+   *
+   * Uses the `listModel` function which updates existing listings when called by the owner.
+   * This requires the current listing details to be fetched first.
    */
   async updateModelMetadataOnChain(
     modelId: string,
@@ -266,8 +406,8 @@ export class IPFSUploader {
 
     this.updateProgress(onProgress, {
       stage: 'updating',
-      message: 'Updating on-chain metadata reference...',
-      progress: 90,
+      message: 'Fetching current listing details...',
+      progress: 85,
     });
 
     try {
@@ -275,34 +415,59 @@ export class IPFSUploader {
       const { MarketplaceService } = await import('../marketplaceService');
       const marketplace = new MarketplaceService(marketplaceAddress);
 
+      // Fetch current listing to preserve existing values
+      const currentListing = await marketplace.getListing(modelId);
+
+      if (!currentListing) {
+        throw new Error(`Model ${modelId} not found in marketplace. Cannot update metadata for unlisted models.`);
+      }
+
+      // Verify ownership
+      if (currentListing.owner.toLowerCase() !== ownerAddress.toLowerCase()) {
+        throw new Error('Only the model owner can update metadata');
+      }
+
       // Construct IPFS URI
       const ipfsUri = `ipfs://${newCID}`;
 
-      // Note: The ModelMarketplace contract doesn't have a separate updateMetadata function
-      // The metadata URI is set during listing. To update metadata, the model owner would need
-      // to update their listing or we need to add a new contract function.
+      this.updateProgress(onProgress, {
+        stage: 'updating',
+        message: 'Submitting on-chain transaction...',
+        progress: 92,
+      });
 
-      // For now, we'll throw an error indicating this limitation
-      throw new Error('On-chain metadata update not yet supported. Metadata URI can only be set during initial listing. Please relist the model with the new metadata URI: ' + ipfsUri);
+      // Call listModel which will update the existing listing with new metadata URI
+      // The contract's listModel function checks if the model is already listed
+      // and calls _updateListing if so, preserving sales stats while updating metadata
+      const txHash = await marketplace.listModel(
+        {
+          modelId,
+          basePrice: currentListing.basePrice,
+          discountPrice: currentListing.discountPrice,
+          minimumBulkSize: Number(currentListing.minimumBulkSize),
+          category: currentListing.category,
+          metadataURI: ipfsUri,
+        },
+        {
+          from: ownerAddress,
+          password,
+          gasLimit: 300000,
+        }
+      );
 
-      // TODO: Once the contract adds an updateMetadata function, implement it here:
-      // const txHash = await marketplace.updateMetadata(
-      //   { modelId, metadataURI: ipfsUri },
-      //   { from: ownerAddress, password }
-      // );
-      //
-      // this.updateProgress(onProgress, {
-      //   stage: 'complete',
-      //   message: 'On-chain update complete',
-      //   progress: 100,
-      // });
-      //
-      // return txHash;
+      this.updateProgress(onProgress, {
+        stage: 'complete',
+        message: 'On-chain metadata updated successfully',
+        progress: 100,
+      });
 
+      console.log('[IPFSUploader] On-chain metadata updated. TX:', txHash);
+      return txHash;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.updateProgress(onProgress, {
         stage: 'error',
-        message: `On-chain update failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `On-chain update failed: ${errorMessage}`,
         progress: 0,
       });
       throw error;

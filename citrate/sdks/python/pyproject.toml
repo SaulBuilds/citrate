@@ -146,8 +146,17 @@ addopts = [
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
+    "integration: marks tests as integration tests (requires running node)",
     "unit: marks tests as unit tests",
+    "testnet: marks tests for testnet environment",
+    "devnet: marks tests for devnet environment",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+env = [
+    "CITRATE_RPC_URL=http://localhost:8545",
+    "CITRATE_CHAIN_ID=1337",
 ]
 
 # Coverage configuration

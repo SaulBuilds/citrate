@@ -108,17 +108,14 @@ impl BlockPropagation {
 
         // Get all peers except the sender
         let all_peers = self.peer_manager.get_all_peers();
-        let target_peers: Vec<PeerId> = all_peers
-            .iter()
-            .filter_map(|_peer| {
-                let peer_id = PeerId::new(format!("peer_{}", rand::random::<u64>())); // TODO: Get actual peer ID
-                if peer_id != *except_peer {
-                    Some(peer_id)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut target_peers: Vec<PeerId> = Vec::with_capacity(all_peers.len());
+
+        for peer in all_peers.iter() {
+            let peer_id = peer.info.read().await.id.clone();
+            if peer_id != *except_peer {
+                target_peers.push(peer_id);
+            }
+        }
 
         if !target_peers.is_empty() {
             let message = NetworkMessage::NewBlock { block };

@@ -1,6 +1,7 @@
 // citrate/core/consensus/src/chain_selection.rs
 
 use crate::dag_store::DagStore;
+use crate::finality::{FinalityError, FinalityTracker};
 use crate::ghostdag::GhostDag;
 use crate::tip_selection::TipSelector;
 use crate::types::{Block, Hash};
@@ -21,8 +22,14 @@ pub enum ChainSelectionError {
     #[error("Reorganization depth exceeded")]
     ReorgDepthExceeded,
 
+    #[error("Reorganization past finalized block: {0}")]
+    ReorgPastFinalized(Hash),
+
     #[error("DAG error: {0}")]
     DagError(String),
+
+    #[error("Finality error: {0}")]
+    FinalityError(#[from] FinalityError),
 }
 
 /// Chain state tracking
@@ -52,6 +59,8 @@ pub struct ChainSelector {
     current_chain: Arc<RwLock<ChainState>>,
     max_reorg_depth: u64,
     reorg_history: Arc<RwLock<Vec<ReorgEvent>>>,
+    /// Optional finality tracker for reorg protection
+    finality_tracker: Option<Arc<FinalityTracker>>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,7 +92,43 @@ impl ChainSelector {
             })),
             max_reorg_depth,
             reorg_history: Arc::new(RwLock::new(Vec::new())),
+            finality_tracker: None,
         }
+    }
+
+    /// Create a chain selector with finality tracking enabled
+    pub fn with_finality(
+        dag_store: Arc<DagStore>,
+        ghostdag: Arc<GhostDag>,
+        tip_selector: Arc<TipSelector>,
+        max_reorg_depth: u64,
+        finality_tracker: Arc<FinalityTracker>,
+    ) -> Self {
+        Self {
+            dag_store,
+            ghostdag,
+            _tip_selector: tip_selector,
+            current_chain: Arc::new(RwLock::new(ChainState {
+                tip: Hash::default(),
+                height: 0,
+                blue_score: 0,
+                blue_work: 0,
+                selected_chain: Vec::new(),
+            })),
+            max_reorg_depth,
+            reorg_history: Arc::new(RwLock::new(Vec::new())),
+            finality_tracker: Some(finality_tracker),
+        }
+    }
+
+    /// Set the finality tracker after construction
+    pub fn set_finality_tracker(&mut self, tracker: Arc<FinalityTracker>) {
+        self.finality_tracker = Some(tracker);
+    }
+
+    /// Get a reference to the finality tracker if present
+    pub fn finality_tracker(&self) -> Option<&Arc<FinalityTracker>> {
+        self.finality_tracker.as_ref()
     }
 
     /// Update chain selection based on new block
@@ -152,12 +197,20 @@ impl ChainSelector {
         chain.blue_score = block.header.blue_score;
         chain.blue_work = block.header.blue_work;
         chain.selected_chain.push(block.hash());
+        drop(chain);
 
         info!(
             "Extended chain to block {} at height {}",
             block.hash(),
             block.header.height
         );
+
+        // Update finality on chain extension
+        if let Some(ref tracker) = self.finality_tracker {
+            let _ = tracker
+                .update_finality(&block.hash(), block.header.height)
+                .await;
+        }
 
         Ok(())
     }
@@ -185,6 +238,20 @@ impl ChainSelector {
             return Err(ChainSelectionError::ReorgDepthExceeded);
         }
 
+        // Check finality constraints - cannot reorg past finalized blocks
+        if let Some(ref tracker) = self.finality_tracker {
+            if let Err(e) = tracker.check_reorg_allowed(&common_ancestor).await {
+                warn!(
+                    "Reorg rejected by finality tracker: {:?}",
+                    e
+                );
+                if let FinalityError::ReorgPastFinalized(hash) = e {
+                    return Err(ChainSelectionError::ReorgPastFinalized(hash));
+                }
+                return Err(ChainSelectionError::FinalityError(e));
+            }
+        }
+
         // Build new chain from common ancestor to new tip
         let new_chain = self
             .build_chain(common_ancestor, new_tip_block.hash())
@@ -193,6 +260,13 @@ impl ChainSelector {
         // Perform reorganization
         self.perform_reorg(old_tip, new_tip_block.hash(), new_chain, reorg_depth)
             .await?;
+
+        // Update finality after successful reorg
+        if let Some(ref tracker) = self.finality_tracker {
+            let _ = tracker
+                .update_finality(&new_tip_block.hash(), new_tip_block.header.height)
+                .await;
+        }
 
         Ok(true)
     }
@@ -449,6 +523,8 @@ mod tests {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         dag_store.store_block(genesis.clone()).await.unwrap();

@@ -20,6 +20,8 @@ mod artifact;
 mod config;
 mod genesis;
 mod inference;
+pub mod logging;
+pub mod metrics;
 mod model_manager;
 mod model_verifier;
 mod producer;
@@ -141,10 +143,21 @@ enum ModelCommands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("citrate=info".parse()?))
-        .init();
+    // Initialize structured logging
+    // Uses LOG_FORMAT env var (json, pretty, compact) and RUST_LOG for levels
+    let log_config = if std::env::var("LOG_FORMAT").map(|f| f == "json").unwrap_or(false) {
+        logging::LogConfig::production()
+    } else {
+        logging::LogConfig::from_env()
+    };
+
+    if let Err(e) = logging::init_logging(&log_config) {
+        // Fallback to basic logging if structured logging fails
+        eprintln!("Warning: Failed to initialize structured logging: {}", e);
+        tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env().add_directive("citrate=info".parse()?))
+            .init();
+    }
 
     let cli = Cli::parse();
 
@@ -533,6 +546,18 @@ async fn start_node(config: NodeConfig) -> Result<()> {
     info!("Starting Citrate node...");
     info!("Chain ID: {}", config.chain.chain_id);
     info!("Data directory: {:?}", config.storage.data_dir);
+
+    // Initialize metrics server
+    let metrics_addr = std::env::var("CITRATE_METRICS_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:9090".to_string());
+    if let Err(e) = metrics::init_metrics(&metrics_addr) {
+        warn!("Failed to initialize metrics server: {}", e);
+    } else {
+        info!("Metrics server started on http://{}/metrics", metrics_addr);
+    }
+
+    // Record node start time for uptime tracking
+    let node_start_time = std::time::Instant::now();
 
     // Create storage
     let storage = Arc::new(StorageManager::new(

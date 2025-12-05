@@ -635,6 +635,96 @@ export class MarketplaceService {
   formatAverageRating(averageRating: string): number {
     return Number(averageRating) / 100;
   }
+
+  // ============================================================================
+  // Review Voting & Reporting (Prepared for future contract support)
+  // ============================================================================
+
+  /**
+   * Vote on a review (helpful/unhelpful)
+   * Note: Contract support pending. Currently uses local state only.
+   */
+  async voteOnReview(
+    params: {
+      reviewId: string;
+      isHelpful: boolean;
+    },
+    options: {
+      from: string;
+      password: string;
+      gasLimit?: number;
+    }
+  ): Promise<string> {
+    // When contract support is added, uncomment:
+    // const result = await sendContractTransaction({
+    //   from: options.from,
+    //   contractAddress: this.contractAddress,
+    //   functionName: 'voteOnReview',
+    //   inputs: [
+    //     { name: 'reviewId', type: 'bytes32' },
+    //     { name: 'isHelpful', type: 'bool' },
+    //   ],
+    //   args: [params.reviewId, params.isHelpful],
+    //   password: options.password,
+    //   gasLimit: options.gasLimit || 100000,
+    // });
+    // return result.txHash;
+
+    // For now, return a mock transaction hash and handle locally
+    console.log('[MarketplaceService] voteOnReview (local only):', params);
+    return `local-vote-${Date.now()}`;
+  }
+
+  /**
+   * Report a review for moderation
+   * Note: Contract support pending. Currently uses local state only.
+   */
+  async reportReview(
+    params: {
+      reviewId: string;
+      reason: string;
+    },
+    options: {
+      from: string;
+      password: string;
+      gasLimit?: number;
+    }
+  ): Promise<string> {
+    // When contract support is added, uncomment:
+    // const result = await sendContractTransaction({
+    //   from: options.from,
+    //   contractAddress: this.contractAddress,
+    //   functionName: 'reportReview',
+    //   inputs: [
+    //     { name: 'reviewId', type: 'bytes32' },
+    //     { name: 'reason', type: 'string' },
+    //   ],
+    //   args: [params.reviewId, params.reason],
+    //   password: options.password,
+    //   gasLimit: options.gasLimit || 150000,
+    // });
+    // return result.txHash;
+
+    // For now, return a mock transaction hash and handle locally
+    console.log('[MarketplaceService] reportReview (local only):', params);
+    return `local-report-${Date.now()}`;
+  }
+
+  /**
+   * Get vote status for a review by user
+   * Note: Contract support pending.
+   */
+  async getReviewVoteStatus(
+    reviewId: string,
+    userAddress: string
+  ): Promise<{ hasVoted: boolean; isHelpful: boolean | null }> {
+    // When contract support is added, query the contract
+    // For now, return default status
+    return {
+      hasVoted: false,
+      isHelpful: null,
+    };
+  }
 }
 
 /**

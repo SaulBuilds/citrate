@@ -733,31 +733,46 @@ impl AiApi {
         let response_id = format!("chatcmpl-{}", chrono::Utc::now().timestamp_millis());
 
         // Execute actual inference using GGUF engine directly
-        // This is a pragmatic approach for testing - use model files from ./models/
         use citrate_mcp::gguf_engine::{GGUFEngine, GGUFEngineConfig};
         use std::path::PathBuf;
 
-        // Map model name to file path
-        let model_path = match request.model.as_str() {
-            "mistral-7b-instruct-v0.3" | "mistral-7b" => {
-                PathBuf::from("./models/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf")
-            }
-            "bge-m3" => {
-                PathBuf::from("./models/bge-m3-q4.gguf")
-            }
-            _ => {
-                // Try to find model file by name
-                PathBuf::from(format!("./models/{}.gguf", request.model))
-            }
+        // Try multiple potential model locations
+        let model_filename = match request.model.as_str() {
+            "mistral-7b-instruct-v0.3" | "mistral-7b" => "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+            "bge-m3" => "bge-m3-fp16.gguf",
+            "qwen2-0.5b" | "qwen" => "qwen2-0.5b-q4.gguf",
+            other => other,
         };
 
-        // Check if model file exists
-        if !model_path.exists() {
-            return Err(ApiError::InternalError(format!(
-                "Model file not found: {}. Available models: mistral-7b-instruct-v0.3, bge-m3",
-                model_path.display()
-            )));
-        }
+        // Search for model in multiple locations
+        let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let search_paths = vec![
+            // Current working directory
+            PathBuf::from("./models").join(model_filename),
+            // Citrate project models directory (relative)
+            PathBuf::from("../../../models").join(model_filename),
+            // Citrate project models directory (absolute)
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models").join(model_filename),
+            // User's home directory
+            home_dir.join("Models").join(model_filename),
+            home_dir.join(".citrate/models").join(model_filename),
+            // Common IPFS model location
+            home_dir.join(".ipfs/models").join(model_filename),
+        ];
+
+        let model_path = search_paths.iter()
+            .find(|p| p.exists())
+            .cloned()
+            .ok_or_else(|| {
+                let searched = search_paths.iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                ApiError::InternalError(format!(
+                    "Model file '{}' not found. Searched: {}",
+                    model_filename, searched
+                ))
+            })?;
 
         // Create GGUF engine for inference
         let gguf_config = GGUFEngineConfig {

@@ -10,6 +10,7 @@ use tracing::{info, warn};
 mod agent;
 mod block_producer;
 mod dag;
+mod dev_mode;
 mod huggingface;
 mod ipfs;
 mod models;
@@ -1497,6 +1498,335 @@ async fn hf_get_models_dir(state: State<'_, AppState>) -> Result<String, String>
     Ok(state.hf_manager.get_models_dir().await.to_string_lossy().to_string())
 }
 
+// ===== Contract Compilation Commands (Foundry CLI) =====
+
+/// Check if Foundry/forge is installed
+#[tauri::command]
+async fn forge_check_installed() -> Result<ForgeInfo, String> {
+    use std::process::Command;
+
+    // Check for forge binary
+    let forge_result = Command::new("forge")
+        .arg("--version")
+        .output();
+
+    match forge_result {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+            // Also check for cast
+            let cast_available = Command::new("cast")
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            // Check for anvil
+            let anvil_available = Command::new("anvil")
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            Ok(ForgeInfo {
+                installed: true,
+                version: Some(version),
+                cast_available,
+                anvil_available,
+                path: which_forge(),
+            })
+        }
+        _ => Ok(ForgeInfo {
+            installed: false,
+            version: None,
+            cast_available: false,
+            anvil_available: false,
+            path: None,
+        }),
+    }
+}
+
+/// Compile contracts using forge build
+#[tauri::command]
+async fn forge_build(
+    project_path: String,
+    contract_name: Option<String>,
+    optimizer_runs: Option<u32>,
+) -> Result<ForgeBuildResult, String> {
+    use std::process::Command;
+    use std::path::Path;
+
+    let project_dir = Path::new(&project_path);
+    if !project_dir.exists() {
+        return Err(format!("Project directory does not exist: {}", project_path));
+    }
+
+    // Check for foundry.toml (used for logging)
+    let has_foundry_config = project_dir.join("foundry.toml").exists();
+    if !has_foundry_config {
+        info!("No foundry.toml found, using default settings");
+    }
+
+    let mut cmd = Command::new("forge");
+    cmd.current_dir(project_dir);
+    cmd.arg("build");
+    cmd.arg("--json"); // Output as JSON for parsing
+
+    // Add optimizer settings if provided
+    if let Some(runs) = optimizer_runs {
+        cmd.arg("--optimize");
+        cmd.arg("--optimizer-runs");
+        cmd.arg(runs.to_string());
+    }
+
+    info!("Running forge build in {}", project_path);
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run forge: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !output.status.success() {
+        return Ok(ForgeBuildResult {
+            success: false,
+            contracts: vec![],
+            errors: vec![stderr],
+            warnings: vec![],
+            build_time_ms: None,
+        });
+    }
+
+    // Parse output from the out/ directory
+    let out_dir = project_dir.join("out");
+    let mut contracts = Vec::new();
+    let mut warnings = Vec::new();
+
+    // Extract warnings from stderr
+    for line in stderr.lines() {
+        if line.contains("Warning") || line.contains("warning") {
+            warnings.push(line.to_string());
+        }
+    }
+
+    // Read compiled artifacts
+    if out_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&out_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Each contract has its own directory
+                    if let Some(sol_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if sol_name.ends_with(".sol") {
+                            // Read the JSON artifact
+                            if let Ok(artifacts) = std::fs::read_dir(&path) {
+                                for artifact in artifacts.flatten() {
+                                    let artifact_path = artifact.path();
+                                    if artifact_path.extension().map(|e| e == "json").unwrap_or(false) {
+                                        if let Ok(content) = std::fs::read_to_string(&artifact_path) {
+                                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                                let name = artifact_path.file_stem()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("Unknown")
+                                                    .to_string();
+
+                                                // Filter by contract name if specified
+                                                if let Some(ref filter) = contract_name {
+                                                    if &name != filter {
+                                                        continue;
+                                                    }
+                                                }
+
+                                                let bytecode = json.get("bytecode")
+                                                    .and_then(|b| b.get("object"))
+                                                    .and_then(|o| o.as_str())
+                                                    .map(|s| if s.starts_with("0x") { s.to_string() } else { format!("0x{}", s) });
+
+                                                let deployed_bytecode = json.get("deployedBytecode")
+                                                    .and_then(|b| b.get("object"))
+                                                    .and_then(|o| o.as_str())
+                                                    .map(|s| if s.starts_with("0x") { s.to_string() } else { format!("0x{}", s) });
+
+                                                let abi = json.get("abi").cloned();
+
+                                                if bytecode.is_some() || abi.is_some() {
+                                                    contracts.push(ForgeContract {
+                                                        name,
+                                                        source_file: sol_name.to_string(),
+                                                        bytecode,
+                                                        deployed_bytecode,
+                                                        abi,
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(ForgeBuildResult {
+        success: true,
+        contracts,
+        errors: vec![],
+        warnings,
+        build_time_ms: None,
+    })
+}
+
+/// Initialize a new Foundry project
+#[tauri::command]
+async fn forge_init(project_path: String, template: Option<String>) -> Result<String, String> {
+    use std::process::Command;
+    use std::path::Path;
+
+    let project_dir = Path::new(&project_path);
+
+    // Create parent directory if needed
+    if let Some(parent) = project_dir.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+
+    let mut cmd = Command::new("forge");
+    cmd.arg("init");
+    cmd.arg(&project_path);
+
+    if let Some(ref t) = template {
+        cmd.arg("--template");
+        cmd.arg(t);
+    }
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run forge init: {}", e))?;
+
+    if output.status.success() {
+        Ok(format!("Foundry project initialized at {}", project_path))
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Run forge tests
+#[tauri::command]
+async fn forge_test(
+    project_path: String,
+    test_filter: Option<String>,
+    verbosity: Option<u8>,
+) -> Result<ForgeTestResult, String> {
+    use std::process::Command;
+    use std::path::Path;
+
+    let project_dir = Path::new(&project_path);
+    if !project_dir.exists() {
+        return Err(format!("Project directory does not exist: {}", project_path));
+    }
+
+    let mut cmd = Command::new("forge");
+    cmd.current_dir(project_dir);
+    cmd.arg("test");
+    cmd.arg("--json");
+
+    if let Some(filter) = test_filter {
+        cmd.arg("--match-test");
+        cmd.arg(filter);
+    }
+
+    if let Some(v) = verbosity {
+        let v_flag = "-".to_string() + &"v".repeat(v.min(5) as usize);
+        cmd.arg(v_flag);
+    }
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run forge test: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    // Parse test results from JSON output
+    let mut tests_passed = 0u32;
+    let mut tests_failed = 0u32;
+    let test_results: Vec<String> = stdout.lines()
+        .filter(|line| line.contains("PASS") || line.contains("FAIL"))
+        .map(|s| s.to_string())
+        .collect();
+
+    for line in &test_results {
+        if line.contains("PASS") {
+            tests_passed += 1;
+        } else if line.contains("FAIL") {
+            tests_failed += 1;
+        }
+    }
+
+    Ok(ForgeTestResult {
+        success: output.status.success(),
+        tests_passed,
+        tests_failed,
+        test_results,
+        gas_report: None,
+        errors: if output.status.success() { vec![] } else { vec![stderr] },
+    })
+}
+
+// Helper function to find forge binary path
+fn which_forge() -> Option<String> {
+    use std::process::Command;
+
+    Command::new("which")
+        .arg("forge")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
+/// Foundry installation info
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ForgeInfo {
+    installed: bool,
+    version: Option<String>,
+    cast_available: bool,
+    anvil_available: bool,
+    path: Option<String>,
+}
+
+/// Compiled contract from forge
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ForgeContract {
+    name: String,
+    source_file: String,
+    bytecode: Option<String>,
+    deployed_bytecode: Option<String>,
+    abi: Option<serde_json::Value>,
+}
+
+/// Forge build result
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ForgeBuildResult {
+    success: bool,
+    contracts: Vec<ForgeContract>,
+    errors: Vec<String>,
+    warnings: Vec<String>,
+    build_time_ms: Option<u64>,
+}
+
+/// Forge test result
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ForgeTestResult {
+    success: bool,
+    tests_passed: u32,
+    tests_failed: u32,
+    test_results: Vec<String>,
+    gas_report: Option<String>,
+    errors: Vec<String>,
+}
+
 // Setup function to initialize node components after startup
 async fn setup_node_components(app_handle: tauri::AppHandle) {
     info!("Setting up node components");
@@ -1710,6 +2040,11 @@ pub fn run() {
             hf_cancel_download,
             hf_get_local_models,
             hf_get_models_dir,
+            // Foundry/Contract compilation commands
+            forge_check_installed,
+            forge_build,
+            forge_init,
+            forge_test,
         ])
         .setup(|app| {
             // Initialize window manager with app handle

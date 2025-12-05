@@ -1,9 +1,11 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Manages AI models in the Citrate network
 pub struct ModelManager {
@@ -75,15 +77,139 @@ impl ModelManager {
 
     /// Request inference from a model
     pub async fn request_inference(&self, request: InferenceRequest) -> Result<InferenceResponse> {
-        // Simplified inference - return mock response
+        let start = std::time::Instant::now();
+
+        // Resolve model path
+        let model_path = self.resolve_model_path(&request.model_id)?;
+
+        // Get inference parameters
+        let max_tokens = request.parameters
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(512) as usize;
+        let temperature = request.parameters
+            .get("temperature")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.7) as f32;
+
+        // Run inference using llama.cpp
+        let result = self.run_llama_inference(&model_path, &request.input, max_tokens, temperature).await?;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+
         Ok(InferenceResponse {
             request_id: format!("inf_{}", chrono::Utc::now().timestamp()),
             model_id: request.model_id,
-            result: "Mock inference result".to_string(),
+            result,
             confidence: 0.95,
-            latency_ms: 150,
-            cost: 0.001,
+            latency_ms,
+            cost: 0.0, // Free for local inference
         })
+    }
+
+    /// Resolve model path from model ID
+    fn resolve_model_path(&self, model_id: &str) -> Result<PathBuf> {
+        // Handle full paths
+        let path = PathBuf::from(model_id);
+        if path.exists() && path.extension().map_or(false, |e| e == "gguf") {
+            return Ok(path);
+        }
+
+        // Map model aliases to filenames
+        let model_filename = match model_id {
+            "mistral-7b-instruct-v0.3" | "mistral-7b" => "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+            "qwen2-0.5b" | "qwen" => "qwen2-0.5b-q4.gguf",
+            "bge-m3" => "bge-m3-fp16.gguf",
+            other => other,
+        };
+
+        // Search in multiple locations
+        let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let search_paths = vec![
+            PathBuf::from("./models").join(model_filename),
+            PathBuf::from("../../../models").join(model_filename),
+            home_dir.join("Models").join(model_filename),
+            home_dir.join(".citrate/models").join(model_filename),
+            home_dir.join(".ipfs/models").join(model_filename),
+            // Check project models directory (during dev)
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models").join(model_filename),
+        ];
+
+        for path in &search_paths {
+            if path.exists() {
+                info!("Found model at: {:?}", path);
+                return Ok(path.clone());
+            }
+        }
+
+        Err(anyhow!(
+            "Model '{}' not found. Searched: {:?}",
+            model_id,
+            search_paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
+        ))
+    }
+
+    /// Run inference using llama.cpp CLI
+    async fn run_llama_inference(
+        &self,
+        model_path: &PathBuf,
+        prompt: &str,
+        max_tokens: usize,
+        temperature: f32
+    ) -> Result<String> {
+        // Find llama.cpp binary
+        let home_dir = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let llama_cpp_bin = home_dir.join("llama.cpp/build/bin/llama-cli");
+        let llama_cpp_main = home_dir.join("llama.cpp/build/bin/main");
+
+        let binary = if llama_cpp_bin.exists() {
+            llama_cpp_bin
+        } else if llama_cpp_main.exists() {
+            llama_cpp_main
+        } else {
+            return Err(anyhow!(
+                "llama.cpp not found. Please install llama.cpp to ~/llama.cpp"
+            ));
+        };
+
+        info!(
+            "Running inference with model: {:?}, max_tokens: {}, temp: {}",
+            model_path, max_tokens, temperature
+        );
+
+        // Build command
+        let output = tokio::task::spawn_blocking({
+            let binary = binary.clone();
+            let model_path = model_path.clone();
+            let prompt = prompt.to_string();
+            let threads = num_cpus::get();
+
+            move || {
+                Command::new(&binary)
+                    .arg("-m")
+                    .arg(&model_path)
+                    .arg("-p")
+                    .arg(&prompt)
+                    .arg("-n")
+                    .arg(max_tokens.to_string())
+                    .arg("--temp")
+                    .arg(temperature.to_string())
+                    .arg("-t")
+                    .arg(threads.to_string())
+                    .arg("-c")
+                    .arg("2048")
+                    .arg("--no-display-prompt")
+                    .output()
+            }
+        }).await??;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("llama.cpp execution failed: {}", stderr));
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        Ok(text.trim().to_string())
     }
 
     fn load_sample_models() -> HashMap<String, ModelInfo> {

@@ -1,15 +1,11 @@
 /**
  * Contract Compiler Utility
  *
- * Compiles Solidity smart contracts and returns bytecode, ABI, and metadata.
- *
- * IMPLEMENTATION OPTIONS:
- * 1. Browser: Use solc-js (requires npm install solc)
- * 2. Backend: Call Foundry CLI via Tauri (requires forge installed)
- *
- * Current: Placeholder implementation for development
- * TODO: Implement actual compilation using solc-js or Foundry
+ * Compiles Solidity smart contracts using solc-js WASM.
+ * Supports version selection, optimizer configuration, and import resolution.
  */
+
+import solc from 'solc';
 
 export interface CompilationError {
   severity: 'error' | 'warning' | 'info';
@@ -17,11 +13,17 @@ export interface CompilationError {
   line?: number;
   column?: number;
   formattedMessage?: string;
+  sourceLocation?: {
+    file: string;
+    start: number;
+    end: number;
+  };
 }
 
 export interface CompilationResult {
   success: boolean;
   bytecode?: string;
+  deployedBytecode?: string;
   abi?: any[];
   errors?: CompilationError[];
   warnings?: string[];
@@ -31,175 +33,285 @@ export interface CompilationResult {
     compiler: string;
     language: string;
     output: any;
+    settings: any;
   };
 }
 
+export interface CompilerOptions {
+  /** Solidity version (e.g., '0.8.28') */
+  version?: string;
+  /** Enable optimizer */
+  optimize?: boolean;
+  /** Optimizer runs (default: 200) */
+  optimizerRuns?: number;
+  /** EVM version target */
+  evmVersion?: 'london' | 'paris' | 'shanghai' | 'cancun';
+  /** Import remappings for resolving imports */
+  remappings?: string[];
+  /** Additional source files for imports */
+  sources?: { [filename: string]: string };
+}
+
+/** Default compiler options */
+const DEFAULT_OPTIONS: Required<Omit<CompilerOptions, 'remappings' | 'sources'>> = {
+  version: '0.8.28',
+  optimize: true,
+  optimizerRuns: 200,
+  evmVersion: 'shanghai',
+};
+
+/** Common OpenZeppelin imports that we can provide */
+const COMMON_IMPORTS: { [path: string]: string } = {
+  // These would be populated from node_modules or a CDN in a full implementation
+  // For now, we handle them via remappings or external resolution
+};
+
 /**
- * Compile a Solidity contract
+ * Compile a Solidity contract using solc-js
  *
  * @param source - Solidity source code
  * @param contractName - Name of the contract to compile
+ * @param options - Compiler options
  * @returns Compilation result with bytecode, ABI, or errors
  *
  * @example
  * ```typescript
- * const result = await compileContract(source, 'MyContract');
+ * const result = await compileContract(source, 'MyToken', {
+ *   optimize: true,
+ *   optimizerRuns: 200,
+ * });
  * if (result.success) {
  *   console.log('Bytecode:', result.bytecode);
  *   console.log('ABI:', result.abi);
- * } else {
- *   console.error('Errors:', result.errors);
  * }
  * ```
  */
 export async function compileContract(
   source: string,
-  contractName: string
+  contractName: string,
+  options: CompilerOptions = {}
 ): Promise<CompilationResult> {
   console.log(`[Compiler] Compiling contract: ${contractName}`);
 
+  // Validate input
+  if (!source || !source.trim()) {
+    return {
+      success: false,
+      errors: [{
+        severity: 'error',
+        message: 'Source code is empty',
+      }],
+    };
+  }
+
+  if (!contractName || !contractName.trim()) {
+    return {
+      success: false,
+      errors: [{
+        severity: 'error',
+        message: 'Contract name is required',
+      }],
+    };
+  }
+
+  // Merge with defaults
+  const opts = {
+    ...DEFAULT_OPTIONS,
+    ...options,
+  };
+
   try {
-    // Validate input
-    if (!source || !source.trim()) {
-      return {
-        success: false,
-        errors: [{
-          severity: 'error',
-          message: 'Source code is empty',
-        }],
-      };
+    // Build solc input JSON
+    const sources: { [filename: string]: { content: string } } = {
+      'Contract.sol': { content: source },
+    };
+
+    // Add any additional source files
+    if (options.sources) {
+      for (const [filename, content] of Object.entries(options.sources)) {
+        sources[filename] = { content };
+      }
     }
 
-    if (!contractName || !contractName.trim()) {
-      return {
-        success: false,
-        errors: [{
-          severity: 'error',
-          message: 'Contract name is required',
-        }],
-      };
-    }
-
-    // OPTION A: Use solc-js (browser compilation)
-    // Uncomment and implement when solc is installed:
-    /*
-    const solc = await import('solc');
     const input = {
       language: 'Solidity',
-      sources: {
-        'Contract.sol': { content: source }
-      },
+      sources,
       settings: {
         outputSelection: {
           '*': {
-            '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'metadata']
-          }
+            '*': [
+              'abi',
+              'evm.bytecode',
+              'evm.deployedBytecode',
+              'evm.gasEstimates',
+              'metadata',
+              'devdoc',
+              'userdoc',
+            ],
+          },
         },
         optimizer: {
-          enabled: true,
-          runs: 200
-        }
-      }
+          enabled: opts.optimize,
+          runs: opts.optimizerRuns,
+        },
+        evmVersion: opts.evmVersion,
+        remappings: options.remappings || [],
+      },
     };
 
-    const output = JSON.parse(solc.compile(JSON.stringify(input)));
+    console.log('[Compiler] Compiler settings:', {
+      optimize: opts.optimize,
+      runs: opts.optimizerRuns,
+      evmVersion: opts.evmVersion,
+    });
 
-    if (output.errors && output.errors.length > 0) {
-      const errors = output.errors.filter((e: any) => e.severity === 'error');
-      const warnings = output.errors.filter((e: any) => e.severity === 'warning');
+    // Import callback for resolving imports
+    const findImports = (importPath: string): { contents?: string; error?: string } => {
+      console.log('[Compiler] Resolving import:', importPath);
 
-      if (errors.length > 0) {
-        return {
-          success: false,
-          errors: errors.map((e: any) => ({
-            severity: e.severity,
-            message: e.message,
-            formattedMessage: e.formattedMessage,
-          })),
-          warnings: warnings.map((w: any) => w.message),
+      // Check if we have the import in our common imports
+      if (COMMON_IMPORTS[importPath]) {
+        return { contents: COMMON_IMPORTS[importPath] };
+      }
+
+      // Check additional sources
+      if (options.sources && options.sources[importPath]) {
+        return { contents: options.sources[importPath] };
+      }
+
+      // For external imports (OpenZeppelin etc.), return error with helpful message
+      // In a browser environment, we'd need to fetch these from a CDN or have them bundled
+      return {
+        error: `Import "${importPath}" not found. For OpenZeppelin contracts, please include the full source or use Foundry CLI mode.`,
+      };
+    };
+
+    // Compile
+    console.log('[Compiler] Starting compilation...');
+    const outputJson = solc.compile(JSON.stringify(input), { import: findImports });
+    const output = JSON.parse(outputJson);
+
+    // Process errors and warnings
+    const errors: CompilationError[] = [];
+    const warnings: string[] = [];
+
+    if (output.errors) {
+      for (const err of output.errors) {
+        const compilationError: CompilationError = {
+          severity: err.severity,
+          message: err.message,
+          formattedMessage: err.formattedMessage,
         };
+
+        // Extract line/column from source location
+        if (err.sourceLocation) {
+          compilationError.sourceLocation = err.sourceLocation;
+          // Parse line number from formatted message
+          const lineMatch = err.formattedMessage?.match(/:(\d+):/);
+          if (lineMatch) {
+            compilationError.line = parseInt(lineMatch[1], 10);
+          }
+        }
+
+        if (err.severity === 'error') {
+          errors.push(compilationError);
+        } else if (err.severity === 'warning') {
+          warnings.push(err.message);
+        }
       }
     }
 
-    const contract = output.contracts['Contract.sol'][contractName];
-    const bytecode = '0x' + contract.evm.bytecode.object;
-    const abi = contract.abi;
-    const contractSize = bytecode.length / 2; // bytes
+    // Check for fatal errors
+    if (errors.length > 0) {
+      console.error('[Compiler] Compilation failed with errors:', errors);
+      return {
+        success: false,
+        errors,
+        warnings,
+      };
+    }
+
+    // Find the compiled contract
+    const contracts = output.contracts?.['Contract.sol'];
+    if (!contracts) {
+      return {
+        success: false,
+        errors: [{
+          severity: 'error',
+          message: 'No contracts compiled. Check your source code.',
+        }],
+        warnings,
+      };
+    }
+
+    const contract = contracts[contractName];
+    if (!contract) {
+      // List available contracts
+      const available = Object.keys(contracts);
+      return {
+        success: false,
+        errors: [{
+          severity: 'error',
+          message: `Contract "${contractName}" not found in compilation output. Available: ${available.join(', ')}`,
+        }],
+        warnings,
+      };
+    }
+
+    // Extract bytecode
+    const bytecode = contract.evm?.bytecode?.object
+      ? '0x' + contract.evm.bytecode.object
+      : undefined;
+    const deployedBytecode = contract.evm?.deployedBytecode?.object
+      ? '0x' + contract.evm.deployedBytecode.object
+      : undefined;
+
+    if (!bytecode) {
+      return {
+        success: false,
+        errors: [{
+          severity: 'error',
+          message: 'Compilation succeeded but no bytecode was generated. The contract may be abstract or an interface.',
+        }],
+        warnings,
+      };
+    }
+
+    // Calculate sizes
+    const contractSize = (bytecode.length - 2) / 2; // Remove '0x' and convert hex to bytes
+    const gasEstimate = estimateDeploymentGas(bytecode);
+
+    // Get gas estimates from compiler if available
+    let creationGasEstimate: number | undefined;
+    if (contract.evm?.gasEstimates?.creation) {
+      const creation = contract.evm.gasEstimates.creation;
+      creationGasEstimate = (creation.codeDepositCost || 0) + (creation.executionCost || 0);
+    }
+
+    console.log('[Compiler] Compilation successful:', {
+      contractName,
+      bytecodeSize: contractSize,
+      abiEntries: contract.abi?.length || 0,
+      gasEstimate: creationGasEstimate || gasEstimate,
+    });
 
     return {
       success: true,
       bytecode,
-      abi,
-      gasEstimate: estimateDeploymentGas(bytecode),
+      deployedBytecode,
+      abi: contract.abi,
+      gasEstimate: creationGasEstimate || gasEstimate,
       contractSize,
+      warnings: warnings.length > 0 ? warnings : undefined,
       metadata: {
-        compiler: solc.version(),
+        compiler: `solc-js@${solc.version()}`,
         language: 'Solidity',
         output: contract.metadata,
-      },
-    };
-    */
-
-    // OPTION B: Call Tauri backend with Foundry
-    // Uncomment and implement when Tauri command is ready:
-    /*
-    const { invoke } = await import('@tauri-apps/api/core');
-    const result = await invoke<CompilationResult>('compile_contract', {
-      source,
-      contractName,
-    });
-    return result;
-    */
-
-    // PLACEHOLDER: Mock successful compilation for development
-    // This allows UI development while compiler integration is pending
-    console.warn('[Compiler] Using mock compilation (not real compilation!)');
-
-    // Simulate compilation delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Check for obvious syntax errors (basic validation)
-    const hasContract = source.includes('contract ' + contractName);
-    if (!hasContract) {
-      return {
-        success: false,
-        errors: [{
-          severity: 'error',
-          message: `Contract "${contractName}" not found in source code`,
-          line: 1,
-        }],
-      };
-    }
-
-    // Mock successful compilation
-    const mockBytecode = '0x608060405234801561001057600080fd5b50610150806100206000396000f3fe608060405234801561001057600080fd5b50600436106100365760003560e01c80632e64cec11461003b5780636057361d14610059575b600080fd5b610043610075565b60405161005091906100a1565b60405180910390f35b610073600480360381019061006e91906100ed565b61007e565b005b60008054905090565b8060008190555050565b6000819050919050565b61009b81610088565b82525050565b60006020820190506100b66000830184610092565b92915050565b600080fd5b6100ca81610088565b81146100d557600080fd5b50565b6000813590506100e7816100c1565b92915050565b600060208284031215610103576101026100bc565b5b6000610111848285016100d8565b9150509291505056fea264697066735822122064c33e7907e55b6b33c0c47e6a6f60e5f4c7b7c0d8e3c82c52d8c9c8e5e8e8f64736f6c63430008110033';
-
-    const mockAbi = [
-      {
-        inputs: [],
-        name: contractName,
-        outputs: [],
-        stateMutability: 'nonpayable',
-        type: 'constructor',
-      },
-    ];
-
-    const contractSize = mockBytecode.length / 2;
-
-    return {
-      success: true,
-      bytecode: mockBytecode,
-      abi: mockAbi,
-      gasEstimate: estimateDeploymentGas(mockBytecode),
-      contractSize,
-      warnings: [
-        '⚠️  Mock compilation - not real Solidity compilation!',
-        'Install solc-js or configure Foundry backend for actual compilation.',
-      ],
-      metadata: {
-        compiler: 'mock-0.8.17',
-        language: 'Solidity',
-        output: {},
+        settings: {
+          optimizer: opts.optimize,
+          runs: opts.optimizerRuns,
+          evmVersion: opts.evmVersion,
+        },
       },
     };
 
@@ -209,39 +321,84 @@ export async function compileContract(
       success: false,
       errors: [{
         severity: 'error',
-        message: error.message || 'Unknown compilation error',
+        message: `Compilation error: ${error.message || 'Unknown error'}`,
       }],
     };
   }
 }
 
 /**
+ * Compile multiple contracts from a single source
+ *
+ * @param source - Solidity source code with multiple contracts
+ * @param options - Compiler options
+ * @returns Map of contract names to compilation results
+ */
+export async function compileAllContracts(
+  source: string,
+  options: CompilerOptions = {}
+): Promise<{ [contractName: string]: CompilationResult }> {
+  const results: { [contractName: string]: CompilationResult } = {};
+
+  // Extract contract names from source
+  const contractMatches = source.matchAll(/contract\s+(\w+)/g);
+  const contractNames = Array.from(contractMatches, m => m[1]);
+
+  if (contractNames.length === 0) {
+    return {
+      '__error__': {
+        success: false,
+        errors: [{
+          severity: 'error',
+          message: 'No contracts found in source code',
+        }],
+      },
+    };
+  }
+
+  for (const name of contractNames) {
+    results[name] = await compileContract(source, name, options);
+  }
+
+  return results;
+}
+
+/**
+ * Get the current solc-js version
+ */
+export function getCompilerVersion(): string {
+  return solc.version();
+}
+
+/**
  * Estimate gas required for contract deployment
  *
  * Formula:
- * - 32,000 gas base cost
- * - 200 gas per byte of bytecode
- * - Additional 68 gas per byte for calldata (approx)
+ * - 21,000 gas base transaction cost
+ * - 32,000 gas contract creation cost
+ * - 200 gas per byte of code for storage
+ * - 16 gas per non-zero byte / 4 gas per zero byte for calldata
  *
  * @param bytecode - Contract bytecode (with or without '0x' prefix)
  * @returns Estimated gas
  */
 export function estimateDeploymentGas(bytecode: string): number {
-  // Remove '0x' prefix if present
   const cleanBytecode = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
+  const bytes = cleanBytecode.match(/.{2}/g) || [];
 
-  // Each byte is 2 hex characters
-  const byteCount = cleanBytecode.length / 2;
+  let calldataGas = 0;
+  for (const byte of bytes) {
+    calldataGas += byte === '00' ? 4 : 16;
+  }
 
-  // Gas calculation
-  const baseGas = 32000; // Transaction intrinsic cost
+  const baseGas = 21000; // Transaction base cost
   const creationGas = 32000; // Contract creation cost
-  const codeDepositGas = byteCount * 200; // Cost to store code
-  const calldataGas = byteCount * 68; // Cost to send bytecode as calldata
+  const codeDepositGas = bytes.length * 200; // Code storage cost
 
   const totalGas = baseGas + creationGas + codeDepositGas + calldataGas;
 
-  return Math.ceil(totalGas);
+  // Add 20% buffer for execution costs
+  return Math.ceil(totalGas * 1.2);
 }
 
 /**
@@ -256,15 +413,17 @@ export function validateContractSize(bytecode: string): {
   isValid: boolean;
   size: number;
   maxSize: number;
+  utilizationPercent: number;
 } {
   const cleanBytecode = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
-  const size = cleanBytecode.length / 2; // Convert hex to bytes
+  const size = cleanBytecode.length / 2;
   const maxSize = 24576; // 24KB limit
 
   return {
     isValid: size <= maxSize,
     size,
     maxSize,
+    utilizationPercent: Math.round((size / maxSize) * 100),
   };
 }
 
@@ -285,9 +444,6 @@ export function formatBytecodeSize(bytes: number): string {
 
 /**
  * Check if compilation result has errors
- *
- * @param result - Compilation result
- * @returns True if there are errors
  */
 export function hasCompilationErrors(result: CompilationResult): boolean {
   return !result.success || (result.errors !== undefined && result.errors.length > 0);
@@ -295,11 +451,35 @@ export function hasCompilationErrors(result: CompilationResult): boolean {
 
 /**
  * Extract error messages from compilation result
- *
- * @param result - Compilation result
- * @returns Array of error messages
  */
 export function getErrorMessages(result: CompilationResult): string[] {
   if (!result.errors) return [];
   return result.errors.map(e => e.formattedMessage || e.message);
+}
+
+/**
+ * Extract pragma version from source code
+ */
+export function extractPragmaVersion(source: string): string | null {
+  const match = source.match(/pragma\s+solidity\s+([^;]+);/);
+  if (match) {
+    return match[1].trim();
+  }
+  return null;
+}
+
+/**
+ * Check if a specific compiler version satisfies a pragma constraint
+ */
+export function versionSatisfiesPragma(version: string, pragma: string): boolean {
+  // Simple implementation - would need semver library for full support
+  // For now, assume version matches if it starts with same major.minor
+  const versionParts = version.split('.');
+  const pragmaClean = pragma.replace(/[\^~>=<]/g, '').trim();
+  const pragmaParts = pragmaClean.split('.');
+
+  if (pragmaParts.length >= 2 && versionParts.length >= 2) {
+    return versionParts[0] === pragmaParts[0] && versionParts[1] === pragmaParts[1];
+  }
+  return true; // Default to allowing if we can't parse
 }

@@ -326,19 +326,50 @@ const webImplementations = {
   },
   
   sign_message: async (args: { message: string, address: string, password: string }) => {
+    // SECURITY: No mock signatures allowed - signing failures must propagate
+    // This ensures users always know when their transactions are not properly signed
     try {
-      return await rpcClient.signMessage(args.message, args.address);
+      const signature = await rpcClient.signMessage(args.message, args.address);
+      if (!signature || signature.length < 130) {
+        throw new Error('Invalid signature received from RPC');
+      }
+      return signature;
     } catch (error) {
-      // Fallback to mock signature
-      return '0x' + Array.from(crypto.getRandomValues(new Uint8Array(65)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Message signing failed: ${errorMessage}. Ensure your wallet is connected and the account is unlocked.`);
     }
   },
   
   verify_signature: async (args: { message: string, signature: string, address: string }) => {
-    // Simplified verification - in production would use proper crypto
-    return args.signature.length === 132 && args.signature.startsWith('0x');
+    // SECURITY: Proper signature verification
+    // Check signature format first
+    if (!args.signature || !args.signature.startsWith('0x')) {
+      return false;
+    }
+
+    // Signatures should be 65 bytes (130 hex chars) + 0x prefix = 132 chars
+    // or 64 bytes (128 hex chars) + 0x prefix = 130 chars for some schemes
+    const sigLen = args.signature.length;
+    if (sigLen !== 130 && sigLen !== 132) {
+      return false;
+    }
+
+    // Validate hex characters
+    const hexPart = args.signature.slice(2);
+    if (!/^[0-9a-fA-F]+$/.test(hexPart)) {
+      return false;
+    }
+
+    // Try to verify via RPC if available
+    try {
+      const verified = await rpcClient.verifySignature(args.message, args.signature, args.address);
+      return !!verified;
+    } catch (error) {
+      // If RPC verification fails, we cannot confirm the signature
+      console.warn('Signature verification via RPC failed:', error);
+      // Return false rather than assuming valid - security first
+      return false;
+    }
   },
   
   // DAG
@@ -782,4 +813,358 @@ export const modelService = {
   
   update: (modelId: string, weightsCid: string, version: string) =>
     safeInvoke<string>('update_model', { modelId, weightsCid, version })
+};
+
+// IPFS Types
+export interface IpfsStatus {
+  running: boolean;
+  peer_id?: string;
+  addresses: string[];
+  repo_size?: number;
+  num_objects?: number;
+  version?: string;
+}
+
+export interface IpfsConfig {
+  binary_path?: string;
+  repo_path: string;
+  api_port: number;
+  gateway_port: number;
+  swarm_port: number;
+  external_gateways: string[];
+  enable_pubsub: boolean;
+  bootstrap_peers: string[];
+}
+
+export interface IpfsAddResult {
+  cid: string;
+  size: number;
+  name: string;
+  gateway_url: string;
+}
+
+export interface IpfsContent {
+  cid: string;
+  size: number;
+  content_type?: string;
+  data?: number[];  // byte array
+  gateway_url: string;
+}
+
+// IPFS Management
+export const ipfsService = {
+  start: () => safeInvoke<IpfsStatus>('ipfs_start'),
+  stop: () => safeInvoke<void>('ipfs_stop'),
+  getStatus: () => safeInvoke<IpfsStatus>('ipfs_status'),
+  getConfig: () => safeInvoke<IpfsConfig>('ipfs_get_config'),
+  updateConfig: (config: IpfsConfig) => safeInvoke<void>('ipfs_update_config', { config }),
+
+  // Content operations
+  add: async (data: Uint8Array | string, name?: string) => {
+    // Convert to base64 for transfer
+    let base64Data: string;
+    if (typeof data === 'string') {
+      base64Data = btoa(data);
+    } else {
+      base64Data = btoa(String.fromCharCode(...data));
+    }
+    return safeInvoke<IpfsAddResult>('ipfs_add', { data: base64Data, name });
+  },
+
+  addFile: (path: string) => safeInvoke<IpfsAddResult>('ipfs_add_file', { path }),
+
+  get: async (cid: string): Promise<IpfsContent> => {
+    const result = await safeInvoke<IpfsContent>('ipfs_get', { cid });
+    return result;
+  },
+
+  // Content as string (for text files)
+  getText: async (cid: string): Promise<string> => {
+    const result = await safeInvoke<IpfsContent>('ipfs_get', { cid });
+    if (result.data) {
+      return String.fromCharCode(...result.data);
+    }
+    return '';
+  },
+
+  // Pinning
+  pin: (cid: string) => safeInvoke<void>('ipfs_pin', { cid }),
+  unpin: (cid: string) => safeInvoke<void>('ipfs_unpin', { cid }),
+  listPins: () => safeInvoke<string[]>('ipfs_list_pins'),
+
+  // Network
+  getPeers: () => safeInvoke<string[]>('ipfs_get_peers'),
+};
+
+// HuggingFace Types
+export interface HFAuthState {
+  authenticated: boolean;
+  username?: string;
+  email?: string;
+  avatar_url?: string;
+  token_type?: string;
+  expires_at?: number;
+}
+
+export interface HFConfig {
+  models_dir: string;
+  cache_dir: string;
+  default_quantization: string;
+  auto_download: boolean;
+  max_concurrent_downloads: number;
+}
+
+export interface HFModelInfo {
+  id: string;
+  author?: string;
+  sha?: string;
+  last_modified?: string;
+  private: boolean;
+  gated?: boolean;
+  disabled?: boolean;
+  downloads: number;
+  likes: number;
+  tags: string[];
+  pipeline_tag?: string;
+  library_name?: string;
+  model_index?: any;
+  config?: any;
+  card_data?: any;
+  siblings?: HFModelFile[];
+}
+
+export interface HFModelFile {
+  rfilename: string;
+  size?: number;
+  blob_id?: string;
+  lfs?: {
+    sha256: string;
+    size: number;
+    pointer_size: number;
+  };
+}
+
+export interface ModelSearchParams {
+  search?: string;
+  author?: string;
+  filter?: string;
+  sort?: string;
+  direction?: string;
+  limit?: number;
+  full?: boolean;
+  config?: boolean;
+}
+
+export interface DownloadProgress {
+  id: string;
+  model_id: string;
+  filename: string;
+  total_bytes: number;
+  downloaded_bytes: number;
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+  error?: string;
+  started_at: number;
+  completed_at?: number;
+}
+
+// HuggingFace Management
+export const huggingFaceService = {
+  // Authentication
+  getAuthUrl: () => safeInvoke<string>('hf_get_auth_url'),
+  exchangeCode: (code: string) =>
+    safeInvoke<HFAuthState>('hf_exchange_code', { code }),
+  setToken: (token: string) => safeInvoke<void>('hf_set_token', { token }),
+  getAuthState: () => safeInvoke<HFAuthState>('hf_get_auth_state'),
+  logout: () => safeInvoke<void>('hf_logout'),
+
+  // Configuration
+  getConfig: () => safeInvoke<HFConfig>('hf_get_config'),
+  updateConfig: (config: HFConfig) => safeInvoke<void>('hf_update_config', { config }),
+
+  // Model Discovery
+  searchModels: (params: ModelSearchParams) =>
+    safeInvoke<HFModelInfo[]>('hf_search_models', { params }),
+  getModelInfo: (modelId: string) =>
+    safeInvoke<HFModelInfo>('hf_get_model_info', { modelId }),
+  getModelFiles: (modelId: string) =>
+    safeInvoke<HFModelFile[]>('hf_get_model_files', { modelId }),
+
+  // Downloads
+  downloadFile: (modelId: string, filename: string) =>
+    safeInvoke<string>('hf_download_file', { modelId, filename }),
+  getDownloads: () => safeInvoke<DownloadProgress[]>('hf_get_downloads'),
+  cancelDownload: (modelId: string, filename: string) =>
+    safeInvoke<void>('hf_cancel_download', { modelId, filename }),
+
+  // Local Models
+  getLocalModels: () => safeInvoke<string[]>('hf_get_local_models'),
+  getModelsDir: () => safeInvoke<string>('hf_get_models_dir'),
+
+  // Listen to download progress events
+  onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
+    if (!isTauri() || !listen) {
+      return Promise.resolve(() => {});
+    }
+    return listen('hf-download-progress', (event: any) => {
+      callback(event.payload as DownloadProgress);
+    });
+  },
+};
+
+// Agent Types
+export interface AgentSession {
+  id: string;
+  state: string;
+  message_count: number;
+  created_at: number;
+  last_activity: number;
+}
+
+export interface AgentMessage {
+  id: string;
+  role: string;
+  content: string;
+  timestamp: number;
+  is_streaming?: boolean;
+  intent?: string;
+}
+
+export interface AgentMessageResponse {
+  session_id: string;
+  message_id: string;
+  content: string;
+  role: string;
+  intent?: string;
+  intent_confidence?: number;
+  tool_invoked: boolean;
+  tool_name?: string;
+  pending_approval: boolean;
+}
+
+export interface PendingTool {
+  id: string;
+  tool_name: string;
+  description: string;
+  high_risk: boolean;
+  params: Record<string, unknown>;
+}
+
+export interface AgentConfigResponse {
+  enabled: boolean;
+  llm_backend: string;
+  model: string;
+  streaming_enabled: boolean;
+  local_model_path?: string;
+}
+
+export interface ActiveModelInfo {
+  backend: string;
+  model_id: string;
+  temperature: number;
+  max_tokens: number;
+  context_size: number;
+  has_api_key: boolean;
+}
+
+export interface LocalModelInfo {
+  name: string;
+  size: string;
+  quantization: string;
+  path: string;
+}
+
+export interface AgentStatusResponse {
+  initialized: boolean;
+  enabled: boolean;
+  llm_backend?: string;
+  active_sessions?: number;
+  streaming_enabled?: boolean;
+}
+
+// Agent Service
+export const agentService = {
+  // Session management
+  createSession: () => safeInvoke<AgentSession>('agent_create_session'),
+  getSession: (sessionId: string) =>
+    safeInvoke<AgentSession | null>('agent_get_session', { sessionId }),
+  listSessions: () => safeInvoke<string[]>('agent_list_sessions'),
+  deleteSession: (sessionId: string) =>
+    safeInvoke<boolean>('agent_delete_session', { sessionId }),
+
+  // Messages
+  sendMessage: (sessionId: string, message: string) =>
+    safeInvoke<AgentMessageResponse>('agent_send_message', { sessionId, message }),
+  getMessages: (sessionId: string) =>
+    safeInvoke<AgentMessage[]>('agent_get_messages', { sessionId }),
+  clearHistory: (sessionId: string) =>
+    safeInvoke<void>('agent_clear_history', { sessionId }),
+
+  // Tool approval
+  getPendingTools: (sessionId: string) =>
+    safeInvoke<PendingTool[]>('agent_get_pending_tools', { sessionId }),
+  approveTool: (sessionId: string, toolId: string) =>
+    safeInvoke<boolean>('agent_approve_tool', { sessionId, toolId }),
+  rejectTool: (sessionId: string, toolId: string) =>
+    safeInvoke<boolean>('agent_reject_tool', { sessionId, toolId }),
+
+  // Configuration
+  getConfig: () => safeInvoke<AgentConfigResponse>('agent_get_config'),
+  updateConfig: (params: {
+    enabled?: boolean;
+    apiKey?: string;
+    model?: string;
+    streamingEnabled?: boolean;
+  }) => safeInvoke<void>('agent_update_config', params),
+
+  // Local models
+  scanLocalModels: (directory?: string) =>
+    safeInvoke<LocalModelInfo[]>('agent_scan_local_models', { directory }),
+  getModelsDir: () => safeInvoke<string | null>('agent_get_models_dir'),
+  loadLocalModel: (modelPath: string) =>
+    safeInvoke<string>('agent_load_local_model', { modelPath }),
+  getActiveModel: () => safeInvoke<ActiveModelInfo>('agent_get_active_model'),
+  setApiKey: (provider: string, apiKey: string) =>
+    safeInvoke<void>('agent_set_api_key', { provider, apiKey }),
+  setAutoMode: () => safeInvoke<void>('agent_set_auto_mode'),
+
+  // Status
+  isReady: () => safeInvoke<boolean>('agent_is_ready'),
+  getStatus: () => safeInvoke<AgentStatusResponse>('agent_get_status'),
+
+  // Event listeners
+  onToken: (callback: (event: { session_id: string; message_id: string; content: string; is_complete: boolean }) => void) => {
+    if (!isTauri() || !listen) {
+      return Promise.resolve(() => {});
+    }
+    return listen('agent-token', (event: any) => {
+      callback(event.payload);
+    });
+  },
+
+  onComplete: (callback: (event: { session_id: string; message_id: string; total_tokens?: number; finish_reason?: string }) => void) => {
+    if (!isTauri() || !listen) {
+      return Promise.resolve(() => {});
+    }
+    return listen('agent-complete', (event: any) => {
+      callback(event.payload);
+    });
+  },
+
+  onError: (callback: (event: { session_id: string; error: string; code?: string }) => void) => {
+    if (!isTauri() || !listen) {
+      return Promise.resolve(() => {});
+    }
+    return listen('agent-error', (event: any) => {
+      callback(event.payload);
+    });
+  },
+
+  onToolCall: (callback: (event: { session_id: string; tool_id: string; tool_name: string; description: string; high_risk: boolean; params: Record<string, unknown> }) => void) => {
+    if (!isTauri() || !listen) {
+      return Promise.resolve(() => {});
+    }
+    return listen('agent-tool-call', (event: any) => {
+      callback(event.payload);
+    });
+  },
 };

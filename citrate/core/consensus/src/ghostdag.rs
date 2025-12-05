@@ -418,6 +418,8 @@ mod tests {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         }
     }
 

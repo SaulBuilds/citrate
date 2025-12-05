@@ -6,7 +6,7 @@ use crate::types::ExecutionProof;
 use anyhow::Result;
 use citrate_execution::Hash;
 use sha3::{Digest, Sha3_256};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 /// Execution verifier for validating model execution proofs
 pub struct ExecutionVerifier {
@@ -147,21 +147,54 @@ impl ExecutionVerifier {
         Hash::new(hash.into())
     }
 
-    /// Verify ZK proof (placeholder)
+    /// Verify ZK proof
+    ///
+    /// This implements a commitment-based verification scheme.
+    /// In production, this should be replaced with proper ZK verification using:
+    /// - arkworks for zkSNARKs
+    /// - bulletproofs for range proofs
+    /// - PLONK for general-purpose proofs
+    ///
+    /// Current implementation verifies that the proof contains a valid
+    /// commitment to the statement using a hash-based scheme.
     fn verify_zk_proof(&self, statement: &[u8], proof_data: &[u8]) -> Result<bool> {
-        // Placeholder for ZK proof verification
-        // In production, this would use a proper ZKP library like:
-        // - arkworks for zkSNARKs
-        // - bulletproofs
-        // - PLONK
+        use sha3::{Digest, Sha3_256};
 
-        if statement.is_empty() || proof_data.is_empty() {
-            // For development, accept empty proofs
-            return Ok(true);
+        // Reject empty inputs - this is a security requirement
+        if statement.is_empty() {
+            warn!("ZK verification failed: empty statement");
+            return Ok(false);
         }
 
-        // Simple check for now
-        Ok(!statement.is_empty() && !proof_data.is_empty())
+        if proof_data.is_empty() {
+            warn!("ZK verification failed: empty proof data");
+            return Ok(false);
+        }
+
+        // Minimum proof size: 32 bytes for commitment + 32 bytes for response
+        if proof_data.len() < 64 {
+            warn!("ZK verification failed: proof too short ({} bytes)", proof_data.len());
+            return Ok(false);
+        }
+
+        // Extract commitment and response from proof
+        let commitment = &proof_data[0..32];
+        let response = &proof_data[32..64];
+
+        // Compute expected commitment: H(statement || response)
+        let mut hasher = Sha3_256::new();
+        hasher.update(statement);
+        hasher.update(response);
+        let expected_commitment = hasher.finalize();
+
+        // Verify commitment matches
+        if commitment != expected_commitment.as_slice() {
+            warn!("ZK verification failed: commitment mismatch");
+            return Ok(false);
+        }
+
+        info!("ZK proof verified successfully");
+        Ok(true)
     }
 
     /// Verify proof without model/input/output

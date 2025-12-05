@@ -58,6 +58,7 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 hmac = "0.12"
 rand = { workspace = true }
+k256 = { version = "0.13", features = ["ecdsa", "sha256"] }
 
 [build-dependencies]
 cc = "1.0"

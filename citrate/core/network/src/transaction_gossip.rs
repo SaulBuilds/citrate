@@ -180,9 +180,8 @@ impl TransactionGossip {
         let all_peers = self.peer_manager.get_all_peers();
         let mut target_peers: Vec<PeerId> = Vec::new();
 
-        for _peer in all_peers.iter().take(self.config.max_relay_peers) {
-            // TODO: Get actual peer ID from peer object
-            let peer_id = PeerId::new(format!("peer_{}", rand::random::<u64>()));
+        for peer in all_peers.iter().take(self.config.max_relay_peers) {
+            let peer_id = peer.info.read().await.id.clone();
 
             if let Some(except) = except_peer {
                 if peer_id == *except {

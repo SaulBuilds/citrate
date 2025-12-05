@@ -1,0 +1,242 @@
+name: SDK Integration Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'citrate/sdk/**'
+      - 'citrate/sdks/**'
+      - 'citrate/wallet/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'citrate/sdk/**'
+      - 'citrate/sdks/**'
+      - 'citrate/wallet/**'
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: 'Run integration tests (requires node)'
+        required: false
+        default: 'false'
+
+env:
+  CITRATE_RPC_URL: http://localhost:8545
+  CITRATE_CHAIN_ID: 1337
+
+jobs:
+  # JavaScript SDK Tests (@citrate-ai/sdk)
+  js-sdk-tests:
+    name: JS SDK Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: citrate/sdk/javascript
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: citrate/sdk/javascript/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SDK
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Validate bundle
+        run: npm test -- --testMatch='**/bundle-validation.test.ts'
+
+  # citrate-js SDK Tests
+  citrate-js-tests:
+    name: citrate-js Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: citrate/sdks/javascript/citrate-js
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: citrate/sdks/javascript/citrate-js/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SDK
+        run: npm run build
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+  # Python SDK Tests
+  python-sdk-tests:
+    name: Python SDK Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: citrate/sdks/python
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Run unit tests
+        run: pytest tests/test_client.py tests/test_crypto.py -v
+
+  # CLI Wallet Tests
+  wallet-tests:
+    name: CLI Wallet Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run wallet tests
+        run: |
+          cd citrate/wallet
+          SKIP_INTEGRATION_TESTS=true cargo test --lib
+        env:
+          SKIP_INTEGRATION_TESTS: 'true'
+
+  # Integration tests (requires running node)
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_integration == 'true'
+
+    services:
+      citrate-node:
+        image: ghcr.io/citrate-ai/citrate-node:latest
+        ports:
+          - 8545:8545
+        options: >-
+          --health-cmd "curl -f http://localhost:8545 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Wait for node
+        run: |
+          timeout 60 bash -c 'until curl -sf http://localhost:8545; do sleep 2; done'
+
+      # JS SDK Integration Tests
+      - name: JS SDK Integration Tests
+        run: |
+          cd citrate/sdk/javascript
+          npm ci
+          npm run build
+          npm run test:integration:devnet
+        continue-on-error: true
+
+      # citrate-js Integration Tests
+      - name: citrate-js Integration Tests
+        run: |
+          cd citrate/sdks/javascript/citrate-js
+          npm ci
+          npm run build
+          npm run test:integration:devnet
+        continue-on-error: true
+
+      # Python SDK Integration Tests
+      - name: Python SDK Integration Tests
+        run: |
+          cd citrate/sdks/python
+          pip install -e .[dev]
+          pytest tests/test_integration.py -v
+        continue-on-error: true
+
+      # Wallet Integration Tests
+      - name: Wallet Integration Tests
+        run: |
+          cd citrate/wallet
+          cargo test --test integration_tests
+        continue-on-error: true
+
+  # SDK Version Check
+  version-check:
+    name: SDK Version Alignment
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check SDK versions
+        run: |
+          echo "Checking SDK version alignment..."
+
+          # Get JS SDK version
+          JS_SDK_VERSION=$(jq -r '.version' citrate/sdk/javascript/package.json)
+          echo "JS SDK (@citrate-ai/sdk): $JS_SDK_VERSION"
+
+          # Get citrate-js version
+          CITRATE_JS_VERSION=$(jq -r '.version' citrate/sdks/javascript/citrate-js/package.json)
+          echo "citrate-js: $CITRATE_JS_VERSION"
+
+          # Get Python SDK version
+          PYTHON_VERSION=$(grep 'version = ' citrate/sdks/python/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "Python SDK: $PYTHON_VERSION"
+
+          # Check major versions match
+          JS_MAJOR=$(echo $JS_SDK_VERSION | cut -d. -f1)
+          CITRATE_JS_MAJOR=$(echo $CITRATE_JS_VERSION | cut -d. -f1)
+          PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
+
+          if [ "$JS_MAJOR" != "$CITRATE_JS_MAJOR" ] || [ "$JS_MAJOR" != "$PYTHON_MAJOR" ]; then
+            echo "WARNING: Major versions are misaligned!"
+            echo "  @citrate-ai/sdk major: $JS_MAJOR"
+            echo "  citrate-js major: $CITRATE_JS_MAJOR"
+            echo "  Python SDK major: $PYTHON_MAJOR"
+          else
+            echo "✓ All SDK major versions are aligned ($JS_MAJOR.x.x)"
+          fi

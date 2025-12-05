@@ -46,6 +46,19 @@ export const Settings: React.FC = () => {
               finalityDepth: 12
             };
           }
+          // Ensure mempool field exists with defaults
+          if (!cfg.mempool) {
+            cfg.mempool = {
+              minGasPrice: 1000000000,
+              maxPerSender: 16,
+              chainId: 1337,
+              maxSize: 10000,
+              replacementFactor: 110,
+              txExpirySecs: 3600,
+              allowReplacement: true,
+              requireValidSignature: true
+            };
+          }
           setConfig(cfg);
         }
         if (stat) setStatus(stat);
@@ -64,14 +77,29 @@ export const Settings: React.FC = () => {
   const loadConfig = async () => {
     try {
       const cfg = await nodeService.getConfig();
-      // Ensure consensus field exists with defaults
-      if (cfg && !cfg.consensus) {
-        cfg.consensus = {
-          kParameter: 18,
-          pruningWindow: 100000,
-          blockTimeSeconds: 2,
-          finalityDepth: 12
-        };
+      if (cfg) {
+        // Ensure consensus field exists with defaults
+        if (!cfg.consensus) {
+          cfg.consensus = {
+            kParameter: 18,
+            pruningWindow: 100000,
+            blockTimeSeconds: 2,
+            finalityDepth: 12
+          };
+        }
+        // Ensure mempool field exists with defaults
+        if (!cfg.mempool) {
+          cfg.mempool = {
+            minGasPrice: 1000000000,
+            maxPerSender: 16,
+            chainId: 1337,
+            maxSize: 10000,
+            replacementFactor: 110,
+            txExpirySecs: 3600,
+            allowReplacement: true,
+            requireValidSignature: true
+          };
+        }
       }
       setConfig(cfg);
     } catch {}

@@ -38,6 +38,7 @@ interface ChatAttachment {
   size?: number;
 }
 
+// ChatModel interface - used for model management features
 interface ChatModel {
   id: string;
   name: string;
@@ -47,6 +48,9 @@ interface ChatModel {
   maxTokens: number;
   available: boolean;
 }
+
+// Export for type compatibility
+export type { ChatModel };
 
 export const ChatBot: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -108,7 +112,7 @@ export const ChatBot: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // TODO: Integrate with actual MCP service
+      // Send message to MCP service via agent orchestrator with fallback to direct inference
       const response = await sendToMCP(input.trim());
 
       const assistantMessage: ChatMessage = {
@@ -148,60 +152,84 @@ export const ChatBot: React.FC = () => {
 
       console.log('[ChatBot] Sending message to model:', model.name);
 
-      // Build chat completion request
-      const requestPayload = {
-        jsonrpc: '2.0',
-        method: 'citrate_chatCompletion',
-        params: [{
-          model: model.id,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful AI assistant specialized in blockchain and AI development on the Citrate platform.'
-            },
-            {
-              role: 'user',
-              content: message
-            }
-          ],
-          max_tokens: maxTokens,
-          temperature: temperature
-        }],
-        id: Date.now()
-      };
+      // First, ensure we have a session
+      let sessionId: string | null = sessionStorage.getItem('agent_session_id');
 
-      console.log('[ChatBot] Request:', JSON.stringify(requestPayload, null, 2));
-
-      // Call the RPC endpoint via Tauri
-      const response = await invoke<any>('rpc_call', {
-        request: requestPayload
-      });
-
-      console.log('[ChatBot] Response:', response);
-
-      // Parse response
-      if (response.error) {
-        throw new Error(response.error.message || 'RPC error');
+      if (!sessionId) {
+        // Create a new agent session
+        try {
+          const session = await invoke<{ id: string }>('agent_create_session');
+          sessionId = session.id;
+          sessionStorage.setItem('agent_session_id', sessionId!);
+          console.log('[ChatBot] Created new session:', sessionId);
+        } catch (sessionError) {
+          console.warn('[ChatBot] Could not create agent session, falling back to direct inference:', sessionError);
+          // Fall back to direct model inference
+          return await directModelInference(message, model);
+        }
       }
 
-      const result = response.result;
+      // Try to send via agent
+      try {
+        const response = await invoke<any>('agent_send_message', {
+          sessionId,
+          message
+        });
 
-      // Extract content from OpenAI-compatible response format
-      const content = result.choices?.[0]?.message?.content || 'No response generated';
-      const tokens = result.usage?.total_tokens || 0;
-      const promptTokens = result.usage?.prompt_tokens || 0;
+        console.log('[ChatBot] Agent response:', response);
 
-      return {
-        content,
-        tokens,
-        cost: 0, // Free for now
-        thinking: `Using ${model.name} (${promptTokens} prompt tokens)`
-      };
+        return {
+          content: response.content,
+          tokens: 0, // Agent doesn't report tokens yet
+          cost: 0,
+          thinking: response.intent ? `Intent: ${response.intent}` : `Using ${model.name}`
+        };
+      } catch (agentError) {
+        console.warn('[ChatBot] Agent error, falling back to direct inference:', agentError);
+        // Clear session and try direct inference
+        sessionStorage.removeItem('agent_session_id');
+        return await directModelInference(message, model);
+      }
     } catch (error) {
-      console.error('[ChatBot] Error calling MCP:', error);
+      console.error('[ChatBot] Error:', error);
       throw new Error(`Failed to generate response: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
+
+  // Direct model inference fallback using run_inference command
+  const directModelInference = async (message: string, model: any) => {
+    try {
+      console.log('[ChatBot] Trying direct inference with model:', model.id);
+
+      // Try the run_inference command - parameters is a HashMap in Rust
+      const response = await invoke<any>('run_inference', {
+        request: {
+          model_id: model.id,
+          input: message,
+          parameters: {
+            max_tokens: maxTokens,
+            temperature: temperature
+          }
+        }
+      });
+
+      return {
+        content: response.result || response.output || 'Response generated',
+        tokens: response.latency_ms ? Math.floor(response.latency_ms / 50) : 0, // Estimate tokens from latency
+        cost: response.cost || 0,
+        thinking: `Direct inference with ${model.name} (${response.latency_ms}ms)`
+      };
+    } catch (inferenceError) {
+      // Last fallback - provide helpful error message
+      console.error('[ChatBot] Direct inference failed:', inferenceError);
+      throw new Error(
+        `Model inference not available. To enable local inference:\n` +
+        `1. Ensure llama.cpp is installed at ~/llama.cpp\n` +
+        `2. Model file must exist at ~/Models or ~/.citrate/models\n\n` +
+        `Error: ${inferenceError instanceof Error ? inferenceError.message : String(inferenceError)}`
+      );
+    }
+  }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -211,12 +239,50 @@ export const ChatBot: React.FC = () => {
   };
 
   const toggleVoiceInput = () => {
+    // Check if Web Speech API is available
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      console.warn('[ChatBot] Web Speech API not supported in this browser');
+      return;
+    }
+
     if (isListening) {
+      // Stop speech recognition
       setIsListening(false);
-      // TODO: Stop speech recognition
+      const recognition = (window as any).__speechRecognition;
+      if (recognition) {
+        recognition.stop();
+        (window as any).__speechRecognition = null;
+      }
     } else {
+      // Start speech recognition
       setIsListening(true);
-      // TODO: Start speech recognition
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join('');
+
+        setInput(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('[ChatBot] Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        (window as any).__speechRecognition = null;
+      };
+
+      (window as any).__speechRecognition = recognition;
+      recognition.start();
     }
   };
 
@@ -347,7 +413,7 @@ export const ChatBot: React.FC = () => {
                   {message.timestamp.toLocaleTimeString()}
                 </span>
                 {message.model && (
-                  <span className="message-model">{getModelInfo(message.model).name}</span>
+                  <span className="message-model">{getModelInfo(message.model)?.name || message.model}</span>
                 )}
               </div>
 

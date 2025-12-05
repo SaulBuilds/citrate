@@ -6,7 +6,6 @@ use citrate_consensus::types::{Hash, PublicKey, Signature, Transaction};
 use rlp::{DecoderError, Rlp, RlpStream};
 use secp256k1::{ecdsa::RecoverableSignature, ecdsa::RecoveryId, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Legacy Ethereum transaction structure for RLP decoding
 #[derive(Debug)]
@@ -288,13 +287,12 @@ pub fn decode_eth_transaction(tx_bytes: &[u8]) -> Result<Transaction, String> {
             }
             Err(e) => {
                 eprintln!("Failed to decode as legacy transaction: {:?}", e);
-                eprintln!("Creating mock transaction for testing");
-                create_mock_transaction(tx_bytes, hash_bytes)
+                Err(format!("Failed to decode legacy transaction: {}", e))
             }
         }
     } else {
-        eprintln!("Not a valid RLP list, creating mock transaction");
-        create_mock_transaction(tx_bytes, hash_bytes)
+        eprintln!("Not a valid RLP list, cannot decode transaction");
+        Err("Invalid RLP: expected a list for legacy transaction".to_string())
     }
 }
 
@@ -659,49 +657,6 @@ fn decode_eip2930_transaction(rlp_bytes: &[u8]) -> Result<Transaction, String> {
     Ok(tx)
 }
 
-// Thread-safe nonce counter for mock transactions
-static NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// Create a mock transaction for testing when RLP decoding fails
-fn create_mock_transaction(tx_bytes: &[u8], hash_bytes: [u8; 32]) -> Result<Transaction, String> {
-    eprintln!(
-        "Creating mock transaction with hash: 0x{}",
-        hex::encode(hash_bytes)
-    );
-
-    // Create mock addresses
-    let from_pk = PublicKey::new([0x33; 32]); // Use test account address pattern
-    let to_pk = PublicKey::new([0x44; 32]);
-
-    // Use atomic counter to ensure unique nonces (thread-safe)
-    let nonce = NONCE_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
-
-    let gas_limit = if tx_bytes.len() > 10000 {
-        5_000_000 // Large transaction, likely contract deployment
-    } else {
-        100_000 // Regular transaction
-    };
-
-    let mut tx = Transaction {
-        hash: Hash::new(hash_bytes), // Use the pre-calculated hash
-        from: from_pk,
-        to: Some(to_pk),
-        value: 1_000_000_000_000_000_000, // 1 ETH
-        data: Vec::new(),                 // Empty data for simple transfer
-        nonce,
-        gas_price: 1_000_000_000, // 1 gwei
-        gas_limit,
-        signature: Signature::new([0; 64]),
-        tx_type: None,
-    };
-
-    // Determine transaction type from data
-    tx.determine_type();
-
-    eprintln!("Created mock transaction:");
-    eprintln!("  Hash: 0x{}", hex::encode(tx.hash.as_bytes()));
-    eprintln!("  Nonce: {}", tx.nonce);
-    eprintln!("  Value: {} wei", tx.value);
-
-    Ok(tx)
-}
+// Note: Mock transaction creation has been removed for security reasons.
+// All transaction decoding must succeed or return an error.
+// Invalid transactions should never be fabricated and added to the mempool.

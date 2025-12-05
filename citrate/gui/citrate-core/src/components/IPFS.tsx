@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Database,
   Upload,
@@ -15,8 +16,40 @@ import {
   Clock,
   RefreshCw,
   Pin,
-  Unlink
+  Unlink,
+  Play,
+  Square,
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
+
+// Types matching Rust backend
+interface IpfsStatus {
+  running: boolean;
+  peer_id: string | null;
+  addresses: string[];
+  repo_size: number | null;
+  num_objects: number | null;
+  version: string | null;
+}
+
+interface IpfsConfig {
+  binary_path: string | null;
+  repo_path: string;
+  api_port: number;
+  gateway_port: number;
+  swarm_port: number;
+  external_gateways: string[];
+  enable_pubsub: boolean;
+  bootstrap_peers: string[];
+}
+
+interface IpfsAddResult {
+  cid: string;
+  size: number;
+  name: string;
+  gateway_url: string;
+}
 
 interface IPFSFile {
   cid: string;
@@ -25,188 +58,153 @@ interface IPFSFile {
   type: 'file' | 'directory';
   uploaded: Date;
   pinned: boolean;
-  replicas: number;
   gateway?: string;
 }
 
-interface IPFSNode {
-  id: string;
-  status: 'online' | 'offline' | 'syncing';
-  version: string;
-  peers: number;
-  storage: {
-    used: number;
-    available: number;
-    total: number;
-  };
-  bandwidth: {
-    in: number;
-    out: number;
-  };
-}
-
-interface IPFSPin {
-  cid: string;
-  name: string;
-  size: number;
-  pinTime: Date;
-  type: 'recursive' | 'direct';
-}
-
 export const IPFS: React.FC = () => {
+  const [status, setStatus] = useState<IpfsStatus | null>(null);
+  const [config, setConfig] = useState<IpfsConfig | null>(null);
+  const [pins, setPins] = useState<string[]>([]);
+  const [peers, setPeers] = useState<string[]>([]);
   const [files, setFiles] = useState<IPFSFile[]>([]);
-  const [nodeInfo, setNodeInfo] = useState<IPFSNode | null>(null);
-  const [_pins, setPins] = useState<IPFSPin[]>([]);
   const [selectedFile, setSelectedFile] = useState<IPFSFile | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showNodeSetup, setShowNodeSetup] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'files' | 'pins' | 'peers'>('files');
 
-  useEffect(() => {
-    loadNodeInfo();
-    loadFiles();
-    loadPins();
-
-    // Set up periodic updates
-    const interval = setInterval(() => {
-      loadNodeInfo();
-    }, 5000);
-
-    return () => clearInterval(interval);
+  // Load IPFS status
+  const loadStatus = useCallback(async () => {
+    try {
+      const ipfsStatus = await invoke<IpfsStatus>('ipfs_status');
+      setStatus(ipfsStatus);
+      setError(null);
+    } catch (err: any) {
+      console.error('Failed to load IPFS status:', err);
+      setStatus({
+        running: false,
+        peer_id: null,
+        addresses: [],
+        repo_size: null,
+        num_objects: null,
+        version: null,
+      });
+    }
   }, []);
 
-  const loadNodeInfo = async () => {
+  // Load IPFS config
+  const loadConfig = useCallback(async () => {
     try {
-      // TODO: Integrate with actual IPFS node
-      const mockNodeInfo: IPFSNode = {
-        id: 'QmYourNodeId12345...',
-        status: 'online',
-        version: '0.28.0',
-        peers: 247,
-        storage: {
-          used: 2.4 * 1024 * 1024 * 1024, // 2.4 GB
-          available: 7.6 * 1024 * 1024 * 1024, // 7.6 GB
-          total: 10 * 1024 * 1024 * 1024 // 10 GB
-        },
-        bandwidth: {
-          in: 1024 * 150, // 150 KB/s
-          out: 1024 * 89  // 89 KB/s
-        }
-      };
-
-      setNodeInfo(mockNodeInfo);
-    } catch (error) {
-      console.error('Failed to load IPFS node info:', error);
-      setNodeInfo(null);
+      const ipfsConfig = await invoke<IpfsConfig>('ipfs_get_config');
+      setConfig(ipfsConfig);
+    } catch (err: any) {
+      console.error('Failed to load IPFS config:', err);
     }
-  };
+  }, []);
 
-  const loadFiles = async () => {
-    setLoading(true);
+  // Load pinned content
+  const loadPins = useCallback(async () => {
     try {
-      // TODO: Integrate with actual IPFS API
-      const mockFiles: IPFSFile[] = [
-        {
-          cid: 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco',
-          name: 'my-ai-model.pt',
-          size: 1024 * 1024 * 500, // 500 MB
-          type: 'file',
-          uploaded: new Date('2024-01-15'),
-          pinned: true,
-          replicas: 12,
-          gateway: 'https://ipfs.io/ipfs/'
-        },
-        {
-          cid: 'QmYzApizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6usr',
-          name: 'dataset-images',
-          size: 1024 * 1024 * 1024 * 2.1, // 2.1 GB
-          type: 'directory',
-          uploaded: new Date('2024-01-10'),
-          pinned: true,
-          replicas: 8,
-          gateway: 'https://gateway.pinata.cloud/ipfs/'
-        },
-        {
-          cid: 'QmZrBpizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6upr',
-          name: 'smart-contract.sol',
-          size: 1024 * 15, // 15 KB
-          type: 'file',
-          uploaded: new Date('2024-01-20'),
-          pinned: false,
-          replicas: 3
-        }
-      ];
+      const pinnedCids = await invoke<string[]>('ipfs_list_pins');
+      setPins(pinnedCids);
 
-      setFiles(mockFiles);
-    } catch (error) {
-      console.error('Failed to load IPFS files:', error);
+      // Convert pins to file entries
+      const fileEntries: IPFSFile[] = pinnedCids.map(cid => ({
+        cid,
+        name: cid.slice(0, 12) + '...',
+        size: 0, // Unknown without fetching
+        type: 'file' as const,
+        uploaded: new Date(),
+        pinned: true,
+        gateway: config?.external_gateways?.[0] || 'https://ipfs.io/ipfs/',
+      }));
+      setFiles(fileEntries);
+    } catch (err: any) {
+      console.error('Failed to load pins:', err);
+      setPins([]);
+    }
+  }, [config]);
+
+  // Load connected peers
+  const loadPeers = useCallback(async () => {
+    try {
+      const connectedPeers = await invoke<string[]>('ipfs_get_peers');
+      setPeers(connectedPeers);
+    } catch (err: any) {
+      console.error('Failed to load peers:', err);
+      setPeers([]);
+    }
+  }, []);
+
+  // Start IPFS daemon
+  const startDaemon = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await invoke('ipfs_start');
+      await loadStatus();
+      await loadPins();
+      await loadPeers();
+    } catch (err: any) {
+      setError(err.toString());
     } finally {
       setLoading(false);
     }
   };
 
-  const loadPins = async () => {
+  // Stop IPFS daemon
+  const stopDaemon = async () => {
+    setLoading(true);
     try {
-      // TODO: Load actual pinned content
-      const mockPins: IPFSPin[] = [
-        {
-          cid: 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco',
-          name: 'my-ai-model.pt',
-          size: 1024 * 1024 * 500,
-          pinTime: new Date('2024-01-15'),
-          type: 'recursive'
-        },
-        {
-          cid: 'QmYzApizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6usr',
-          name: 'dataset-images',
-          size: 1024 * 1024 * 1024 * 2.1,
-          pinTime: new Date('2024-01-10'),
-          type: 'recursive'
-        }
-      ];
-
-      setPins(mockPins);
-    } catch (error) {
-      console.error('Failed to load IPFS pins:', error);
+      await invoke('ipfs_stop');
+      await loadStatus();
+    } catch (err: any) {
+      setError(err.toString());
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Upload file to IPFS
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
     setUploadProgress(0);
+    setError(null);
 
     try {
-      // TODO: Implement actual IPFS upload
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + Math.random() * 10;
-        });
-      }, 200);
+      // Read file as bytes
+      const buffer = await file.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(buffer));
 
-      // Simulate upload
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Simulate progress while uploading
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 10, 90));
+      }, 100);
+
+      // Upload via Tauri
+      const result = await invoke<IpfsAddResult>('ipfs_add', {
+        data: bytes,
+        name: file.name,
+      });
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      // Add mock file to list
+      // Add to files list
       const newFile: IPFSFile = {
-        cid: 'Qm' + Math.random().toString(36).substr(2, 44),
+        cid: result.cid,
         name: file.name,
-        size: file.size,
+        size: result.size,
         type: 'file',
         uploaded: new Date(),
         pinned: true,
-        replicas: 1
+        gateway: result.gateway_url.replace(result.cid, ''),
       };
 
       setFiles(prev => [newFile, ...prev]);
@@ -214,59 +212,91 @@ export const IPFS: React.FC = () => {
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);
-      }, 1000);
-    } catch (error) {
-      console.error('Failed to upload file:', error);
+      }, 500);
+    } catch (err: any) {
+      setError(`Upload failed: ${err}`);
       setIsUploading(false);
       setUploadProgress(0);
     }
   };
 
-  const togglePin = async (file: IPFSFile) => {
+  // Pin content
+  const pinContent = async (cid: string) => {
     try {
-      // TODO: Implement actual pin/unpin
-      const updatedFiles = files.map(f =>
-        f.cid === file.cid ? { ...f, pinned: !f.pinned } : f
-      );
-      setFiles(updatedFiles);
+      await invoke('ipfs_pin', { cid });
+      await loadPins();
 
-      if (!file.pinned) {
-        // Add to pins
-        const newPin: IPFSPin = {
-          cid: file.cid,
-          name: file.name,
-          size: file.size,
-          pinTime: new Date(),
-          type: 'recursive'
-        };
-        setPins(prev => [newPin, ...prev]);
-      } else {
-        // Remove from pins
-        setPins(prev => prev.filter(p => p.cid !== file.cid));
-      }
-    } catch (error) {
-      console.error('Failed to toggle pin:', error);
+      // Update file status
+      setFiles(prev =>
+        prev.map(f => (f.cid === cid ? { ...f, pinned: true } : f))
+      );
+    } catch (err: any) {
+      setError(`Pin failed: ${err}`);
     }
   };
 
+  // Unpin content
+  const unpinContent = async (cid: string) => {
+    try {
+      await invoke('ipfs_unpin', { cid });
+      await loadPins();
+
+      // Update file status
+      setFiles(prev =>
+        prev.map(f => (f.cid === cid ? { ...f, pinned: false } : f))
+      );
+    } catch (err: any) {
+      setError(`Unpin failed: ${err}`);
+    }
+  };
+
+  // Toggle pin
+  const togglePin = async (file: IPFSFile) => {
+    if (file.pinned) {
+      await unpinContent(file.cid);
+    } else {
+      await pinContent(file.cid);
+    }
+  };
+
+  // Copy to clipboard
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
-  const formatSize = (bytes: number) => {
+  // Format size
+  const formatSize = (bytes: number | null) => {
+    if (bytes === null || bytes === 0) return '0 B';
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    if (bytes === 0) return '0 B';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const formatBandwidth = (bytesPerSecond: number) => {
-    return formatSize(bytesPerSecond) + '/s';
-  };
+  // Initial load
+  useEffect(() => {
+    loadStatus();
+    loadConfig();
+  }, [loadStatus, loadConfig]);
 
-  const filteredFiles = files.filter(file =>
-    file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    file.cid.toLowerCase().includes(searchQuery.toLowerCase())
+  // Load data when daemon is running
+  useEffect(() => {
+    if (status?.running) {
+      loadPins();
+      loadPeers();
+    }
+  }, [status?.running, loadPins, loadPeers]);
+
+  // Periodic status updates
+  useEffect(() => {
+    const interval = setInterval(loadStatus, 5000);
+    return () => clearInterval(interval);
+  }, [loadStatus]);
+
+  // Filter files by search
+  const filteredFiles = files.filter(
+    file =>
+      file.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      file.cid.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -291,64 +321,108 @@ export const IPFS: React.FC = () => {
               type="file"
               onChange={handleFileUpload}
               style={{ display: 'none' }}
-              disabled={isUploading}
+              disabled={isUploading || !status?.running}
             />
           </label>
         </div>
       </div>
+
+      {/* Error display */}
+      {error && (
+        <div className="error-banner">
+          <AlertCircle size={16} />
+          <span>{error}</span>
+          <button onClick={() => setError(null)}>×</button>
+        </div>
+      )}
 
       {/* Node Status */}
       <div className="node-status">
         <div className="status-card">
           <div className="status-header">
             <div className="status-indicator">
-              <div className={`status-dot ${nodeInfo?.status || 'offline'}`} />
-              <span>IPFS Node {nodeInfo?.status || 'Offline'}</span>
+              <div className={`status-dot ${status?.running ? 'online' : 'offline'}`} />
+              <span>IPFS Node {status?.running ? 'Online' : 'Offline'}</span>
             </div>
-            <button
-              className="btn-icon"
-              onClick={loadNodeInfo}
-              title="Refresh status"
-            >
-              <RefreshCw size={16} />
-            </button>
+            <div className="status-actions">
+              {status?.running ? (
+                <button
+                  className="btn-icon danger"
+                  onClick={stopDaemon}
+                  disabled={loading}
+                  title="Stop IPFS daemon"
+                >
+                  <Square size={16} />
+                </button>
+              ) : (
+                <button
+                  className="btn-icon success"
+                  onClick={startDaemon}
+                  disabled={loading}
+                  title="Start IPFS daemon"
+                >
+                  <Play size={16} />
+                </button>
+              )}
+              <button
+                className="btn-icon"
+                onClick={loadStatus}
+                title="Refresh status"
+              >
+                <RefreshCw size={16} className={loading ? 'spin' : ''} />
+              </button>
+            </div>
           </div>
 
-          {nodeInfo && (
+          {status?.running && (
             <div className="status-stats">
               <div className="stat">
                 <Users size={16} />
-                <span>{nodeInfo.peers} peers</span>
+                <span>{peers.length} peers</span>
               </div>
               <div className="stat">
-                <Activity size={16} />
-                <span>↓ {formatBandwidth(nodeInfo.bandwidth.in)}</span>
-              </div>
-              <div className="stat">
-                <Activity size={16} />
-                <span>↑ {formatBandwidth(nodeInfo.bandwidth.out)}</span>
+                <Pin size={16} />
+                <span>{pins.length} pinned</span>
               </div>
               <div className="stat">
                 <HardDrive size={16} />
-                <span>{formatSize(nodeInfo.storage.used)} / {formatSize(nodeInfo.storage.total)}</span>
+                <span>{formatSize(status.repo_size)}</span>
               </div>
+              {status.version && (
+                <div className="stat">
+                  <Activity size={16} />
+                  <span>v{status.version}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {status?.peer_id && (
+            <div className="peer-id">
+              <span className="label">Peer ID:</span>
+              <code>{status.peer_id.slice(0, 20)}...</code>
+              <button
+                className="btn-icon small"
+                onClick={() => copyToClipboard(status.peer_id!)}
+                title="Copy Peer ID"
+              >
+                <Copy size={12} />
+              </button>
             </div>
           )}
         </div>
 
-        {nodeInfo && (
+        {status?.running && status.repo_size && (
           <div className="storage-usage">
             <div className="usage-bar">
               <div
                 className="usage-fill"
                 style={{
-                  width: `${(nodeInfo.storage.used / nodeInfo.storage.total) * 100}%`
+                  width: `${Math.min((status.repo_size / (10 * 1024 * 1024 * 1024)) * 100, 100)}%`,
                 }}
               />
             </div>
-            <span className="usage-text">
-              {Math.round((nodeInfo.storage.used / nodeInfo.storage.total) * 100)}% used
-            </span>
+            <span className="usage-text">{formatSize(status.repo_size)} used</span>
           </div>
         )}
       </div>
@@ -356,26 +430,47 @@ export const IPFS: React.FC = () => {
       {showNodeSetup && (
         <div className="node-setup">
           <h3>IPFS Node Configuration</h3>
+          {config && (
+            <div className="config-info">
+              <div className="config-item">
+                <span className="label">API Port:</span>
+                <span>{config.api_port}</span>
+              </div>
+              <div className="config-item">
+                <span className="label">Gateway Port:</span>
+                <span>{config.gateway_port}</span>
+              </div>
+              <div className="config-item">
+                <span className="label">Swarm Port:</span>
+                <span>{config.swarm_port}</span>
+              </div>
+              <div className="config-item">
+                <span className="label">Repo Path:</span>
+                <code>{config.repo_path}</code>
+              </div>
+            </div>
+          )}
           <div className="setup-options">
-            <button className="setup-btn">
+            <button className="setup-btn" onClick={startDaemon} disabled={status?.running || loading}>
               <Server size={20} />
               <div>
                 <strong>Start Local Node</strong>
-                <p>Run IPFS node alongside Citrate</p>
+                <p>Run IPFS daemon locally</p>
               </div>
+              {status?.running && <CheckCircle size={16} className="check" />}
             </button>
             <button className="setup-btn">
               <Globe size={20} />
               <div>
-                <strong>Connect to Remote</strong>
-                <p>Connect to existing IPFS node</p>
+                <strong>External Gateways</strong>
+                <p>{config?.external_gateways?.length || 0} configured</p>
               </div>
             </button>
             <button className="setup-btn">
               <Zap size={20} />
               <div>
-                <strong>Use Pinning Service</strong>
-                <p>Configure Pinata, Infura, or custom</p>
+                <strong>Bootstrap Peers</strong>
+                <p>{config?.bootstrap_peers?.length || 0} configured</p>
               </div>
             </button>
           </div>
@@ -391,49 +486,61 @@ export const IPFS: React.FC = () => {
             <span>{Math.round(uploadProgress)}%</span>
           </div>
           <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{ width: `${uploadProgress}%` }}
-            />
+            <div className="progress-fill" style={{ width: `${uploadProgress}%` }} />
           </div>
         </div>
       )}
 
-      {/* Search and Filters */}
+      {/* Content Tabs */}
       <div className="content-controls">
         <div className="search-bar">
           <input
             type="text"
             placeholder="Search files and CIDs..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
         <div className="view-tabs">
-          <button className="tab active">Files</button>
-          <button className="tab">Pins</button>
-          <button className="tab">Peers</button>
+          <button
+            className={`tab ${activeTab === 'files' ? 'active' : ''}`}
+            onClick={() => setActiveTab('files')}
+          >
+            Files ({files.length})
+          </button>
+          <button
+            className={`tab ${activeTab === 'pins' ? 'active' : ''}`}
+            onClick={() => setActiveTab('pins')}
+          >
+            Pins ({pins.length})
+          </button>
+          <button
+            className={`tab ${activeTab === 'peers' ? 'active' : ''}`}
+            onClick={() => setActiveTab('peers')}
+          >
+            Peers ({peers.length})
+          </button>
         </div>
       </div>
 
-      {/* Files List */}
+      {/* Content Area */}
       <div className="files-container">
-        {loading ? (
-          <div className="loading">Loading IPFS content...</div>
-        ) : (
+        {!status?.running ? (
+          <div className="empty-state">
+            <Server size={48} />
+            <p>IPFS daemon is not running</p>
+            <p className="text-muted">Start the daemon to view and manage content</p>
+            <button className="btn btn-primary" onClick={startDaemon} disabled={loading}>
+              <Play size={16} />
+              Start IPFS Daemon
+            </button>
+          </div>
+        ) : activeTab === 'files' ? (
           <>
             {filteredFiles.map(file => (
-              <div
-                key={file.cid}
-                className="file-item"
-                onClick={() => setSelectedFile(file)}
-              >
+              <div key={file.cid} className="file-item" onClick={() => setSelectedFile(file)}>
                 <div className="file-icon">
-                  {file.type === 'directory' ? (
-                    <FolderOpen size={24} />
-                  ) : (
-                    <File size={24} />
-                  )}
+                  {file.type === 'directory' ? <FolderOpen size={24} /> : <File size={24} />}
                 </div>
 
                 <div className="file-info">
@@ -460,16 +567,12 @@ export const IPFS: React.FC = () => {
                       <span>Unpinned</span>
                     </div>
                   )}
-                  <div className="replicas">
-                    <Users size={14} />
-                    <span>{file.replicas}</span>
-                  </div>
                 </div>
 
                 <div className="file-actions">
                   <button
                     className="action-btn"
-                    onClick={(e) => {
+                    onClick={e => {
                       e.stopPropagation();
                       togglePin(file);
                     }}
@@ -479,7 +582,7 @@ export const IPFS: React.FC = () => {
                   </button>
                   <button
                     className="action-btn"
-                    onClick={(e) => {
+                    onClick={e => {
                       e.stopPropagation();
                       copyToClipboard(file.cid);
                     }}
@@ -489,7 +592,7 @@ export const IPFS: React.FC = () => {
                   </button>
                   <button
                     className="action-btn"
-                    onClick={(e) => {
+                    onClick={e => {
                       e.stopPropagation();
                       if (file.gateway) {
                         window.open(file.gateway + file.cid, '_blank');
@@ -503,11 +606,84 @@ export const IPFS: React.FC = () => {
               </div>
             ))}
 
-            {filteredFiles.length === 0 && !loading && (
+            {filteredFiles.length === 0 && (
               <div className="empty-state">
                 <Database size={48} />
                 <p>No files found</p>
                 <p className="text-muted">Upload your first file to get started</p>
+              </div>
+            )}
+          </>
+        ) : activeTab === 'pins' ? (
+          <>
+            {pins.map(cid => (
+              <div key={cid} className="file-item">
+                <div className="file-icon">
+                  <Pin size={24} />
+                </div>
+                <div className="file-info">
+                  <h4>{cid}</h4>
+                  <div className="file-meta">
+                    <span className="cid">Pinned content</span>
+                  </div>
+                </div>
+                <div className="file-actions">
+                  <button
+                    className="action-btn"
+                    onClick={() => unpinContent(cid)}
+                    title="Unpin"
+                  >
+                    <Unlink size={16} />
+                  </button>
+                  <button
+                    className="action-btn"
+                    onClick={() => copyToClipboard(cid)}
+                    title="Copy CID"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {pins.length === 0 && (
+              <div className="empty-state">
+                <Pin size={48} />
+                <p>No pinned content</p>
+                <p className="text-muted">Pin content to keep it available locally</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {peers.map((peer, idx) => (
+              <div key={idx} className="file-item">
+                <div className="file-icon">
+                  <Users size={24} />
+                </div>
+                <div className="file-info">
+                  <h4>{peer.slice(0, 32)}...</h4>
+                  <div className="file-meta">
+                    <span className="cid">Connected peer</span>
+                  </div>
+                </div>
+                <div className="file-actions">
+                  <button
+                    className="action-btn"
+                    onClick={() => copyToClipboard(peer)}
+                    title="Copy Peer ID"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {peers.length === 0 && (
+              <div className="empty-state">
+                <Users size={48} />
+                <p>No connected peers</p>
+                <p className="text-muted">Peers will appear once connected to the network</p>
               </div>
             )}
           </>
@@ -555,16 +731,33 @@ export const IPFS: React.FC = () => {
           gap: 1rem;
         }
 
+        .error-banner {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 1rem;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 0.5rem;
+          color: #dc2626;
+          margin-bottom: 1rem;
+        }
+
+        .error-banner button {
+          margin-left: auto;
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 1.25rem;
+          color: #dc2626;
+        }
+
         .node-status {
           background: white;
           border-radius: 1rem;
           padding: 1.5rem;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
           margin-bottom: 2rem;
-        }
-
-        .status-card {
-          margin-bottom: 1rem;
         }
 
         .status-header {
@@ -581,6 +774,11 @@ export const IPFS: React.FC = () => {
           font-weight: 600;
         }
 
+        .status-actions {
+          display: flex;
+          gap: 0.5rem;
+        }
+
         .status-dot {
           width: 8px;
           height: 8px;
@@ -595,20 +793,11 @@ export const IPFS: React.FC = () => {
           background: #ef4444;
         }
 
-        .status-dot.syncing {
-          background: #f59e0b;
-          animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-
         .status-stats {
           display: flex;
           gap: 2rem;
           flex-wrap: wrap;
+          margin-bottom: 1rem;
         }
 
         .stat {
@@ -619,10 +808,26 @@ export const IPFS: React.FC = () => {
           font-size: 0.875rem;
         }
 
+        .peer-id {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.875rem;
+          color: #6b7280;
+        }
+
+        .peer-id code {
+          background: #f3f4f6;
+          padding: 0.25rem 0.5rem;
+          border-radius: 0.25rem;
+          font-family: monospace;
+        }
+
         .storage-usage {
           display: flex;
           align-items: center;
           gap: 1rem;
+          margin-top: 1rem;
         }
 
         .usage-bar {
@@ -659,6 +864,34 @@ export const IPFS: React.FC = () => {
           font-weight: 600;
         }
 
+        .config-info {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+          padding: 1rem;
+          background: #f9fafb;
+          border-radius: 0.5rem;
+        }
+
+        .config-item {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .config-item .label {
+          font-size: 0.75rem;
+          color: #6b7280;
+          text-transform: uppercase;
+        }
+
+        .config-item code {
+          font-family: monospace;
+          font-size: 0.875rem;
+          color: #374151;
+        }
+
         .setup-options {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -676,11 +909,23 @@ export const IPFS: React.FC = () => {
           cursor: pointer;
           transition: all 0.2s;
           text-align: left;
+          position: relative;
         }
 
-        .setup-btn:hover {
+        .setup-btn:hover:not(:disabled) {
           border-color: #667eea;
           box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .setup-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .setup-btn .check {
+          position: absolute;
+          right: 1rem;
+          color: #10b981;
         }
 
         .setup-btn strong {
@@ -771,6 +1016,7 @@ export const IPFS: React.FC = () => {
           border-radius: 1rem;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
           overflow: hidden;
+          min-height: 300px;
         }
 
         .file-item {
@@ -804,6 +1050,7 @@ export const IPFS: React.FC = () => {
           font-size: 1rem;
           font-weight: 600;
           color: #111827;
+          word-break: break-all;
         }
 
         .file-meta {
@@ -834,7 +1081,8 @@ export const IPFS: React.FC = () => {
           gap: 0.5rem;
         }
 
-        .pinned, .unpinned {
+        .pinned,
+        .unpinned {
           display: flex;
           align-items: center;
           gap: 0.25rem;
@@ -847,14 +1095,6 @@ export const IPFS: React.FC = () => {
         }
 
         .unpinned {
-          color: #6b7280;
-        }
-
-        .replicas {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
-          font-size: 0.75rem;
           color: #6b7280;
         }
 
@@ -898,12 +1138,17 @@ export const IPFS: React.FC = () => {
           text-decoration: none;
         }
 
+        .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
         .btn-primary {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
         }
 
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
           transform: translateY(-1px);
           box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
         }
@@ -914,7 +1159,7 @@ export const IPFS: React.FC = () => {
           border: 1px solid #e5e7eb;
         }
 
-        .btn-secondary:hover {
+        .btn-secondary:hover:not(:disabled) {
           background: #e5e7eb;
         }
 
@@ -933,12 +1178,44 @@ export const IPFS: React.FC = () => {
           transition: all 0.2s;
         }
 
-        .btn-icon:hover {
+        .btn-icon:hover:not(:disabled) {
           background: #f3f4f6;
           color: #374151;
         }
 
-        .loading, .empty-state {
+        .btn-icon:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .btn-icon.success:hover:not(:disabled) {
+          background: #d1fae5;
+          color: #059669;
+        }
+
+        .btn-icon.danger:hover:not(:disabled) {
+          background: #fee2e2;
+          color: #dc2626;
+        }
+
+        .btn-icon.small {
+          padding: 0.25rem;
+        }
+
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .empty-state {
           padding: 3rem;
           text-align: center;
           color: #6b7280;
@@ -949,9 +1226,16 @@ export const IPFS: React.FC = () => {
           color: #9ca3af;
         }
 
+        .empty-state p {
+          margin: 0.5rem 0;
+        }
+
+        .empty-state .btn {
+          margin-top: 1rem;
+        }
+
         .text-muted {
           color: #9ca3af;
-          margin-top: 0.5rem;
         }
       `}</style>
     </div>
@@ -968,7 +1252,7 @@ const FileDetailsModal: React.FC<{
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     if (bytes === 0) return '0 B';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    return (Math.round((bytes / Math.pow(1024, i)) * 100) / 100) + ' ' + sizes[i];
   };
 
   return (
@@ -976,7 +1260,9 @@ const FileDetailsModal: React.FC<{
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3>{file.name}</h3>
-          <button className="close-btn" onClick={onClose}>×</button>
+          <button className="close-btn" onClick={onClose}>
+            ×
+          </button>
         </div>
 
         <div className="file-details">
@@ -998,10 +1284,6 @@ const FileDetailsModal: React.FC<{
               <div className="detail-item">
                 <span className="label">Uploaded:</span>
                 <span className="value">{file.uploaded.toLocaleString()}</span>
-              </div>
-              <div className="detail-item">
-                <span className="label">Replicas:</span>
-                <span className="value">{file.replicas}</span>
               </div>
               <div className="detail-item">
                 <span className="label">Status:</span>
@@ -1034,10 +1316,7 @@ const FileDetailsModal: React.FC<{
           <button className="btn btn-secondary" onClick={onClose}>
             Close
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => onPin(file)}
-          >
+          <button className="btn btn-primary" onClick={() => onPin(file)}>
             {file.pinned ? <Unlink size={16} /> : <Pin size={16} />}
             {file.pinned ? 'Unpin' : 'Pin'}
           </button>

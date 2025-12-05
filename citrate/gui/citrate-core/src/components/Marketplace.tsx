@@ -104,17 +104,28 @@ export const Marketplace: React.FC = () => {
 
         // Step 5: Initialize search index with contract data
         console.log('[Marketplace] Initializing search index...');
-        await initializeSearchIndex(provider, {
-          modelRegistryAddress,
-          marketplaceAddress,
-          ipfsGateways: [
-            'https://gateway.pinata.cloud/ipfs/',
-            'https://cloudflare-ipfs.com/ipfs/',
-            'https://ipfs.io/ipfs/'
-          ],
-          maxConcurrentFetches: 10,
-          fetchTimeoutMs: 10000
-        });
+
+        // Skip contract initialization if addresses are empty - use mock data instead
+        if (!marketplaceAddress || !modelRegistryAddress) {
+          console.warn('[Marketplace] Contract addresses not configured, using mock data');
+          setInitError('Marketplace contracts not deployed. Showing example models.');
+          // Continue without contract-based indexing
+        } else if (provider) {
+          try {
+            await initializeSearchIndex(provider, marketplaceAddress, modelRegistryAddress, {
+              ipfsGateways: [
+                'https://gateway.pinata.cloud/ipfs/',
+                'https://cloudflare-ipfs.com/ipfs/',
+                'https://ipfs.io/ipfs/'
+              ],
+              maxConcurrentFetches: 10,
+              fetchTimeoutMs: 10000
+            });
+          } catch (indexError) {
+            console.warn('[Marketplace] Search index initialization failed:', indexError);
+            // Continue with search engine only
+          }
+        }
 
         // Step 6: Initialize search engine
         console.log('[Marketplace] Initializing search engine...');

@@ -189,7 +189,12 @@ export const DAGVisualization: React.FC = () => {
           </div>
         )}
 
-        {dagData && dagData.nodes.length > 0 ? (
+        {loading && !dagData ? (
+          <div className="loading-state">
+            <RefreshCw size={48} className="spinning" />
+            <p>Loading DAG data...</p>
+          </div>
+        ) : dagData && dagData.nodes.length > 0 ? (
           <div className="blocks-table">
             <table>
               <thead>
@@ -205,8 +210,8 @@ export const DAGVisualization: React.FC = () => {
               </thead>
               <tbody>
                 {dagData.nodes.map(node => (
-                  <tr 
-                    key={node.id} 
+                  <tr
+                    key={node.id}
                     onClick={() => handleNodeClick(node)}
                     className={`block-row ${node.isBlue ? 'blue' : 'red'} ${node.isTip ? 'tip' : ''}`}
                   >
@@ -226,27 +231,13 @@ export const DAGVisualization: React.FC = () => {
                 ))}
               </tbody>
             </table>
-            
-            {dagData.nodes.length === 0 && (
-              <div className="empty-state">
-                <Box size={48} />
-                <p>No blocks in the DAG yet. Start the node to begin mining.</p>
-              </div>
-            )}
           </div>
         ) : (
-          <div className="loading-state">
-            {loading ? (
-              <>
-                <RefreshCw size={48} className="spinning" />
-                <p>Loading DAG data...</p>
-              </>
-            ) : (
-              <>
-                <Network size={48} />
-                <p>Waiting for DAG data...</p>
-              </>
-            )}
+          <div className="empty-state">
+            <Network size={48} />
+            <h3>Node Not Running</h3>
+            <p>Start the embedded node to view the DAG visualization.</p>
+            <p className="hint">The DAG will populate once blocks are produced.</p>
           </div>
         )}
       </div>
@@ -513,8 +504,19 @@ export const DAGVisualization: React.FC = () => {
           color: #9ca3af;
         }
 
+        .empty-state h3 {
+          margin: 1rem 0 0.5rem;
+          color: #374151;
+        }
+
         .empty-state p {
-          margin-top: 1rem;
+          margin: 0.25rem 0;
+          font-size: 0.9rem;
+        }
+
+        .empty-state .hint {
+          font-size: 0.8rem;
+          color: #9ca3af;
         }
 
         .loading-state {

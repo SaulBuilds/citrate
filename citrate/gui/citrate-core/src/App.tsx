@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './App.css';
-import citrateLogo from './assets/citrate_lockup.png';
-import { Dashboard } from './components/Dashboard';
+import { ChatDashboard, MinimalSidebar } from './components/layout';
 import { Wallet } from './components/Wallet';
 import { DAGVisualization } from './components/DAGVisualization';
 import { Models } from './components/Models';
 import { Marketplace } from './components/Marketplace';
-import { ChatBot } from './components/ChatBot';
 import { IPFS } from './components/IPFS';
 import { Contracts } from './components/Contracts';
 import { Settings as SettingsView } from './components/Settings';
@@ -15,20 +13,11 @@ import { FirstTimeSetup } from './components/FirstTimeSetup';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AppProvider, useAppTab } from './contexts/AppContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ErrorProvider, useError } from './contexts/ErrorContext';
+import { ErrorNotification } from './components/common/ErrorNotification';
+import { DevModeIndicator } from './components/common/DevModeIndicator';
 import { useKeyboardShortcuts, KeyboardShortcut } from './hooks/useKeyboardShortcuts';
 import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
-import {
-  LayoutDashboard,
-  Wallet as WalletIcon,
-  Network,
-  Brain,
-  ShoppingBag,
-  MessageSquare,
-  Database,
-  FileCode,
-  Settings,
-  Github
-} from 'lucide-react';
 
 /**
  * Main App Component (Inner)
@@ -37,6 +26,7 @@ import {
  */
 function AppInner() {
   const { currentTab, setCurrentTab } = useAppTab();
+  const { addError } = useError();
   const isNativeApp = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
@@ -86,17 +76,11 @@ function AppInner() {
     {
       key: '6',
       ctrl: true,
-      description: 'Navigate to AI Chat',
-      action: () => setCurrentTab('chat'),
-    },
-    {
-      key: '7',
-      ctrl: true,
       description: 'Navigate to IPFS Storage',
       action: () => setCurrentTab('ipfs'),
     },
     {
-      key: '8',
+      key: '7',
       ctrl: true,
       description: 'Navigate to Contracts',
       action: () => setCurrentTab('contracts'),
@@ -153,18 +137,45 @@ function AppInner() {
           console.log('Connectivity check completed');
         } catch (error) {
           console.warn('Connectivity check failed:', error);
+          addError({
+            code: 'NETWORK_OFFLINE',
+            message: 'Network connectivity issue',
+            details: 'Could not establish connection to the network. Some features may be unavailable.',
+            severity: 'warning',
+            category: 'network',
+          });
         }
       }, 3000);
 
     } catch (error) {
       console.error('App initialization failed:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Determine error type and add appropriate error
+      if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('connect')) {
+        addError({
+          code: 'RPC_UNAVAILABLE',
+          message: 'Failed to start node',
+          details: errorMessage,
+          severity: 'error',
+          category: 'network',
+        });
+      } else {
+        addError({
+          code: 'UNKNOWN_ERROR',
+          message: 'App initialization failed',
+          details: errorMessage,
+          severity: 'error',
+          category: 'unknown',
+        });
+      }
     }
   };
 
   const renderView = () => {
     switch (currentTab) {
       case 'dashboard':
-        return <Dashboard />;
+        return <ChatDashboard />;
       case 'wallet':
         return <Wallet />;
       case 'dag':
@@ -173,8 +184,6 @@ function AppInner() {
         return <Models />;
       case 'marketplace':
         return <Marketplace />;
-      case 'chat':
-        return <ChatBot />;
       case 'ipfs':
         return <IPFS />;
       case 'contracts':
@@ -182,124 +191,18 @@ function AppInner() {
       case 'settings':
         return <SettingsView />;
       default:
-        return <Dashboard />;
+        return <ChatDashboard />;
     }
   };
 
   return (
     <>
       <div className="app">
-        <div className="sidebar">
-        <div className="sidebar-header">
-          <img src={citrateLogo} alt="Citrate" className="app-logo" />
-          <p className="app-version">v3.0.0</p>
-          <p className="app-mode">{isNativeApp ? '🖥️ Native' : '🌐 Web Mode'}</p>
-        </div>
-
-        <nav className="sidebar-nav" aria-label="Main navigation">
-          <button
-            className={`nav-item ${currentTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('dashboard')}
-            aria-label="Navigate to Dashboard"
-            aria-current={currentTab === 'dashboard' ? 'page' : undefined}
-          >
-            <LayoutDashboard size={20} aria-hidden="true" />
-            <span>Dashboard</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'wallet' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('wallet')}
-            aria-label="Navigate to Wallet"
-            aria-current={currentTab === 'wallet' ? 'page' : undefined}
-          >
-            <WalletIcon size={20} aria-hidden="true" />
-            <span>Wallet</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'dag' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('dag')}
-            aria-label="Navigate to DAG Explorer"
-            aria-current={currentTab === 'dag' ? 'page' : undefined}
-          >
-            <Network size={20} aria-hidden="true" />
-            <span>DAG Explorer</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'models' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('models')}
-            aria-label="Navigate to AI Models"
-            aria-current={currentTab === 'models' ? 'page' : undefined}
-          >
-            <Brain size={20} aria-hidden="true" />
-            <span>AI Models</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'marketplace' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('marketplace')}
-            aria-label="Navigate to Marketplace"
-            aria-current={currentTab === 'marketplace' ? 'page' : undefined}
-          >
-            <ShoppingBag size={20} aria-hidden="true" />
-            <span>Marketplace</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'chat' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('chat')}
-            aria-label="Navigate to AI Chat"
-            aria-current={currentTab === 'chat' ? 'page' : undefined}
-          >
-            <MessageSquare size={20} aria-hidden="true" />
-            <span>AI Chat</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'ipfs' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('ipfs')}
-            aria-label="Navigate to IPFS Storage"
-            aria-current={currentTab === 'ipfs' ? 'page' : undefined}
-          >
-            <Database size={20} aria-hidden="true" />
-            <span>IPFS Storage</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'contracts' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('contracts')}
-            aria-label="Navigate to Smart Contracts"
-            aria-current={currentTab === 'contracts' ? 'page' : undefined}
-          >
-            <FileCode size={20} aria-hidden="true" />
-            <span>Contracts</span>
-          </button>
-
-          <button
-            className={`nav-item ${currentTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setCurrentTab('settings')}
-            aria-label="Navigate to Settings"
-            aria-current={currentTab === 'settings' ? 'page' : undefined}
-          >
-            <Settings size={20} aria-hidden="true" />
-            <span>Settings</span>
-          </button>
-        </nav>
-
-          <div className="sidebar-footer">
-            <a
-              href="https://github.com/saulbuilds/citrate"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="github-link"
-            >
-              <Github size={20} />
-              <span>GitHub</span>
-            </a>
-          </div>
-        </div>
+        {/* New Minimal Sidebar - AI Chat removed, dashboard is now chat-first */}
+        <MinimalSidebar
+          currentTab={currentTab as any}
+          onTabChange={(tab) => setCurrentTab(tab)}
+        />
 
         <main className="main-content" role="main" aria-label="Main content">
           {renderView()}
@@ -311,94 +214,6 @@ function AppInner() {
             height: 100vh;
             background: #ffffff;
             font-family: 'Superclarendon', 'Clarendon', Georgia, serif;
-          }
-
-          .sidebar {
-            width: 260px;
-            background: #ffffff;
-            border-right: 1px solid #e5e7eb;
-            display: flex;
-            flex-direction: column;
-          }
-
-          .sidebar-header {
-            padding: 2rem 1.5rem;
-            border-bottom: 1px solid #e5e7eb;
-          }
-
-          .app-logo {
-            width: 100%;
-            max-width: 200px;
-            height: auto;
-            margin-bottom: 0.5rem;
-          }
-
-          .app-version {
-            margin: 0.5rem 0 0 0;
-            color: #666666;
-            font-size: 0.875rem;
-            font-weight: 400;
-          }
-
-          .app-mode {
-            margin: 0.5rem 0 0 0;
-            padding: 0.25rem 0.5rem;
-            background: #ffa50020;
-            color: #ffa500;
-            border-radius: 0.25rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-block;
-          }
-
-          .sidebar-nav {
-            flex: 1;
-            padding: 1.5rem 1rem;
-          }
-
-          .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            width: 100%;
-            padding: 0.75rem 1rem;
-            margin-bottom: 0.5rem;
-            background: none;
-            border: none;
-            border-radius: 0.5rem;
-            color: #000000;
-            font-size: 0.9375rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-
-          .nav-item:hover {
-            background: #f9f9f9;
-            color: #000000;
-          }
-
-          .nav-item.active {
-            background: #ffa500;
-            color: #ffffff;
-          }
-
-          .sidebar-footer {
-            padding: 1.5rem;
-            border-top: 1px solid #e5e7eb;
-          }
-
-          .github-link {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: #000000;
-            text-decoration: none;
-            transition: color 0.2s;
-          }
-
-          .github-link:hover {
-            color: #ffa500;
           }
 
           .main-content {
@@ -419,6 +234,12 @@ function AppInner() {
         isOpen={showShortcutsHelp}
         onClose={() => setShowShortcutsHelp(false)}
       />
+
+      {/* Error Notifications */}
+      <ErrorNotification maxToasts={5} showCriticalModal={true} />
+
+      {/* Dev Mode Indicator (only shown in development builds) */}
+      <DevModeIndicator position="bottom-left" />
     </div>
     </>
   );
@@ -427,14 +248,16 @@ function AppInner() {
 /**
  * App Component (Outer)
  *
- * Wraps the app with AppProvider and ErrorBoundary
+ * Wraps the app with providers and ErrorBoundary
  */
 function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
         <ThemeProvider>
-          <AppInner />
+          <ErrorProvider>
+            <AppInner />
+          </ErrorProvider>
         </ThemeProvider>
       </AppProvider>
     </ErrorBoundary>

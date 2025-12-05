@@ -64,6 +64,21 @@ const IPFS_MODELS: AvailableModel[] = [
       maxTokens: 8192,
     },
   },
+  {
+    id: 'qwen2-0.5b',
+    name: 'Qwen2 0.5B (Q4)',
+    provider: 'ipfs',
+    type: 'text',
+    framework: 'gguf',
+    inferencePrice: '0',
+    available: true,
+    isPinned: true,
+    metadata: {
+      version: '2.0',
+      description: 'IPFS-pinned Qwen2 0.5B model - fast, lightweight inference',
+      maxTokens: 4096,
+    },
+  },
 ];
 
 export function useAvailableModels() {
@@ -157,6 +172,73 @@ export function useAvailableModels() {
     }
   }, []);
 
+  // Fetch locally downloaded GGUF models
+  const fetchLocalModels = useCallback(async (): Promise<AvailableModel[]> => {
+    try {
+      // Scan for local models using agent command
+      const localModels = await invoke<any[]>('agent_scan_local_models', { directory: null });
+
+      if (!localModels || localModels.length === 0) {
+        console.log('[useAvailableModels] No local models found');
+        return [];
+      }
+
+      console.log('[useAvailableModels] Found', localModels.length, 'local models');
+
+      return localModels.map((model: any) => ({
+        id: model.path, // Use full path as ID for local models
+        name: model.name,
+        provider: 'ipfs' as const,
+        type: model.name.toLowerCase().includes('embed') ? 'embedding' as const : 'text' as const,
+        framework: 'gguf',
+        inferencePrice: '0',
+        available: true,
+        isPinned: true,
+        metadata: {
+          description: `Local GGUF model: ${model.name}`,
+          version: model.quantization,
+        },
+      }));
+    } catch (err) {
+      console.warn('[useAvailableModels] Error scanning local models:', err);
+      return [];
+    }
+  }, []);
+
+  // Fetch HuggingFace downloaded models
+  const fetchHFModels = useCallback(async (): Promise<AvailableModel[]> => {
+    try {
+      const hfModels = await invoke<string[]>('hf_get_local_models');
+
+      if (!hfModels || hfModels.length === 0) {
+        console.log('[useAvailableModels] No HuggingFace models found');
+        return [];
+      }
+
+      console.log('[useAvailableModels] Found', hfModels.length, 'HuggingFace models');
+
+      return hfModels.map((modelPath: string) => {
+        const name = modelPath.split('/').pop() || modelPath;
+        return {
+          id: modelPath,
+          name: name.replace('.gguf', ''),
+          provider: 'ipfs' as const,
+          type: name.toLowerCase().includes('embed') ? 'embedding' as const : 'text' as const,
+          framework: 'gguf',
+          inferencePrice: '0',
+          available: true,
+          isPinned: true,
+          metadata: {
+            description: `HuggingFace model: ${name}`,
+          },
+        };
+      });
+    } catch (err) {
+      console.warn('[useAvailableModels] Error fetching HuggingFace models:', err);
+      return [];
+    }
+  }, []);
+
   // Main fetch function
   const fetchModels = useCallback(async () => {
     setLoading(true);
@@ -171,6 +253,21 @@ export function useAvailableModels() {
         allModels = [...allModels, ...registryModels];
       }
 
+      // Fetch local GGUF models
+      const localModels = await fetchLocalModels();
+
+      // Fetch HuggingFace downloaded models
+      const hfModels = await fetchHFModels();
+
+      // Merge models, avoiding duplicates by path/id
+      const existingIds = new Set(allModels.map(m => m.id));
+      for (const model of [...localModels, ...hfModels]) {
+        if (!existingIds.has(model.id)) {
+          allModels.push(model);
+          existingIds.add(model.id);
+        }
+      }
+
       setModels(allModels);
     } catch (err) {
       console.error('[useAvailableModels] Error fetching models:', err);
@@ -180,7 +277,7 @@ export function useAvailableModels() {
     } finally {
       setLoading(false);
     }
-  }, [registryConfig, fetchRegistryModels]);
+  }, [registryConfig, fetchRegistryModels, fetchLocalModels, fetchHFModels]);
 
   // Initialize
   useEffect(() => {

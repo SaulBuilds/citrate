@@ -540,29 +540,169 @@ npm start
 
 ---
 
-## 📋 Complete Development Roadmap
+## Observability & Metrics
 
-**For comprehensive development planning, sprint details, and current objectives, see:**
-- **GLOBAL_ROADMAP.md** - Complete Phase 4 roadmap with weekly sprints and deliverables
-- **PHASE4_ROADMAP.md** - Original detailed roadmap document
+### Structured Logging
 
-### Current Sprint: Phase 4, Week 3 - Model Marketplace Infrastructure
-**Focus Areas:**
-1. **ModelMarketplace Smart Contract** - Complete marketplace functionality
-2. **Discovery & Search Engine** - Full-text search with IPFS indexing
-3. **Rating & Review System** - Performance-based quality metrics
+The node uses structured JSON logging with trace ID correlation for production observability.
 
-**Critical Blockers Status:**
-1. ✅ EIP-1559 transaction decoder support - **RESOLVED** (implemented in `core/api/src/eth_tx_decoder.rs`)
-2. ✅ Address derivation mismatches in executor - **RESOLVED** (fixed in `core/execution/src/types.rs`)
-3. ✅ Pending nonce support in RPC - **RESOLVED** (implemented in `core/api/src/eth_rpc.rs`)
-4. ✅ Mempool visibility endpoint - **RESOLVED** (`citrate_getMempoolSnapshot` RPC method)
+#### Configuration
 
-**Success Criteria:**
-- ✅ Critical transaction pipeline bugs resolved
-- ModelMarketplace contract deployed and tested on testnet
-- Discovery engine functional with indexed model metadata
-- Rating system operational with automated quality scoring
+```bash
+# Log format: json, pretty, or compact
+export LOG_FORMAT=json
+
+# Log level (trace, debug, info, warn, error)
+export RUST_LOG=info,citrate_api=debug
+
+# Log file output
+export LOG_FILE=/var/log/citrate/node.log
+
+# ANSI colors (for terminal)
+export LOG_ANSI=true
+```
+
+#### Trace ID Correlation
+
+Each request generates a unique trace ID (format: `{timestamp_hex}-{counter_hex}-{random_hex}`) that propagates through the call stack for easy log aggregation.
+
+```rust
+// Example log output (JSON format)
+{"timestamp":"2025-12-04T...","level":"INFO","trace_id":"18c3f2a-1-a3b4","method":"eth_sendTransaction",...}
+```
+
+### Prometheus Metrics
+
+The node exposes Prometheus-compatible metrics at `/metrics` endpoint.
+
+#### Configuration
+
+```bash
+# Enable metrics server
+export CITRATE_METRICS_ADDR=127.0.0.1:9090
+
+# Start node (metrics auto-enabled)
+cargo run --bin citrate -- devnet
+```
+
+#### Key Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `citrate_node_uptime_seconds` | Gauge | Node uptime |
+| `citrate_peer_count` | Gauge | Connected peers |
+| `citrate_block_height` | Gauge | Current block height |
+| `citrate_mempool_size` | Gauge | Transactions in mempool |
+| `citrate_dag_tips_count` | Gauge | DAG tip count |
+| `citrate_rpc_requests_total` | Counter | RPC requests by method |
+| `citrate_rpc_latency_seconds` | Histogram | RPC latency distribution |
+| `citrate_ai_requests_total` | Counter | AI inference requests |
+| `citrate_ipfs_uploads_total` | Counter | IPFS uploads |
+
+### GUI Error Handling
+
+The GUI provides user-friendly error surfaces with:
+
+- **Toast notifications** for transient errors (auto-dismiss after 8 seconds)
+- **Modal dialogs** for blocking/critical errors
+- **Error codes** for support reference (e.g., `NETWORK_OFFLINE`, `TX_FAILED`)
+- **Report issue** functionality with error context
+
+#### Error Categories
+
+| Category | Description | Examples |
+|----------|-------------|----------|
+| `network` | Network connectivity issues | NETWORK_OFFLINE, NETWORK_TIMEOUT |
+| `blockchain` | Blockchain/RPC errors | RPC_UNAVAILABLE, TX_REJECTED |
+| `wallet` | Wallet operations | WALLET_LOCKED, INSUFFICIENT_FUNDS |
+| `contract` | Smart contract errors | CONTRACT_REVERTED, CONTRACT_NOT_FOUND |
+| `ipfs` | IPFS operations | IPFS_UNAVAILABLE, IPFS_UPLOAD_FAILED |
+| `ai` | AI model operations | MODEL_NOT_FOUND, INFERENCE_FAILED |
+| `validation` | Input validation | INVALID_INPUT, MISSING_REQUIRED |
+
+### Dev Mode
+
+Development builds include additional tooling:
+
+```bash
+# Enable dev mode (frontend)
+export CITRATE_DEV_MODE=true
+
+# Enable dev mode (Rust)
+cargo build --features dev-mode
+```
+
+Dev mode features:
+- Dev mode indicator badge (bottom-left of GUI)
+- Console logging (stripped in production)
+- Debug assertions
+- Mock data capabilities (when enabled)
+
+---
+
+## 📋 Sprint Planning & Development Roadmap
+
+### 🚨 ALWAYS CHECK SPRINT FOLDER FIRST
+
+**Before starting any work, check the `.sprint/` folder for current sprint planning:**
+
+```bash
+# Check current sprint status
+cat .sprint/CURRENT_SPRINT.md
+
+# View full roadmap
+cat .sprint/ROADMAP.md
+
+# View product backlog
+cat .sprint/BACKLOG.md
+
+# View detailed sprint plan
+cat .sprint/sprints/sprint-XX-name/SPRINT.md
+```
+
+### Sprint Folder Structure
+```
+.sprint/
+├── README.md                    # How to use sprint planning
+├── ROADMAP.md                   # Master roadmap with all phases
+├── CURRENT_SPRINT.md            # Active sprint quick reference
+├── BACKLOG.md                   # Product backlog (prioritized)
+├── sprints/
+│   └── sprint-XX-name/
+│       ├── SPRINT.md            # Detailed sprint plan with WBS
+│       ├── DAILY.md             # Daily progress tracking
+│       └── RETRO.md             # Sprint retrospective
+└── templates/                   # Templates for new sprints
+```
+
+### Current Initiative: AI-First GUI Transformation
+
+**Goal**: Transform Citrate GUI into an AI-first conversational interface
+
+**Timeline**: 14 weeks (7 sprints)
+
+| Phase | Sprint | Focus | Status |
+|-------|--------|-------|--------|
+| Phase 0 | Sprint 0 | Critical Infrastructure Fixes | **ACTIVE** |
+| Phase 1 | Sprint 1 | Agent Foundation | Blocked |
+| Phase 2 | Sprint 2 | Frontend Redesign | Blocked |
+| Phase 3 | Sprint 3-4 | Tool Implementation | Blocked |
+| Phase 4 | Sprint 5 | Multi-Window & Terminal | Blocked |
+| Phase 5 | Sprint 6 | Polish & Release | Blocked |
+
+### Current Sprint: Sprint 0 - Critical Fixes
+
+**Sprint Goal**: Fix all critical blockers preventing reliable blockchain operation
+
+**Key Work Packages**:
+1. Fix consensus test compilation
+2. Implement total ordering (mergeset topological sort)
+3. Fix network peer ID bugs (block/tx propagation)
+4. Implement basic finality mechanism
+5. Fix executor panic points
+6. Implement ECRECOVER precompile
+
+**Full Details**: See `.sprint/CURRENT_SPRINT.md`
 
 ## CI/CD & Release Process
 

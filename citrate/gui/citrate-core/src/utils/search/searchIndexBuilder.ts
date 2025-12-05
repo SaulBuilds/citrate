@@ -248,8 +248,10 @@ export class SearchIndexBuilder {
         ? Number(reviewStats.sumRatings) / Number(reviewStats.reviewCount)
         : 0;
 
-      // Get total inferences (placeholder - would come from InferenceRouter in production)
-      const totalInferences = 0; // TODO: Fetch from InferenceRouter
+      // Get total inferences - using totalSales as a proxy for inference count
+      // In production with InferenceRouter, this would be fetched separately
+      // For now, totalSales represents completed inference purchases
+      const totalInferences = Number(listingInfo.totalSales);
 
       // Convert to search document
       const document = this.metadataFetcher.convertToSearchDocument(

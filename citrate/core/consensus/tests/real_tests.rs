@@ -38,6 +38,8 @@ fn create_test_block(block_num: u8, height: u64, parent: Option<Hash>) -> Block 
         ghostdag_params: GhostDagParams::default(),
         transactions: vec![],
         signature: Signature::new([0u8; 64]),
+        embedded_models: vec![],
+        required_pins: vec![],
     }
 }
 

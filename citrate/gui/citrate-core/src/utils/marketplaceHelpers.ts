@@ -96,7 +96,7 @@ export function convertListingToModel(
     size,
     lastUpdated: new Date(Number(listing.listedAt) * 1000).toISOString().split('T')[0],
     author: listing.owner,
-    authorVerified: false, // TODO: Implement verification system
+    authorVerified: listing.featured, // Featured models are considered verified (admin-curated)
     tags,
     featured: listing.featured,
     preview,
@@ -119,9 +119,21 @@ function extractIPFSCid(metadataURI: string): string {
   return '';
 }
 
+// IPFS gateway configuration with fallbacks
+const IPFS_GATEWAYS = [
+  'https://gateway.pinata.cloud/ipfs/',
+  'https://cloudflare-ipfs.com/ipfs/',
+  'https://ipfs.io/ipfs/',
+  'https://dweb.link/ipfs/',
+  'https://w3s.link/ipfs/',
+];
+
+// Timeout for IPFS gateway requests (10 seconds)
+const IPFS_FETCH_TIMEOUT = 10000;
+
 /**
- * Fetch metadata from IPFS
- * TODO: Implement actual IPFS fetching
+ * Fetch metadata from IPFS using multiple gateways with fallback
+ * Tries each gateway in order until successful
  */
 export async function fetchModelMetadata(
   metadataURI: string
@@ -129,19 +141,163 @@ export async function fetchModelMetadata(
   try {
     console.log('[MarketplaceHelpers] Fetching metadata from:', metadataURI);
 
-    // TODO: Implement IPFS gateway fetching
-    // For now, return null to use default values
-    // In production, this would fetch from:
-    // - IPFS gateway (https://ipfs.io/ipfs/{cid})
-    // - Pinata gateway
-    // - Local IPFS node
-    // - Arweave (if using AR instead of IPFS)
+    // Extract CID from URI
+    const cid = extractIPFSCid(metadataURI);
+    if (!cid) {
+      console.error('[MarketplaceHelpers] Invalid IPFS URI:', metadataURI);
+      return null;
+    }
 
+    // Try each gateway until successful
+    for (const gateway of IPFS_GATEWAYS) {
+      try {
+        const url = `${gateway}${cid}`;
+        console.log('[MarketplaceHelpers] Trying gateway:', url);
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), IPFS_FETCH_TIMEOUT);
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          console.warn(`[MarketplaceHelpers] Gateway ${gateway} returned ${response.status}`);
+          continue;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('json') && !contentType.includes('text')) {
+          console.warn(`[MarketplaceHelpers] Gateway ${gateway} returned non-JSON content type: ${contentType}`);
+          continue;
+        }
+
+        const data = await response.json();
+        console.log('[MarketplaceHelpers] Successfully fetched metadata from:', gateway);
+
+        // Validate and parse metadata
+        return parseModelMetadata(data);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.warn(`[MarketplaceHelpers] Gateway ${gateway} timed out`);
+        } else {
+          console.warn(`[MarketplaceHelpers] Gateway ${gateway} failed:`, error);
+        }
+        continue;
+      }
+    }
+
+    // All gateways failed
+    console.error('[MarketplaceHelpers] All IPFS gateways failed for CID:', cid);
     return null;
   } catch (error) {
     console.error('[MarketplaceHelpers] Failed to fetch metadata:', error);
     return null;
   }
+}
+
+/**
+ * Parse and validate raw IPFS metadata into ModelMetadata format
+ */
+function parseModelMetadata(rawData: any): ModelMetadata | null {
+  if (!rawData || typeof rawData !== 'object') {
+    return null;
+  }
+
+  // Handle various metadata formats (OpenAI model card, HuggingFace, custom)
+  const metadata: ModelMetadata = {
+    name: rawData.name || rawData.modelName || rawData.title || '',
+    description: rawData.description || rawData.summary || rawData.about || '',
+    architecture: rawData.architecture || rawData.model_architecture || rawData.type || undefined,
+    version: rawData.version || rawData.model_version || undefined,
+    size: rawData.size || rawData.model_size || rawData.sizeBytes
+      ? formatFileSize(Number(rawData.sizeBytes))
+      : undefined,
+    tags: Array.isArray(rawData.tags) ? rawData.tags
+      : typeof rawData.tags === 'string' ? rawData.tags.split(',').map((t: string) => t.trim())
+      : rawData.keywords || [],
+    modelType: detectModelType(rawData),
+    license: detectLicense(rawData.license || rawData.licenseName),
+    preview: rawData.preview || rawData.image || rawData.thumbnail || rawData.cover_image || undefined,
+    additionalInfo: extractAdditionalInfo(rawData),
+  };
+
+  // Validate that at least name and description exist
+  if (!metadata.name && !metadata.description) {
+    console.warn('[MarketplaceHelpers] Metadata missing name and description');
+    return null;
+  }
+
+  return metadata;
+}
+
+/**
+ * Detect model type from metadata fields
+ */
+function detectModelType(data: any): 'text' | 'image' | 'audio' | 'multimodal' {
+  const typeHints = [
+    data.modelType?.toLowerCase(),
+    data.type?.toLowerCase(),
+    data.task?.toLowerCase(),
+    data.category?.toLowerCase(),
+    ...(data.tags || []).map((t: string) => t.toLowerCase()),
+  ].filter(Boolean);
+
+  if (typeHints.some(h => h.includes('image') || h.includes('vision') || h.includes('diffusion'))) {
+    return 'image';
+  }
+  if (typeHints.some(h => h.includes('audio') || h.includes('speech') || h.includes('whisper'))) {
+    return 'audio';
+  }
+  if (typeHints.some(h => h.includes('multimodal') || h.includes('multi-modal'))) {
+    return 'multimodal';
+  }
+  return 'text';
+}
+
+/**
+ * Detect and normalize license type
+ */
+function detectLicense(license: string | undefined): 'MIT' | 'Apache-2.0' | 'Commercial' | 'Custom' {
+  if (!license) return 'Custom';
+
+  const lowerLicense = license.toLowerCase();
+  if (lowerLicense.includes('mit')) return 'MIT';
+  if (lowerLicense.includes('apache')) return 'Apache-2.0';
+  if (lowerLicense.includes('commercial') || lowerLicense.includes('proprietary')) return 'Commercial';
+  return 'Custom';
+}
+
+/**
+ * Extract additional info fields that aren't core metadata
+ */
+function extractAdditionalInfo(data: any): Record<string, any> | undefined {
+  const coreFields = ['name', 'description', 'architecture', 'version', 'size', 'tags', 'modelType', 'license', 'preview'];
+  const additional: Record<string, any> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (!coreFields.includes(key) && value !== undefined && value !== null) {
+      additional[key] = value;
+    }
+  }
+
+  return Object.keys(additional).length > 0 ? additional : undefined;
+}
+
+/**
+ * Format file size in human-readable format
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 /**
@@ -167,11 +323,27 @@ export async function loadMarketplaceModels(
     } else if (options?.category !== undefined) {
       modelIds = await marketplaceService.getModelsByCategory(options.category);
     } else {
-      // TODO: Implement a way to get all listings
-      // For now, try featured + top rated
+      // Get all listings by querying each category and combining results
+      // This is the most complete way to enumerate all models without a dedicated "all" query
+      const allModelIds = new Set<string>();
+
+      // First get featured and top rated for quick results
       const featured = await marketplaceService.getFeaturedModels();
-      const topRated = await marketplaceService.getTopRatedModels(20);
-      modelIds = [...new Set([...featured, ...topRated])];
+      const topRated = await marketplaceService.getTopRatedModels(options?.limit || 50);
+      featured.forEach(id => allModelIds.add(id));
+      topRated.forEach(id => allModelIds.add(id));
+
+      // Then query each category (0-10)
+      for (let category = 0; category <= 10; category++) {
+        try {
+          const categoryModels = await marketplaceService.getModelsByCategory(category);
+          categoryModels.forEach(id => allModelIds.add(id));
+        } catch (err) {
+          console.warn(`[MarketplaceHelpers] Failed to get category ${category}:`, err);
+        }
+      }
+
+      modelIds = Array.from(allModelIds);
     }
 
     // Fetch listing details for each model

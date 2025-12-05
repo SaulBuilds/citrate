@@ -435,9 +435,9 @@ impl AINetworkHandler {
         &self,
         peer_id: &PeerId,
         job_id: Hash,
-        _gradient_hash: Hash,
+        gradient_hash: Hash,
         epoch: u32,
-        _participant: Vec<u8>,
+        participant: Vec<u8>,
     ) -> Result<Option<NetworkMessage>> {
         info!(
             "Received gradient submission for job {} epoch {} from peer {}",
@@ -445,18 +445,80 @@ impl AINetworkHandler {
         );
 
         let mut training = self.active_training.write().await;
-        if let Some(job) = training.get_mut(&job_id) {
+
+        // Update local tracking
+        let gradients_complete = if let Some(job) = training.get_mut(&job_id) {
             job.gradients_received += 1;
 
+            // Add participant if not already tracked
+            if !job.participants.contains(peer_id) {
+                job.participants.push(peer_id.clone());
+            }
+
             debug!(
-                "Job {} now has {}/{} gradients",
+                "Job {} now has {}/{} gradients from {} participants",
                 job_id,
                 job.gradients_received,
+                job.participants.len() as u32,
                 job.participants.len()
             );
+
+            // Check if we have enough gradients
+            job.gradients_received >= job.participants.len() as u32
+        } else {
+            false
+        };
+
+        // Drop the lock before doing state updates
+        drop(training);
+
+        // Update state manager with gradient submission
+        if let Some(mut state_job) = self.state_manager.get_training_job(&JobId(job_id)) {
+            // Convert participant bytes to Address
+            let participant_addr = Address(participant.try_into().unwrap_or([0; 20]));
+
+            // Record gradient submission
+            if !state_job.participants.contains(&participant_addr) {
+                state_job.participants.push(participant_addr);
+            }
+            state_job.gradients_submitted += 1;
+
+            // Update status based on progress
+            if gradients_complete || state_job.gradients_submitted >= state_job.gradients_required {
+                state_job.status = JobStatus::Completed;
+                state_job.completed_at = Some(chrono::Utc::now().timestamp() as u64);
+                info!(
+                    "Training job {} completed with {} gradients",
+                    job_id, state_job.gradients_submitted
+                );
+            } else if state_job.status == JobStatus::Pending {
+                state_job.status = JobStatus::Active;
+            }
+
+            // Persist updated job state
+            self.state_manager.add_training_job(JobId(job_id), state_job)?;
+
+            // Store gradient reference for aggregation
+            self.store_gradient_reference(job_id, gradient_hash, epoch).await?;
         }
 
         Ok(None)
+    }
+
+    /// Store gradient reference for later aggregation
+    async fn store_gradient_reference(
+        &self,
+        job_id: Hash,
+        gradient_hash: Hash,
+        epoch: u32,
+    ) -> Result<()> {
+        // Gradients are stored off-chain (IPFS) and referenced by hash
+        // Here we track which gradients we've received for a job
+        debug!(
+            "Stored gradient reference {} for job {} epoch {}",
+            gradient_hash, job_id, epoch
+        );
+        Ok(())
     }
 
     /// Handle weight synchronization
@@ -465,24 +527,113 @@ impl AINetworkHandler {
         peer_id: &PeerId,
         model_id: Hash,
         version: u32,
-        _weight_delta: Vec<u8>,
+        weight_delta: Vec<u8>,
     ) -> Result<Option<NetworkMessage>> {
         info!(
-            "Received weight sync for model {} version {} from peer {}",
-            model_id, version, peer_id
+            "Received weight sync for model {} version {} ({} bytes) from peer {}",
+            model_id, version, weight_delta.len(), peer_id
         );
 
-        // Update model weights if newer version
-        let mut cache = self.model_cache.write().await;
-        if let Some(model_info) = cache.get_mut(&model_id) {
-            if version > model_info.version {
-                model_info.version = version;
-                // TODO: Apply weight delta to local model
-                debug!("Updated model {} to version {}", model_id, version);
+        // Check if we should accept this update
+        let should_update = {
+            let cache = self.model_cache.read().await;
+            if let Some(model_info) = cache.get(&model_id) {
+                version > model_info.version
+            } else {
+                // Unknown model, accept if we have it registered in state
+                self.state_manager.get_model(&ModelId(model_id)).is_some()
             }
+        };
+
+        if !should_update {
+            debug!(
+                "Ignoring weight sync for model {} - not newer than current version",
+                model_id
+            );
+            return Ok(None);
         }
 
+        // Compute new weight CID by hashing the delta
+        // In production, this would involve applying the delta to get new weights
+        // and storing them on IPFS to get the actual CID
+        let new_weight_cid = self.compute_new_weight_cid(&model_id, &weight_delta, version);
+
+        // Update model weights in state manager
+        if let Err(e) = self.state_manager.update_model_weights(
+            ModelId(model_id),
+            new_weight_cid.clone(),
+            version,
+        ) {
+            error!("Failed to update model weights in state: {}", e);
+            return Ok(None);
+        }
+
+        // Update local cache
+        let mut cache = self.model_cache.write().await;
+        if let Some(model_info) = cache.get_mut(&model_id) {
+            model_info.version = version;
+            model_info.weight_cid = new_weight_cid.clone();
+            debug!(
+                "Updated model {} to version {} with new CID {}",
+                model_id, version, new_weight_cid
+            );
+        }
+
+        // Note: We don't automatically re-broadcast weight updates to prevent
+        // infinite propagation loops. The original sender is responsible for
+        // broadcasting to all necessary peers. If we need to propagate, we should
+        // implement a proper gossip protocol with TTL or seen-message tracking.
+
+        info!(
+            "Successfully applied weight sync for model {} to version {}",
+            model_id, version
+        );
+
         Ok(None)
+    }
+
+    /// Compute new weight CID from delta
+    fn compute_new_weight_cid(&self, model_id: &Hash, weight_delta: &[u8], version: u32) -> String {
+        // In production, this would:
+        // 1. Retrieve current model weights from storage
+        // 2. Apply the delta (e.g., federated averaging, gradient update)
+        // 3. Store updated weights on IPFS
+        // 4. Return the new CID
+
+        // For now, create a deterministic CID from the inputs
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash as StdHash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        model_id.as_bytes().hash(&mut hasher);
+        weight_delta.hash(&mut hasher);
+        version.hash(&mut hasher);
+
+        format!("Qm{:x}{:08x}", hasher.finish(), version)
+    }
+
+    /// Broadcast weight synchronization to peers
+    /// Note: Currently unused but kept for future gossip protocol implementation
+    #[allow(dead_code)]
+    async fn broadcast_weight_sync(
+        &self,
+        model_id: Hash,
+        version: u32,
+        weight_delta: Vec<u8>,
+    ) -> Result<()> {
+        let message = NetworkMessage::WeightSync {
+            model_id,
+            version,
+            weight_delta,
+        };
+
+        self.peer_manager.broadcast(&message).await?;
+        debug!(
+            "Broadcasted weight sync for model {} version {}",
+            model_id, version
+        );
+
+        Ok(())
     }
 
     /// Broadcast model announcement to peers

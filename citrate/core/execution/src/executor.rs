@@ -61,6 +61,9 @@ impl ExecutionContext {
     }
 }
 
+/// Default chain ID for devnet
+pub const DEFAULT_CHAIN_ID: u64 = 1337;
+
 /// Transaction executor
 pub struct Executor {
     state_db: Arc<StateDB>,
@@ -72,6 +75,8 @@ pub struct Executor {
     model_registry: Option<Arc<dyn ModelRegistryAdapter>>,
     #[allow(dead_code)]
     precompile_executor: Option<Arc<tokio::sync::RwLock<PrecompileExecutor>>>,
+    /// Chain ID for transaction signing and replay protection
+    chain_id: u64,
 }
 
 /// Trait for state storage to avoid circular dependency
@@ -152,7 +157,19 @@ pub struct InferencePreview {
 }
 
 impl Executor {
+    /// Create a new executor with chain ID from environment or default
     pub fn new(state_db: Arc<StateDB>) -> Self {
+        // Check for chain ID from environment variable
+        let chain_id = std::env::var("CITRATE_CHAIN_ID")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_CHAIN_ID);
+
+        Self::with_chain_id(state_db, chain_id)
+    }
+
+    /// Create a new executor with explicit chain ID
+    pub fn with_chain_id(state_db: Arc<StateDB>, chain_id: u64) -> Self {
         // Initialize Metal runtime and precompiles if available
         let precompile_executor = if cfg!(target_os = "macos") {
             match MetalRuntime::new() {
@@ -171,6 +188,8 @@ impl Executor {
             None
         };
 
+        info!("Executor initialized with chain_id: {}", chain_id);
+
         Self {
             state_db,
             state_store: None,
@@ -180,12 +199,26 @@ impl Executor {
             ai_storage: None,
             model_registry: None,
             precompile_executor,
+            chain_id,
         }
+    }
+
+    /// Get the configured chain ID
+    pub fn chain_id(&self) -> u64 {
+        self.chain_id
     }
 
     pub fn with_storage<S: StateStoreTrait + 'static>(
         state_db: Arc<StateDB>,
         state_store: Option<Arc<S>>,
+    ) -> Self {
+        Self::with_storage_and_chain_id(state_db, state_store, DEFAULT_CHAIN_ID)
+    }
+
+    pub fn with_storage_and_chain_id<S: StateStoreTrait + 'static>(
+        state_db: Arc<StateDB>,
+        state_store: Option<Arc<S>>,
+        chain_id: u64,
     ) -> Self {
         // Initialize Metal runtime and precompiles if available
         let precompile_executor = if cfg!(target_os = "macos") {
@@ -205,6 +238,8 @@ impl Executor {
             None
         };
 
+        info!("Executor initialized with chain_id: {}", chain_id);
+
         Self {
             state_db,
             state_store: state_store.map(|s| s as Arc<dyn StateStoreTrait>),
@@ -214,6 +249,7 @@ impl Executor {
             ai_storage: None,
             model_registry: None,
             precompile_executor,
+            chain_id,
         }
     }
 
@@ -498,8 +534,16 @@ impl Executor {
             return Err(ExecutionError::InvalidInput);
         }
 
-        let model_hash = Hash::new(data[0..32].try_into().unwrap());
-        let meta_len = u32::from_be_bytes(data[32..36].try_into().unwrap()) as usize;
+        let model_hash = Hash::new(
+            data[0..32]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        );
+        let meta_len = u32::from_be_bytes(
+            data[32..36]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        ) as usize;
         let mut offset = 36;
         if data.len() < offset + meta_len {
             return Err(ExecutionError::InvalidInput);
@@ -555,7 +599,11 @@ impl Executor {
 
         let mut artifact_cid: Option<String> = None;
         if data.len() >= offset + 4 {
-            let cid_len = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+            let cid_len = u32::from_be_bytes(
+                data[offset..offset + 4]
+                    .try_into()
+                    .map_err(|_| ExecutionError::InvalidInput)?,
+            ) as usize;
             offset += 4;
             if cid_len > 0 {
                 if data.len() < offset + cid_len {
@@ -582,7 +630,11 @@ impl Executor {
             return Err(ExecutionError::InvalidInput);
         }
 
-        let model_id = ModelId(Hash::new(data[0..32].try_into().unwrap()));
+        let model_id = ModelId(Hash::new(
+            data[0..32]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        ));
 
         Ok(TransactionType::InferenceRequest {
             model_id,
@@ -597,8 +649,16 @@ impl Executor {
             return Err(ExecutionError::InvalidInput);
         }
 
-        let model_id = ModelId(Hash::new(data[0..32].try_into().unwrap()));
-        let meta_len = u32::from_be_bytes(data[32..36].try_into().unwrap()) as usize;
+        let model_id = ModelId(Hash::new(
+            data[0..32]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        ));
+        let meta_len = u32::from_be_bytes(
+            data[32..36]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        ) as usize;
         let mut offset = 36;
         if data.len() < offset + meta_len {
             return Err(ExecutionError::InvalidInput);
@@ -628,7 +688,11 @@ impl Executor {
         metadata.created_at = metadata.created_at.max(0);
 
         let artifact_cid = if data.len() >= offset + 4 {
-            let cid_len = u32::from_be_bytes(data[offset..offset + 4].try_into().unwrap()) as usize;
+            let cid_len = u32::from_be_bytes(
+                data[offset..offset + 4]
+                    .try_into()
+                    .map_err(|_| ExecutionError::InvalidInput)?,
+            ) as usize;
             offset += 4;
             if cid_len > 0 {
                 if data.len() < offset + cid_len {
@@ -769,7 +833,7 @@ impl Executor {
             U256::zero(), // No value transfer during deployment
             gas_remaining,
             U256::from(context.gas_price),
-            1337, // chain_id (TODO: make configurable)
+            self.chain_id,
             context.block_number,
             context.timestamp,
         );
@@ -1569,7 +1633,11 @@ impl Executor {
             return Err(ExecutionError::InvalidInput);
         }
 
-        let model_hash = Hash::new(input[0..32].try_into().unwrap());
+        let model_hash = Hash::new(
+            input[0..32]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        );
         let model_id = ModelId(model_hash);
 
         // Check if model exists
@@ -1598,7 +1666,11 @@ impl Executor {
             return Err(ExecutionError::InvalidInput);
         }
 
-        let model_hash = Hash::new(input[0..32].try_into().unwrap());
+        let model_hash = Hash::new(
+            input[0..32]
+                .try_into()
+                .map_err(|_| ExecutionError::InvalidInput)?,
+        );
         let model_id = ModelId(model_hash);
         let inference_data = &input[32..];
 
@@ -2079,6 +2151,8 @@ mod tests {
             ghostdag_params: Default::default(),
             transactions: vec![],
             signature: Signature::new([0; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         }
     }
 

@@ -89,9 +89,15 @@ pub struct MiningConfig {
 
 impl Default for NodeConfig {
     fn default() -> Self {
+        // Check for chain ID from environment variable, default to 1337 (devnet)
+        let chain_id = std::env::var("CITRATE_CHAIN_ID")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(1337);
+
         Self {
             chain: ChainConfig {
-                chain_id: 1337, // Devnet chain ID
+                chain_id,
                 genesis_hash: None,
                 block_time: 5,
                 ghostdag_k: 18,
@@ -125,9 +131,13 @@ impl Default for NodeConfig {
 
 impl NodeConfig {
     /// Create devnet configuration
+    /// Chain ID can be overridden via CITRATE_CHAIN_ID environment variable
     pub fn devnet() -> Self {
         let mut config = Self::default();
-        config.chain.chain_id = 1337;
+        // Chain ID already set from env var in default(), only override if not set
+        if std::env::var("CITRATE_CHAIN_ID").is_err() {
+            config.chain.chain_id = 1337;
+        }
         config.mining.enabled = true;
         config.mining.target_block_time = 2; // Fast blocks for testing
         config

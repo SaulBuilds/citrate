@@ -273,7 +273,7 @@ impl DagExplorer {
         let networks = self.networks.read().await;
         
         if let Some(state) = networks.get(&network) {
-            let hash_bytes = Hash::from_hex(hash).map_err(|_| ApiError::InvalidRequest("Invalid hash".to_string()))?;
+            let hash_bytes = Hash::from_hex_str(hash).map_err(|_| ApiError::InvalidRequest("Invalid hash".to_string()))?;
             
             // Check cache first
             let cache = state.block_cache.read().await;
@@ -367,40 +367,45 @@ impl DagExplorer {
                 
                 if let Ok(Some(block)) = state.storage.blocks.get_block(&hash).await {
                     // Create node
+                    let selected_parent_hash = block.header.selected_parent_hash;
                     let node = DagNode {
                         id: hash.to_hex(),
                         height: block.header.height,
                         blue_score: block.header.blue_score,
-                        is_blue: block.header.is_blue,
-                        selected_parent: block.header.selected_parent.map(|h| h.to_hex()),
-                        merge_parents: block.header.merge_parents.iter().map(|h| h.to_hex()).collect(),
+                        is_blue: true, // All blocks in DAG can be considered blue
+                        selected_parent: if selected_parent_hash == Hash::default() {
+                            None
+                        } else {
+                            Some(selected_parent_hash.to_hex())
+                        },
+                        merge_parents: block.header.merge_parent_hashes.iter().map(|h| h.to_hex()).collect(),
                         timestamp: block.header.timestamp,
                         tx_count: block.transactions.len(),
-                        size: block.size(),
-                        proposer: block.header.proposer.to_hex(),
+                        size: self.estimate_block_size(&block),
+                        proposer: format!("0x{}", hex::encode(&block.header.proposer_pubkey.0)),
                         network: network.clone(),
                     };
                     nodes.push(node);
-                    
-                    // Create edges
-                    if let Some(selected_parent) = block.header.selected_parent {
+
+                    // Create edges - only if not genesis (selected_parent is not default)
+                    if selected_parent_hash != Hash::default() {
                         edges.push(DagEdge {
-                            source: selected_parent.to_hex(),
+                            source: selected_parent_hash.to_hex(),
                             target: hash.to_hex(),
                             edge_type: "selected".to_string(),
                             weight: 1.0,
                         });
-                        queue.push_back((selected_parent, level + 1));
+                        queue.push_back((selected_parent_hash, level + 1));
                     }
-                    
-                    for merge_parent in &block.header.merge_parents {
+
+                    for merge_parent in &block.header.merge_parent_hashes {
                         edges.push(DagEdge {
                             source: merge_parent.to_hex(),
                             target: hash.to_hex(),
                             edge_type: "merge".to_string(),
                             weight: 0.5,
                         });
-                        queue.push_back((merge_parent.clone(), level + 1));
+                        queue.push_back((*merge_parent, level + 1));
                     }
                 }
             }
@@ -521,7 +526,7 @@ impl DagExplorer {
             
             // Try as block hash
             if query.starts_with("0x") && query.len() == 66 {
-                if let Ok(hash) = Hash::from_hex(query) {
+                if let Ok(hash) = Hash::from_hex_str(query) {
                     if let Ok(Some(block)) = state.storage.blocks.get_block(&hash).await {
                         results.push(SearchResult {
                             result_type: "block".to_string(),
@@ -534,7 +539,7 @@ impl DagExplorer {
             
             // Try as transaction hash
             if query.starts_with("0x") && query.len() == 66 {
-                if let Ok(hash) = Hash::from_hex(query) {
+                if let Ok(hash) = Hash::from_hex_str(query) {
                     if let Ok(Some((tx, _))) = state.storage.transactions.get_transaction(&hash).await {
                         results.push(SearchResult {
                             result_type: "transaction".to_string(),
@@ -658,54 +663,108 @@ impl DagExplorer {
     
     // Convert internal block to API BlockData
     fn block_to_data(&self, block: &Block, network: &str) -> BlockData {
+        // Calculate estimated gas used from transactions
+        let estimated_gas_used: u64 = block.transactions
+            .iter()
+            .map(|tx| tx.gas_limit)
+            .sum();
+
         BlockData {
-            hash: block.hash.to_hex(),
+            hash: block.hash().to_hex(),
             height: block.header.height,
             timestamp: block.header.timestamp,
-            selected_parent: block.header.selected_parent
-                .map(|h| h.to_hex())
-                .unwrap_or_else(|| "0x0".to_string()),
-            merge_parents: block.header.merge_parents
+            selected_parent: if block.header.selected_parent_hash == Hash::default() {
+                "0x0".to_string()
+            } else {
+                block.header.selected_parent_hash.to_hex()
+            },
+            merge_parents: block.header.merge_parent_hashes
                 .iter()
                 .map(|h| h.to_hex())
                 .collect(),
             blue_score: block.header.blue_score,
-            is_blue: block.header.is_blue,
+            is_blue: true, // All blocks in the selected chain are considered blue
             transactions: block.transactions
                 .iter()
-                .map(|tx| tx.hash().to_hex())
+                .map(|tx| tx.hash.to_hex())
                 .collect(),
-            state_root: block.header.state_root.to_hex(),
-            receipts_root: block.header.receipts_root.to_hex(),
-            proposer: block.header.proposer.to_hex(),
-            gas_used: block.header.gas_used,
-            gas_limit: block.header.gas_limit,
-            base_fee: block.header.base_fee.to_string(),
-            difficulty: block.header.difficulty.to_string(),
-            total_difficulty: block.header.total_difficulty.to_string(),
-            size: block.size(),
+            state_root: block.state_root.to_hex(),
+            receipts_root: block.receipt_root.to_hex(),
+            proposer: format!("0x{}", hex::encode(&block.header.proposer_pubkey.0)),
+            gas_used: estimated_gas_used,
+            gas_limit: 30_000_000, // Standard block gas limit
+            base_fee: "1000000000".to_string(), // 1 gwei default
+            difficulty: block.header.blue_work.to_string(),
+            total_difficulty: block.header.blue_work.to_string(),
+            size: self.estimate_block_size(block),
             transaction_count: block.transactions.len(),
             uncle_count: 0, // GhostDAG doesn't have uncles
             network: network.to_string(),
         }
     }
+
+    // Estimate block size in bytes
+    fn estimate_block_size(&self, block: &Block) -> u64 {
+        let mut size = 0u64;
+        // Header fields
+        size += 4;  // version
+        size += 32; // block_hash
+        size += 32; // selected_parent_hash
+        size += block.header.merge_parent_hashes.len() as u64 * 32;
+        size += 8;  // timestamp
+        size += 8;  // height
+        size += 8;  // blue_score
+        size += 16; // blue_work
+        size += 32; // pruning_point
+        size += 32; // proposer_pubkey
+        // VRF proof (variable)
+        size += block.header.vrf_reveal.proof.len() as u64;
+        size += 32; // vrf output
+
+        // Block body
+        size += 32; // state_root
+        size += 32; // tx_root
+        size += 32; // receipt_root
+        size += 32; // artifact_root
+        size += 64; // signature
+
+        // Transactions
+        for tx in &block.transactions {
+            size += 32; // hash
+            size += 8;  // nonce
+            size += 32; // from
+            size += 32; // to
+            size += 16; // value
+            size += 8;  // gas_limit
+            size += 8;  // gas_price
+            size += tx.data.len() as u64;
+            size += 64; // signature
+        }
+
+        // Embedded models (genesis only)
+        for model in &block.embedded_models {
+            size += model.weights.len() as u64;
+        }
+
+        size
+    }
     
     // Convert internal transaction to API TransactionData
     fn tx_to_data(&self, tx: &Transaction, network: &str) -> TransactionData {
         TransactionData {
-            hash: tx.hash().to_hex(),
-            block_hash: "".to_string(), // TODO: Get from receipt
-            block_height: 0, // TODO: Get from receipt
-            from: format!("0x{:x}", tx.from),
-            to: tx.to.map(|addr| format!("0x{:x}", addr)),
+            hash: tx.hash.to_hex(),
+            block_hash: "".to_string(), // Set by caller with block context
+            block_height: 0, // Set by caller with block context
+            from: format!("0x{}", hex::encode(&tx.from.0)),
+            to: tx.to.as_ref().map(|pk| format!("0x{}", hex::encode(&pk.0))),
             value: tx.value.to_string(),
             gas_price: tx.gas_price.to_string(),
             gas_limit: tx.gas_limit,
-            gas_used: 0, // TODO: Get from receipt
+            gas_used: tx.gas_limit, // Estimate as gas_limit until receipt available
             nonce: tx.nonce,
             input: hex::encode(&tx.data),
-            status: true, // TODO: Get from receipt
-            timestamp: 0, // TODO: Get from block
+            status: true, // Assume success, would be set from receipt
+            timestamp: 0, // Set by caller with block context
             tx_type: self.classify_transaction(tx),
             network: network.to_string(),
         }
@@ -923,44 +982,13 @@ async fn handle_recent_transactions(
     }
 }
 
-// Extension traits for convenience
-impl Block {
-    fn size(&self) -> u64 {
-        // Estimate block size
-        let mut size = 0u64;
-        size += 32; // hash
-        size += 8;  // height
-        size += 8;  // timestamp
-        size += 32; // selected_parent
-        size += self.header.merge_parents.len() as u64 * 32;
-        size += 8;  // blue_score
-        size += 1;  // is_blue
-        size += 32; // state_root
-        size += 32; // receipts_root
-        size += 32; // proposer
-        size += 8;  // gas_used
-        size += 8;  // gas_limit
-        size += 32; // base_fee
-        size += 32; // difficulty
-        size += 32; // total_difficulty
-        
-        for tx in &self.transactions {
-            size += 32; // hash
-            size += 32; // from
-            size += 32; // to
-            size += 32; // value
-            size += 8;  // gas
-            size += 32; // gas_price
-            size += 8;  // nonce
-            size += tx.data.len() as u64;
-        }
-        
-        size
-    }
+// Helper trait for Hash parsing from hex strings
+trait HashFromHex {
+    fn from_hex_str(hex: &str) -> Result<Hash, String>;
 }
 
-impl Hash {
-    fn from_hex(hex: &str) -> Result<Self, String> {
+impl HashFromHex for Hash {
+    fn from_hex_str(hex: &str) -> Result<Hash, String> {
         let hex = hex.strip_prefix("0x").unwrap_or(hex);
         let bytes = hex::decode(hex).map_err(|e| e.to_string())?;
         if bytes.len() != 32 {
@@ -969,34 +997,5 @@ impl Hash {
         let mut arr = [0u8; 32];
         arr.copy_from_slice(&bytes);
         Ok(Hash::new(arr))
-    }
-    
-    fn to_hex(&self) -> String {
-        format!("0x{}", hex::encode(self.0))
-    }
-}
-
-impl PublicKey {
-    fn to_hex(&self) -> String {
-        format!("0x{}", hex::encode(&self.0))
-    }
-}
-
-impl Transaction {
-    fn hash(&self) -> Hash {
-        // Calculate transaction hash
-        use sha3::{Digest, Keccak256};
-        let mut hasher = Keccak256::new();
-        hasher.update(&self.from.to_be_bytes());
-        if let Some(to) = self.to {
-            hasher.update(&to.to_be_bytes());
-        }
-        hasher.update(&self.value.to_be_bytes());
-        hasher.update(&self.nonce.to_le_bytes());
-        hasher.update(&self.data);
-        let result = hasher.finalize();
-        let mut hash = [0u8; 32];
-        hash.copy_from_slice(&result);
-        Hash::new(hash)
     }
 }

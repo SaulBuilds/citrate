@@ -23,6 +23,7 @@ mod inference;
 mod model_manager;
 mod model_verifier;
 mod producer;
+mod sync;
 
 use config::NodeConfig;
 use genesis::{initialize_genesis_state, GenesisConfig};

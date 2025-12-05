@@ -920,13 +920,126 @@ pub fn register_eth_methods(
     });
 
     // eth_feeHistory - Get fee history for EIP-1559
-    io_handler.add_sync_method("eth_feeHistory", move |_params: Params| {
-        // Return mock fee history for EIP-1559 support
+    let storage_fee = storage.clone();
+    io_handler.add_sync_method("eth_feeHistory", move |params: Params| {
+        // Parse params: [blockCount, newestBlock, rewardPercentiles]
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(_) => {
+                // Return default if no params
+                return Ok(json!({
+                    "oldestBlock": "0x1",
+                    "reward": [],
+                    "baseFeePerGas": ["0x3b9aca00"],
+                    "gasUsedRatio": []
+                }));
+            }
+        };
+
+        // Parse block count (default 1)
+        let block_count: u64 = params.get(0)
+            .and_then(|v| v.as_str())
+            .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+            .unwrap_or(1)
+            .min(1024); // Cap at 1024 blocks
+
+        // Get current height
+        let api = ChainApi::new(storage_fee.clone());
+        let current_height = match block_on(api.get_height()) {
+            Ok(h) => h,
+            Err(_) => 0,
+        };
+
+        if current_height == 0 {
+            return Ok(json!({
+                "oldestBlock": "0x0",
+                "reward": [],
+                "baseFeePerGas": ["0x3b9aca00"],
+                "gasUsedRatio": []
+            }));
+        }
+
+        // Calculate start height
+        let start_height = current_height.saturating_sub(block_count - 1);
+
+        // Collect fee data from blocks
+        let mut base_fees: Vec<String> = Vec::new();
+        let mut gas_used_ratios: Vec<f64> = Vec::new();
+        let mut rewards: Vec<Vec<String>> = Vec::new();
+
+        // Parse reward percentiles if provided
+        let percentiles: Vec<f64> = params.get(2)
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter()
+                .filter_map(|p| p.as_f64())
+                .collect())
+            .unwrap_or_default();
+
+        for height in start_height..=current_height {
+            // Get block hash at height
+            if let Ok(Some(block_hash)) = storage_fee.blocks.get_block_by_height(height) {
+                // Get block data
+                if let Ok(Some(block)) = storage_fee.blocks.get_block(&block_hash) {
+                    // Calculate gas used from transactions
+                    let total_gas_used: u64 = block.transactions.iter()
+                        .map(|tx| tx.gas_limit.min(21000)) // Estimate gas used
+                        .sum();
+
+                    // Gas limit per block (15M default like Ethereum)
+                    let block_gas_limit: u64 = 15_000_000;
+                    let gas_ratio = total_gas_used as f64 / block_gas_limit as f64;
+                    gas_used_ratios.push(gas_ratio.min(1.0));
+
+                    // Base fee calculation (simplified EIP-1559 style)
+                    // In a real implementation, this would track actual base fees
+                    let base_fee = if gas_ratio > 0.5 {
+                        // If block is more than 50% full, increase base fee
+                        1_000_000_000_u64 + (gas_ratio * 100_000_000.0) as u64
+                    } else {
+                        // Default 1 gwei
+                        1_000_000_000_u64
+                    };
+                    base_fees.push(format!("0x{:x}", base_fee));
+
+                    // Calculate reward percentiles from transactions
+                    if !percentiles.is_empty() && !block.transactions.is_empty() {
+                        let mut tips: Vec<u64> = block.transactions.iter()
+                            .map(|tx| tx.gas_price.saturating_sub(base_fee))
+                            .collect();
+                        tips.sort();
+
+                        let mut block_rewards: Vec<String> = Vec::new();
+                        for pct in &percentiles {
+                            let idx = ((pct / 100.0) * (tips.len() - 1) as f64).floor() as usize;
+                            let tip = tips.get(idx).copied().unwrap_or(0);
+                            block_rewards.push(format!("0x{:x}", tip));
+                        }
+                        rewards.push(block_rewards);
+                    } else {
+                        rewards.push(vec!["0x0".to_string()]);
+                    }
+                } else {
+                    // Block not found, use defaults
+                    base_fees.push("0x3b9aca00".to_string()); // 1 gwei
+                    gas_used_ratios.push(0.0);
+                    rewards.push(vec!["0x0".to_string()]);
+                }
+            } else {
+                // No block at height, use defaults
+                base_fees.push("0x3b9aca00".to_string());
+                gas_used_ratios.push(0.0);
+                rewards.push(vec!["0x0".to_string()]);
+            }
+        }
+
+        // Add one more base fee for the next block
+        base_fees.push(base_fees.last().cloned().unwrap_or_else(|| "0x3b9aca00".to_string()));
+
         Ok(json!({
-            "oldestBlock": "0x1",
-            "reward": [["0x3b9aca00"]],  // 1 gwei
-            "baseFeePerGas": ["0x3b9aca00", "0x3b9aca00"], // 1 gwei base fee
-            "gasUsedRatio": [0.5]
+            "oldestBlock": format!("0x{:x}", start_height),
+            "reward": rewards,
+            "baseFeePerGas": base_fees,
+            "gasUsedRatio": gas_used_ratios
         }))
     });
 

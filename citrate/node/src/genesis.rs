@@ -1,3 +1,4 @@
+use citrate_consensus::dag_store::DagStore;
 use citrate_consensus::types::{
     Block, BlockHeader, EmbeddedModel, GhostDagParams, Hash, ModelId as ConsensusModelId,
     ModelMetadata as ConsensusModelMetadata, ModelType, PublicKey, RequiredModel, Signature,
@@ -231,11 +232,8 @@ pub async fn initialize_genesis_state(
     // Calculate block hash
     genesis.header.block_hash = calculate_block_hash(&genesis);
 
-    // Store genesis block
+    // Store genesis block in persistent storage
     storage.blocks.put_block(&genesis)?;
-
-    // TODO: Initialize DAG tracking for genesis block
-    // This would be done through consensus module, not storage directly
 
     tracing::info!(
         "Genesis block created: {:?} at height 0",
@@ -243,6 +241,33 @@ pub async fn initialize_genesis_state(
     );
 
     Ok(genesis.header.block_hash)
+}
+
+/// Initialize genesis state with DAG tracking
+///
+/// This variant also stores the genesis block in the DAG store for consensus tracking.
+/// The DagStore maintains the DAG structure for GhostDAG consensus.
+pub async fn initialize_genesis_with_dag(
+    storage: Arc<StorageManager>,
+    executor: Arc<Executor>,
+    dag_store: Arc<DagStore>,
+    config: &GenesisConfig,
+) -> anyhow::Result<Hash> {
+    // Use the base initialization
+    let genesis_hash = initialize_genesis_state(storage.clone(), executor, config).await?;
+
+    // Retrieve genesis block and add to DAG store
+    if let Ok(Some(genesis_block)) = storage.blocks.get_block(&genesis_hash) {
+        dag_store.store_block(genesis_block.clone()).await?;
+        tracing::info!(
+            "Genesis block added to DAG store: {:?}",
+            hex::encode(&genesis_hash.as_bytes()[..8])
+        );
+    } else {
+        tracing::warn!("Failed to retrieve genesis block for DAG store");
+    }
+
+    Ok(genesis_hash)
 }
 
 fn register_genesis_model(

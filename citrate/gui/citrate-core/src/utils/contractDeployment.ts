@@ -7,6 +7,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { encodeConstructorParams } from './abiEncoder';
+import { rpcClient } from '../services/rpc-client';
 
 export interface DeploymentRequest {
   from: string;
@@ -116,16 +117,18 @@ async function getContractAddressFromReceipt(
   // TODO: Implement receipt fetching via RPC
   // For now, return undefined (address will be shown after receipt)
 
-  console.log(
-    '[ContractDeployment] Contract address retrieval not yet implemented.',
-    'Waiting for receipt:', txHash
-  );
-
-  // In production, poll for receipt:
-  // const receipt = await invoke('get_transaction_receipt', { txHash });
-  // return receipt.contractAddress;
-
-  return undefined;
+  try {
+    const receipt = await rpcClient.getTransactionReceipt(txHash);
+    if (receipt && receipt.contractAddress) {
+      console.log('[ContractDeployment] Contract address found:', receipt.contractAddress);
+      return receipt.contractAddress;
+    }
+    console.log('[ContractDeployment] Receipt found but no contract address (transaction may not be mined yet)');
+    return undefined;
+  } catch (error) {
+    console.log('[ContractDeployment] Could not get receipt (transaction may not be mined yet):', error);
+    return undefined;
+  }
 }
 
 /**
@@ -142,44 +145,84 @@ export async function waitForDeployment(
   const startTime = Date.now();
   const pollInterval = 2000; // 2 seconds
 
+  console.log(`[ContractDeployment] Waiting for deployment confirmation (${txHash.slice(0, 10)}...)`);
+
   while (Date.now() - startTime < timeout) {
     try {
-      // TODO: Implement receipt polling via RPC
-      // const receipt = await invoke('get_transaction_receipt', { txHash });
-      // if (receipt && receipt.contractAddress) {
-      //   return receipt.contractAddress;
-      // }
+      const receipt = await rpcClient.getTransactionReceipt(txHash);
+      if (receipt) {
+        // Check if transaction was successful
+        if (receipt.status === false || receipt.status === '0x0') {
+          throw new Error('Contract deployment transaction failed');
+        }
 
-      console.log(`[ContractDeployment] Waiting for deployment confirmation... (${txHash.slice(0, 10)}...)`);
+        if (receipt.contractAddress) {
+          console.log('[ContractDeployment] Deployment confirmed! Contract address:', receipt.contractAddress);
+          return receipt.contractAddress;
+        }
+
+        // Receipt exists but no contract address - might be a regular tx not a deployment
+        console.warn('[ContractDeployment] Receipt found but no contractAddress - may not be a deployment tx');
+        throw new Error('Transaction confirmed but no contract address - verify this is a deployment transaction');
+      }
+
+      // Receipt not yet available - transaction still pending
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      console.log(`[ContractDeployment] Still waiting... (${elapsed}s elapsed)`);
       await new Promise(resolve => setTimeout(resolve, pollInterval));
     } catch (error) {
-      console.error('[ContractDeployment] Error polling receipt:', error);
+      // If error is from our own validation, re-throw it
+      if (error instanceof Error && error.message.includes('failed')) {
+        throw error;
+      }
+      // Otherwise it's likely RPC connection issue - log and continue polling
+      console.debug('[ContractDeployment] Polling attempt failed:', error);
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
   }
 
-  throw new Error(`Deployment confirmation timeout after ${timeout}ms`);
+  throw new Error(`Deployment confirmation timeout after ${timeout}ms. Transaction may still be pending.`);
 }
 
 /**
  * Estimate gas for contract deployment
  *
+ * @param from - Sender address
  * @param bytecode - Contract bytecode with constructor args
  * @returns Estimated gas
  */
 export async function estimateDeploymentGas(
+  from: string,
   bytecode: string
 ): Promise<number> {
-  // TODO: Implement gas estimation via RPC
-  // For now, use a conservative estimate based on bytecode size
+  try {
+    // Use RPC to get accurate gas estimation
+    const estimateStr = await rpcClient.estimateGas({
+      from,
+      data: bytecode.startsWith('0x') ? bytecode : `0x${bytecode}`,
+    });
 
-  const bytecodeLength = (bytecode.length - 2) / 2; // Remove '0x' and convert hex to bytes
-  const baseGas = 32000; // Transaction base cost
-  const creationGas = 32000; // Contract creation cost
-  const codeDepositGas = bytecodeLength * 200; // Code storage cost
-  const calldataGas = bytecodeLength * 68; // Calldata cost
+    const estimate = parseInt(estimateStr, 10);
+    console.log('[ContractDeployment] Gas estimate from RPC:', estimate);
 
-  const estimate = baseGas + creationGas + codeDepositGas + calldataGas;
+    // Add 20% buffer for safety
+    const bufferedEstimate = Math.ceil(estimate * 1.2);
+    console.log('[ContractDeployment] Buffered gas estimate:', bufferedEstimate);
 
-  console.log('[ContractDeployment] Gas estimate:', estimate);
-  return estimate;
+    return bufferedEstimate;
+  } catch (error) {
+    console.warn('[ContractDeployment] RPC gas estimation failed, using fallback calculation:', error);
+
+    // Fallback: use a conservative estimate based on bytecode size
+    const bytecodeLength = (bytecode.length - 2) / 2; // Remove '0x' and convert hex to bytes
+    const baseGas = 32000; // Transaction base cost
+    const creationGas = 32000; // Contract creation cost
+    const codeDepositGas = bytecodeLength * 200; // Code storage cost
+    const calldataGas = bytecodeLength * 68; // Calldata cost
+
+    const fallbackEstimate = baseGas + creationGas + codeDepositGas + calldataGas;
+    console.log('[ContractDeployment] Fallback gas estimate:', fallbackEstimate);
+
+    return fallbackEstimate;
+  }
 }

@@ -19,7 +19,7 @@ use citrate_sequencer::mempool::Mempool;
 pub struct NetworkService {
     peer_manager: Arc<PeerManager>,
     ghostdag: Arc<GhostDag>,
-    mempool: Arc<RwLock<Mempool>>,
+    mempool: Arc<Mempool>,
     storage: Arc<StorageManager>,
     running: Arc<RwLock<bool>>,
 }
@@ -28,7 +28,7 @@ impl NetworkService {
     pub async fn new(
         config: NetworkConfig,
         ghostdag: Arc<GhostDag>,
-        mempool: Arc<RwLock<Mempool>>,
+        mempool: Arc<Mempool>,
         storage: Arc<StorageManager>,
     ) -> Result<Self> {
         info!("Initializing network service with config: {:?}", config);
@@ -206,10 +206,12 @@ impl NetworkService {
             
             NetworkMessage::TransactionBroadcast(broadcast) => {
                 debug!("Received transaction broadcast");
-                
-                // Add to mempool
-                let mut pool = self.mempool.write().await;
-                if let Err(e) = pool.add_transaction(broadcast.transaction) {
+
+                // Add to mempool - Mempool is internally synchronized
+                if let Err(e) = self.mempool.add_transaction(
+                    broadcast.transaction,
+                    citrate_sequencer::TxClass::Standard
+                ).await {
                     debug!("Failed to add broadcasted transaction to mempool: {}", e);
                 }
             }

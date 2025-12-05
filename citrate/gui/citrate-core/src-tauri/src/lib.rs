@@ -1,4 +1,5 @@
 use anyhow::Result;
+use base64::Engine;
 use serde::Deserialize;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -6,15 +7,21 @@ use tokio::sync::RwLock;
 use tokio::time::sleep;
 use tracing::{info, warn};
 
+mod agent;
 mod block_producer;
 mod dag;
+mod huggingface;
+mod ipfs;
 mod models;
 mod node;
 mod rpc_client;
 mod sync;
+mod terminal;
 mod wallet;
+mod windows;
 // network_service integration is pending; module intentionally not included for now
 
+use agent::AgentState;
 use dag::{BlockDetails, DAGData, DAGManager, TipInfo};
 use citrate_network::NetworkMessage;
 use citrate_sequencer::mempool::TxClass;
@@ -27,6 +34,22 @@ use node::TxOverview;
 use node::{NodeConfig, NodeManager, NodeStatus};
 use node::{PeerSummary, PendingTx};
 use wallet::{Account, FirstTimeSetupResult, TransactionRequest, WalletManager};
+use windows::{WindowManager, WindowType, WindowState};
+use terminal::{TerminalManager, TerminalConfig, TerminalInfo};
+use ipfs::{IpfsManager, IpfsStatus, IpfsConfig, IpfsAddResult, IpfsContent};
+use huggingface::{
+    HuggingFaceManager, HFConfig, HFModelInfo, HFModelFile,
+    ModelSearchParams, DownloadProgress, AuthState as HFAuthState, OAuthToken
+};
+
+// Re-export agent commands
+use agent::commands::{
+    agent_approve_tool, agent_clear_history, agent_create_session, agent_delete_session,
+    agent_get_active_model, agent_get_config, agent_get_messages, agent_get_models_dir,
+    agent_get_pending_tools, agent_get_session, agent_get_status, agent_is_ready,
+    agent_list_sessions, agent_load_local_model, agent_reject_tool, agent_scan_local_models,
+    agent_send_message, agent_set_api_key, agent_set_auto_mode, agent_update_config,
+};
 
 // Application state
 struct AppState {
@@ -35,6 +58,10 @@ struct AppState {
     model_manager: Arc<ModelManager>,
     dag_manager: Arc<RwLock<Option<Arc<DAGManager>>>>,
     external_rpc: Arc<RwLock<Option<Arc<rpc_client::RpcClient>>>>,
+    window_manager: Arc<RwLock<WindowManager>>,
+    terminal_manager: Arc<RwLock<TerminalManager>>,
+    ipfs_manager: Arc<IpfsManager>,
+    hf_manager: Arc<HuggingFaceManager>,
 }
 
 // ===== Node Commands =====
@@ -732,13 +759,9 @@ async fn send_transaction(
         .map_err(|e| e.to_string())?;
     let tx_hash_hex = hex::encode(tx.hash.as_bytes());
 
-    // Add to local mempool
+    // Add to local mempool - Mempool is internally synchronized
     if let Some(mempool) = state.node_manager.get_mempool().await {
-        let _ = mempool
-            .read()
-            .await
-            .add_transaction(tx.clone(), TxClass::Standard)
-            .await;
+        let _ = mempool.add_transaction(tx.clone(), TxClass::Standard).await;
     }
     // Broadcast to peers
     let _ = state
@@ -760,9 +783,97 @@ async fn eth_call(
     state: State<'_, AppState>,
     request: EthCallRequest,
 ) -> Result<String, String> {
-    // TODO: Implement eth_call support for embedded executor
-    // For now, return an error indicating this feature is pending
-    Err("eth_call support is not yet implemented for embedded node. Coming soon!".to_string())
+    use citrate_consensus::types::{Hash, PublicKey, Signature, Transaction};
+
+    // Get executor from node manager
+    let executor = state.node_manager.get_executor().await
+        .ok_or_else(|| "Node not started - executor unavailable".to_string())?;
+
+    // Parse the 'to' address
+    let to_bytes = hex::decode(request.to.trim_start_matches("0x"))
+        .map_err(|e| format!("Invalid 'to' address: {}", e))?;
+    if to_bytes.len() != 20 {
+        return Err("'to' address must be 20 bytes".to_string());
+    }
+
+    // Parse call data
+    let data = hex::decode(request.data.trim_start_matches("0x"))
+        .map_err(|e| format!("Invalid call data: {}", e))?;
+
+    // Parse optional 'from' address for PublicKey
+    let from_pk = if let Some(from) = request.from {
+        let from_bytes = hex::decode(from.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid 'from' address: {}", e))?;
+        if from_bytes.len() != 20 {
+            return Err("'from' address must be 20 bytes".to_string());
+        }
+        // Pad 20-byte address to 32-byte pubkey format
+        let mut pk_bytes = [0u8; 32];
+        pk_bytes[..20].copy_from_slice(&from_bytes);
+        PublicKey::new(pk_bytes)
+    } else {
+        PublicKey::new([0u8; 32]) // Zero address as default sender
+    };
+
+    // Create 'to' pubkey - pad 20-byte address to 32-byte format
+    let mut to_pk_bytes = [0u8; 32];
+    to_pk_bytes[..20].copy_from_slice(&to_bytes);
+    let to_pk = PublicKey::new(to_pk_bytes);
+
+    // Create a simulated call transaction (no state changes will be committed)
+    let call_tx = Transaction {
+        hash: Hash::default(),
+        from: from_pk,
+        to: Some(to_pk),
+        value: 0,
+        data: data.clone(),
+        nonce: 0,
+        gas_price: 0,
+        gas_limit: 30_000_000, // High gas limit for calls
+        signature: Signature::new([0u8; 64]),
+        tx_type: None,
+    };
+
+    // Create a minimal block for execution context
+    let dummy_block = citrate_consensus::Block {
+        header: citrate_consensus::BlockHeader {
+            version: 1,
+            block_hash: Hash::default(),
+            selected_parent_hash: Hash::default(),
+            merge_parent_hashes: vec![],
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            height: 0,
+            blue_score: 0,
+            blue_work: 0,
+            pruning_point: Hash::default(),
+            proposer_pubkey: PublicKey::new([0u8; 32]),
+            vrf_reveal: citrate_consensus::VrfProof {
+                proof: vec![],
+                output: Hash::default(),
+            },
+        },
+        state_root: Hash::default(),
+        tx_root: Hash::default(),
+        receipt_root: Hash::default(),
+        artifact_root: Hash::default(),
+        ghostdag_params: citrate_consensus::GhostDagParams::default(),
+        signature: Signature::new([0u8; 64]),
+        transactions: vec![],
+        embedded_models: vec![],
+        required_pins: vec![],
+    };
+
+    // Execute the call transaction
+    match executor.execute_transaction(&dummy_block, &call_tx).await {
+        Ok(receipt) => {
+            // Return the result data from the receipt
+            Ok(format!("0x{}", hex::encode(&receipt.output)))
+        }
+        Err(e) => Err(format!("Call execution failed: {}", e)),
+    }
 }
 
 #[tauri::command]
@@ -1017,6 +1128,375 @@ async fn get_deployments(state: State<'_, AppState>) -> Result<Vec<ModelDeployme
         .map_err(|e| e.to_string())
 }
 
+// ===== Window Commands =====
+
+#[tauri::command]
+async fn create_window(
+    state: State<'_, AppState>,
+    window_id: String,
+    window_type: String,
+    title: String,
+    width: f64,
+    height: f64,
+    x: Option<f64>,
+    y: Option<f64>,
+    data: Option<String>,
+) -> Result<WindowState, String> {
+    let wtype: WindowType = window_type.parse().map_err(|e: String| e)?;
+    let data_value = data
+        .map(|s| serde_json::from_str(&s))
+        .transpose()
+        .map_err(|e| format!("Invalid data JSON: {}", e))?;
+
+    let manager = state.window_manager.read().await;
+    manager
+        .create_window(&window_id, wtype, &title, width, height, x, y, data_value)
+        .await
+}
+
+#[tauri::command]
+async fn close_window(state: State<'_, AppState>, window_id: String) -> Result<(), String> {
+    let manager = state.window_manager.read().await;
+    manager.close_window(&window_id).await
+}
+
+#[tauri::command]
+async fn focus_window(state: State<'_, AppState>, window_id: String) -> Result<(), String> {
+    let manager = state.window_manager.read().await;
+    manager.focus_window(&window_id).await
+}
+
+#[tauri::command]
+async fn send_to_window(
+    state: State<'_, AppState>,
+    window_id: String,
+    event: String,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    let manager = state.window_manager.read().await;
+    manager.send_to_window(&window_id, &event, payload).await
+}
+
+#[tauri::command]
+async fn broadcast_to_windows(
+    state: State<'_, AppState>,
+    event: String,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    let manager = state.window_manager.read().await;
+    manager.broadcast(&event, payload).await
+}
+
+#[tauri::command]
+async fn get_window_state(
+    state: State<'_, AppState>,
+    window_id: String,
+) -> Result<Option<WindowState>, String> {
+    let manager = state.window_manager.read().await;
+    Ok(manager.get_window(&window_id).await)
+}
+
+#[tauri::command]
+async fn get_all_windows(state: State<'_, AppState>) -> Result<Vec<WindowState>, String> {
+    let manager = state.window_manager.read().await;
+    Ok(manager.get_all_windows().await)
+}
+
+#[tauri::command]
+async fn get_windows_by_type(
+    state: State<'_, AppState>,
+    window_type: String,
+) -> Result<Vec<WindowState>, String> {
+    let wtype: WindowType = window_type.parse().map_err(|e: String| e)?;
+    let manager = state.window_manager.read().await;
+    Ok(manager.get_windows_by_type(wtype).await)
+}
+
+#[tauri::command]
+async fn has_window_type(
+    state: State<'_, AppState>,
+    window_type: String,
+) -> Result<bool, String> {
+    let wtype: WindowType = window_type.parse().map_err(|e: String| e)?;
+    let manager = state.window_manager.read().await;
+    Ok(manager.has_window_type(wtype).await)
+}
+
+#[tauri::command]
+async fn get_window_count(state: State<'_, AppState>) -> Result<usize, String> {
+    let manager = state.window_manager.read().await;
+    Ok(manager.window_count().await)
+}
+
+// ===== Terminal Commands =====
+
+#[derive(Debug, serde::Deserialize)]
+struct CreateTerminalArgs {
+    shell: Option<String>,
+    cwd: Option<String>,
+    cols: Option<u16>,
+    rows: Option<u16>,
+}
+
+#[tauri::command]
+async fn terminal_create(
+    state: State<'_, AppState>,
+    args: CreateTerminalArgs,
+) -> Result<TerminalInfo, String> {
+    let config = TerminalConfig {
+        shell: args.shell,
+        cwd: args.cwd,
+        env: vec![],
+        cols: args.cols.unwrap_or(80),
+        rows: args.rows.unwrap_or(24),
+    };
+
+    let manager = state.terminal_manager.read().await;
+    manager
+        .create_session(config)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn terminal_write(
+    state: State<'_, AppState>,
+    session_id: String,
+    data: String,
+) -> Result<(), String> {
+    let manager = state.terminal_manager.read().await;
+    manager
+        .write_input(&session_id, data.as_bytes())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn terminal_resize(
+    state: State<'_, AppState>,
+    session_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let manager = state.terminal_manager.read().await;
+    manager
+        .resize_session(&session_id, cols, rows)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn terminal_close(state: State<'_, AppState>, session_id: String) -> Result<(), String> {
+    let manager = state.terminal_manager.read().await;
+    manager
+        .close_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn terminal_list(state: State<'_, AppState>) -> Result<Vec<TerminalInfo>, String> {
+    let manager = state.terminal_manager.read().await;
+    Ok(manager.list_sessions().await)
+}
+
+#[tauri::command]
+async fn terminal_get(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<Option<TerminalInfo>, String> {
+    let manager = state.terminal_manager.read().await;
+    Ok(manager.get_session(&session_id).await)
+}
+
+// ===== IPFS Commands =====
+
+#[tauri::command]
+async fn ipfs_start(state: State<'_, AppState>) -> Result<IpfsStatus, String> {
+    state.ipfs_manager.start().await?;
+    Ok(state.ipfs_manager.get_status().await)
+}
+
+#[tauri::command]
+async fn ipfs_stop(state: State<'_, AppState>) -> Result<(), String> {
+    state.ipfs_manager.stop().await
+}
+
+#[tauri::command]
+async fn ipfs_status(state: State<'_, AppState>) -> Result<IpfsStatus, String> {
+    if state.ipfs_manager.is_running().await {
+        state.ipfs_manager.refresh_status().await
+    } else {
+        Ok(state.ipfs_manager.get_status().await)
+    }
+}
+
+#[tauri::command]
+async fn ipfs_get_config(state: State<'_, AppState>) -> Result<IpfsConfig, String> {
+    Ok(state.ipfs_manager.get_config().await)
+}
+
+#[tauri::command]
+async fn ipfs_update_config(state: State<'_, AppState>, config: IpfsConfig) -> Result<(), String> {
+    state.ipfs_manager.update_config(config).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn ipfs_add(
+    state: State<'_, AppState>,
+    data: String,
+    name: Option<String>,
+) -> Result<IpfsAddResult, String> {
+    // Decode base64 data
+    let bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &data,
+    )
+    .map_err(|e| format!("Failed to decode base64 data: {}", e))?;
+
+    state.ipfs_manager.add(bytes, name.as_deref()).await
+}
+
+#[tauri::command]
+async fn ipfs_add_file(state: State<'_, AppState>, path: String) -> Result<IpfsAddResult, String> {
+    let path = std::path::PathBuf::from(path);
+    state.ipfs_manager.add_file(&path).await
+}
+
+#[tauri::command]
+async fn ipfs_get(state: State<'_, AppState>, cid: String) -> Result<IpfsContent, String> {
+    state.ipfs_manager.get(&cid).await
+}
+
+#[tauri::command]
+async fn ipfs_pin(state: State<'_, AppState>, cid: String) -> Result<(), String> {
+    state.ipfs_manager.pin(&cid).await
+}
+
+#[tauri::command]
+async fn ipfs_unpin(state: State<'_, AppState>, cid: String) -> Result<(), String> {
+    state.ipfs_manager.unpin(&cid).await
+}
+
+#[tauri::command]
+async fn ipfs_list_pins(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    state.ipfs_manager.list_pins().await
+}
+
+#[tauri::command]
+async fn ipfs_get_peers(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    state.ipfs_manager.get_peers().await
+}
+
+// ===== HuggingFace Commands =====
+
+#[tauri::command]
+async fn hf_get_auth_url(state: State<'_, AppState>) -> Result<String, String> {
+    // Generate a random state parameter for CSRF protection
+    let random_state = uuid::Uuid::new_v4().to_string();
+    state.hf_manager.get_auth_url(&random_state).await
+}
+
+#[tauri::command]
+async fn hf_exchange_code(
+    state: State<'_, AppState>,
+    code: String,
+) -> Result<HFAuthState, String> {
+    let token = state.hf_manager.exchange_code(&code).await?;
+    state.hf_manager.set_token(token).await?;
+    Ok(state.hf_manager.get_auth_state().await)
+}
+
+#[tauri::command]
+async fn hf_set_token(state: State<'_, AppState>, token: String) -> Result<(), String> {
+    state.hf_manager.set_api_token(&token).await
+}
+
+#[tauri::command]
+async fn hf_get_auth_state(state: State<'_, AppState>) -> Result<HFAuthState, String> {
+    Ok(state.hf_manager.get_auth_state().await)
+}
+
+#[tauri::command]
+async fn hf_logout(state: State<'_, AppState>) -> Result<(), String> {
+    state.hf_manager.logout().await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn hf_get_config(state: State<'_, AppState>) -> Result<HFConfig, String> {
+    Ok(state.hf_manager.get_config().await)
+}
+
+#[tauri::command]
+async fn hf_update_config(state: State<'_, AppState>, config: HFConfig) -> Result<(), String> {
+    state.hf_manager.update_config(config).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn hf_search_models(
+    state: State<'_, AppState>,
+    params: ModelSearchParams,
+) -> Result<Vec<HFModelInfo>, String> {
+    state.hf_manager.search_models(params).await
+}
+
+#[tauri::command]
+async fn hf_get_model_info(
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<HFModelInfo, String> {
+    state.hf_manager.get_model(&model_id).await
+}
+
+#[tauri::command]
+async fn hf_get_model_files(
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<Vec<HFModelFile>, String> {
+    state.hf_manager.list_gguf_files(&model_id).await
+}
+
+#[tauri::command]
+async fn hf_download_file(
+    state: State<'_, AppState>,
+    model_id: String,
+    filename: String,
+) -> Result<String, String> {
+    state
+        .hf_manager
+        .download_file(&model_id, &filename)
+        .await
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn hf_get_downloads(state: State<'_, AppState>) -> Result<Vec<DownloadProgress>, String> {
+    Ok(state.hf_manager.get_downloads().await)
+}
+
+#[tauri::command]
+async fn hf_cancel_download(
+    state: State<'_, AppState>,
+    model_id: String,
+    filename: String,
+) -> Result<(), String> {
+    state.hf_manager.cancel_download(&model_id, &filename).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn hf_get_local_models(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    state.hf_manager.list_local_models().await
+}
+
+#[tauri::command]
+async fn hf_get_models_dir(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.hf_manager.get_models_dir().await.to_string_lossy().to_string())
+}
+
 // Setup function to initialize node components after startup
 async fn setup_node_components(app_handle: tauri::AppHandle) {
     info!("Setting up node components");
@@ -1079,6 +1559,13 @@ pub fn run() {
         });
     }
     let model_manager = Arc::new(ModelManager::new());
+    let window_manager = Arc::new(RwLock::new(WindowManager::new()));
+    let terminal_manager = Arc::new(RwLock::new(TerminalManager::new()));
+    let ipfs_manager = Arc::new(IpfsManager::new());
+    let hf_manager = Arc::new(HuggingFaceManager::new());
+
+    // Create agent state (initialized lazily when node starts)
+    let agent_state = AgentState::new();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -1088,7 +1575,12 @@ pub fn run() {
             model_manager,
             dag_manager: Arc::new(RwLock::new(None)),
             external_rpc: Arc::new(RwLock::new(None)),
+            window_manager,
+            terminal_manager,
+            ipfs_manager,
+            hf_manager,
         })
+        .manage(agent_state)
         .invoke_handler(tauri::generate_handler![
             // Node commands
             start_node,
@@ -1150,8 +1642,90 @@ pub fn run() {
             get_training_jobs,
             get_job_status,
             get_deployments,
+            // Agent commands
+            agent_create_session,
+            agent_get_session,
+            agent_list_sessions,
+            agent_delete_session,
+            agent_send_message,
+            agent_get_messages,
+            agent_clear_history,
+            agent_get_pending_tools,
+            agent_approve_tool,
+            agent_reject_tool,
+            agent_get_config,
+            agent_update_config,
+            agent_scan_local_models,
+            agent_get_models_dir,
+            agent_is_ready,
+            agent_get_status,
+            agent_load_local_model,
+            agent_get_active_model,
+            agent_set_api_key,
+            agent_set_auto_mode,
+            // Window commands
+            create_window,
+            close_window,
+            focus_window,
+            send_to_window,
+            broadcast_to_windows,
+            get_window_state,
+            get_all_windows,
+            get_windows_by_type,
+            has_window_type,
+            get_window_count,
+            // Terminal commands
+            terminal_create,
+            terminal_write,
+            terminal_resize,
+            terminal_close,
+            terminal_list,
+            terminal_get,
+            // IPFS commands
+            ipfs_start,
+            ipfs_stop,
+            ipfs_status,
+            ipfs_get_config,
+            ipfs_update_config,
+            ipfs_add,
+            ipfs_add_file,
+            ipfs_get,
+            ipfs_pin,
+            ipfs_unpin,
+            ipfs_list_pins,
+            ipfs_get_peers,
+            // HuggingFace commands
+            hf_get_auth_url,
+            hf_exchange_code,
+            hf_set_token,
+            hf_get_auth_state,
+            hf_logout,
+            hf_get_config,
+            hf_update_config,
+            hf_search_models,
+            hf_get_model_info,
+            hf_get_model_files,
+            hf_download_file,
+            hf_get_downloads,
+            hf_cancel_download,
+            hf_get_local_models,
+            hf_get_models_dir,
         ])
         .setup(|app| {
+            // Initialize window manager with app handle
+            let app_handle = app.handle().clone();
+            {
+                let state = app_handle.state::<AppState>();
+                tauri::async_runtime::block_on(async {
+                    let mut wm = state.window_manager.write().await;
+                    wm.set_app_handle(app_handle.clone());
+
+                    // Initialize terminal manager with app handle
+                    let mut tm = state.terminal_manager.write().await;
+                    tm.set_app_handle(app_handle.clone());
+                });
+            }
+
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 setup_node_components(app_handle).await;
@@ -1167,6 +1741,25 @@ pub fn run() {
                     }
                     sleep(std::time::Duration::from_secs(1)).await;
                 }
+            });
+            // Initialize agent with managers
+            let app_handle3 = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                // Wait a moment for node to initialize
+                sleep(std::time::Duration::from_millis(100)).await;
+                let app_state = app_handle3.state::<AppState>();
+                let agent_state = app_handle3.state::<AgentState>();
+
+                // Create agent manager with references to other managers
+                let agent_manager = agent::AgentManager::new(
+                    app_state.node_manager.clone(),
+                    app_state.wallet_manager.clone(),
+                    app_state.model_manager.clone(),
+                    app_state.dag_manager.clone(),
+                );
+
+                *agent_state.manager.write().await = Some(agent_manager);
+                info!("Agent manager initialized");
             });
             Ok(())
         })

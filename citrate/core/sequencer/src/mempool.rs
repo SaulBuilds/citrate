@@ -766,6 +766,150 @@ pub struct MempoolStats {
     pub unique_senders: usize,
 }
 
+/// Trait for abstracting mempool access patterns.
+///
+/// This trait allows the RPC server to work with both:
+/// - `Arc<Mempool>` (used by the core node)
+/// - `Arc<RwLock<Mempool>>` (used by the GUI embedded node)
+///
+/// All methods are async to support both direct and locked access.
+#[async_trait::async_trait]
+pub trait MempoolAccess: Send + Sync {
+    /// Get the chain ID configured for this mempool
+    fn chain_id(&self) -> u64;
+
+    /// Add a transaction to the mempool
+    async fn add_transaction(&self, tx: Transaction, class: TxClass) -> Result<(), MempoolError>;
+
+    /// Remove a transaction from the mempool
+    async fn remove_transaction(&self, hash: &Hash) -> Option<Transaction>;
+
+    /// Get a transaction by hash
+    async fn get_transaction(&self, hash: &Hash) -> Option<Transaction>;
+
+    /// Check if a transaction exists in the mempool
+    async fn contains(&self, hash: &Hash) -> bool;
+
+    /// Get transactions up to a limit, ordered by priority
+    async fn get_transactions(&self, limit: usize) -> Vec<Transaction>;
+
+    /// Get AI-specific transactions
+    async fn get_ai_transactions(&self, max_count: usize) -> Vec<Transaction>;
+
+    /// Get mempool statistics
+    async fn stats(&self) -> MempoolStats;
+
+    /// Clear all transactions from the mempool
+    async fn clear(&self);
+
+    /// Clear expired transactions
+    async fn clear_expired(&self);
+
+    /// Get the pending nonce for a sender (next expected nonce)
+    async fn get_pending_nonce(&self, sender: &PublicKey) -> Option<u64>;
+}
+
+/// Implementation of MempoolAccess for Arc<Mempool> (direct access)
+#[async_trait::async_trait]
+impl MempoolAccess for Arc<Mempool> {
+    fn chain_id(&self) -> u64 {
+        Mempool::chain_id(self)
+    }
+
+    async fn add_transaction(&self, tx: Transaction, class: TxClass) -> Result<(), MempoolError> {
+        Mempool::add_transaction(self, tx, class).await
+    }
+
+    async fn remove_transaction(&self, hash: &Hash) -> Option<Transaction> {
+        Mempool::remove_transaction(self, hash).await
+    }
+
+    async fn get_transaction(&self, hash: &Hash) -> Option<Transaction> {
+        Mempool::get_transaction(self, hash).await
+    }
+
+    async fn contains(&self, hash: &Hash) -> bool {
+        Mempool::contains(self, hash).await
+    }
+
+    async fn get_transactions(&self, limit: usize) -> Vec<Transaction> {
+        Mempool::get_transactions(self, limit).await
+    }
+
+    async fn get_ai_transactions(&self, max_count: usize) -> Vec<Transaction> {
+        Mempool::get_ai_transactions(self, max_count).await
+    }
+
+    async fn stats(&self) -> MempoolStats {
+        Mempool::stats(self).await
+    }
+
+    async fn clear(&self) {
+        Mempool::clear(self).await
+    }
+
+    async fn clear_expired(&self) {
+        Mempool::clear_expired(self).await
+    }
+
+    async fn get_pending_nonce(&self, sender: &PublicKey) -> Option<u64> {
+        self.nonces.read().await.get(sender).copied()
+    }
+}
+
+/// Implementation of MempoolAccess for Arc<RwLock<Mempool>> (locked access)
+/// This is used by the GUI's embedded node which requires mutable access coordination
+#[async_trait::async_trait]
+impl MempoolAccess for Arc<RwLock<Mempool>> {
+    fn chain_id(&self) -> u64 {
+        // We need to block briefly to get the chain_id
+        // This is a sync method so we use try_read or block_in_place
+        futures::executor::block_on(async {
+            self.read().await.chain_id()
+        })
+    }
+
+    async fn add_transaction(&self, tx: Transaction, class: TxClass) -> Result<(), MempoolError> {
+        self.read().await.add_transaction(tx, class).await
+    }
+
+    async fn remove_transaction(&self, hash: &Hash) -> Option<Transaction> {
+        self.read().await.remove_transaction(hash).await
+    }
+
+    async fn get_transaction(&self, hash: &Hash) -> Option<Transaction> {
+        self.read().await.get_transaction(hash).await
+    }
+
+    async fn contains(&self, hash: &Hash) -> bool {
+        self.read().await.contains(hash).await
+    }
+
+    async fn get_transactions(&self, limit: usize) -> Vec<Transaction> {
+        self.read().await.get_transactions(limit).await
+    }
+
+    async fn get_ai_transactions(&self, max_count: usize) -> Vec<Transaction> {
+        self.read().await.get_ai_transactions(max_count).await
+    }
+
+    async fn stats(&self) -> MempoolStats {
+        self.read().await.stats().await
+    }
+
+    async fn clear(&self) {
+        self.read().await.clear().await
+    }
+
+    async fn clear_expired(&self) {
+        self.read().await.clear_expired().await
+    }
+
+    async fn get_pending_nonce(&self, sender: &PublicKey) -> Option<u64> {
+        self.read().await.nonces.read().await.get(sender).copied()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

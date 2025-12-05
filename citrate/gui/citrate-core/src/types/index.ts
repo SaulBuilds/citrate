@@ -85,7 +85,7 @@ export interface TransactionRequest {
   value: bigint;
   gasLimit: number;
   gasPrice: bigint;
-  data: number[];
+  data: number[] | string;
   nonce?: number;
 }
 

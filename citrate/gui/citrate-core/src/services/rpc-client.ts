@@ -130,6 +130,45 @@ class RPCClient {
     return this.sendRequest('eth_sign', [address, message]);
   }
 
+  async verifySignature(message: string, signature: string, address: string): Promise<boolean> {
+    try {
+      // Use the personal_ecRecover method to recover the address from the signature
+      // and compare it with the expected address
+      const recoveredAddress = await this.sendRequest('personal_ecRecover', [message, signature]);
+      return recoveredAddress.toLowerCase() === address.toLowerCase();
+    } catch {
+      // If personal_ecRecover is not available, try citrate-specific method
+      try {
+        return await this.sendRequest('citrate_verifySignature', [message, signature, address]);
+      } catch {
+        // If no verification method is available, we cannot verify
+        throw new Error('Signature verification not available via RPC');
+      }
+    }
+  }
+
+  async estimateGas(tx: Partial<TransactionRequest>): Promise<string> {
+    const params: any = {
+      from: tx.from,
+      to: tx.to,
+      value: tx.value ? '0x' + BigInt(tx.value).toString(16) : '0x0',
+      data: Array.isArray(tx.data)
+        ? '0x' + Array.from(tx.data).map(b => Number(b).toString(16).padStart(2, '0')).join('')
+        : (tx.data || '0x'),
+    };
+
+    const gasEstimate = await this.sendRequest('eth_estimateGas', [params]);
+    return parseInt(gasEstimate, 16).toString();
+  }
+
+  async getTransactionReceipt(txHash: string): Promise<any> {
+    return this.sendRequest('eth_getTransactionReceipt', [txHash]);
+  }
+
+  async getTransaction(txHash: string): Promise<any> {
+    return this.sendRequest('eth_getTransactionByHash', [txHash]);
+  }
+
   // DAG-specific methods
   async getDAGTips(): Promise<string[]> {
     try {

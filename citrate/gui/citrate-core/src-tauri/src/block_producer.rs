@@ -19,7 +19,7 @@ use citrate_storage::{state_manager::StateManager as AIStateManager, StorageMana
 
 pub struct BlockProducer {
     ghostdag: Arc<GhostDag>,
-    mempool: Arc<RwLock<Mempool>>,
+    mempool: Arc<Mempool>,
     executor: Arc<Executor>,
     storage: Arc<StorageManager>,
     ai_state_manager: Arc<AIStateManager>,
@@ -32,7 +32,7 @@ pub struct BlockProducer {
 impl BlockProducer {
     pub fn new(
         ghostdag: Arc<GhostDag>,
-        mempool: Arc<RwLock<Mempool>>,
+        mempool: Arc<Mempool>,
         executor: Arc<Executor>,
         storage: Arc<StorageManager>,
         reward_address: Arc<RwLock<Option<String>>>,
@@ -123,10 +123,8 @@ impl BlockProducer {
         let (selected_parent, merge_parents) = self.select_parents(&tips).await?;
 
         // Get transactions from mempool (limit to 100 for now)
-        let transactions = {
-            let mempool_guard = self.mempool.read().await;
-            mempool_guard.get_transactions(100).await
-        };
+        // Mempool is internally synchronized, so we can call methods directly
+        let transactions = self.mempool.get_transactions(100).await;
 
         // Calculate new height
         let parent_block = self
@@ -218,9 +216,9 @@ impl BlockProducer {
             }
 
             // Remove processed transactions from mempool
-            let mempool_guard = self.mempool.write().await;
+            // Mempool is internally synchronized, so we can call methods directly
             for tx in &block.transactions {
-                let _ = mempool_guard.remove_transaction(&tx.hash).await;
+                let _ = self.mempool.remove_transaction(&tx.hash).await;
             }
         }
 

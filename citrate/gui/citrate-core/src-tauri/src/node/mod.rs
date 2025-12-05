@@ -155,7 +155,9 @@ impl NodeManager {
             require_valid_signature: cfg_mempool.require_valid_signature,
             tx_expiry_secs: cfg_mempool.tx_expiry_secs,
         };
-        let mempool = Arc::new(RwLock::new(Mempool::new(mempool_config)));
+        // Create mempool - Mempool is internally synchronized via internal RwLocks,
+        // so we use Arc<Mempool> directly instead of Arc<RwLock<Mempool>>
+        let mempool = Arc::new(Mempool::new(mempool_config));
 
         // Initialize network manager and start real transport listener
         let peer_config = PeerManagerConfig {
@@ -348,15 +350,10 @@ impl NodeManager {
                             }
                         }
                         NetworkMessage::NewTransaction { transaction } => {
-                            let already = mempool_for_listener
-                                .read()
-                                .await
-                                .contains(&transaction.hash)
-                                .await;
+                            // Mempool is internally synchronized - call methods directly
+                            let already = mempool_for_listener.contains(&transaction.hash).await;
                             if !already {
                                 let _ = mempool_for_listener
-                                    .read()
-                                    .await
                                     .add_transaction(transaction.clone(), TxClass::Standard)
                                     .await;
                                 let _ = pm_for_listener
@@ -367,9 +364,8 @@ impl NodeManager {
                         NetworkMessage::GetTransactions { hashes } => {
                             let mut txs = Vec::new();
                             for h in hashes {
-                                if let Some(tx) =
-                                    mempool_for_listener.read().await.get_transaction(&h).await
-                                {
+                                // Mempool is internally synchronized - call methods directly
+                                if let Some(tx) = mempool_for_listener.get_transaction(&h).await {
                                     txs.push(tx);
                                 }
                             }
@@ -649,8 +645,9 @@ impl NodeManager {
             (None, None)
         };
 
-        // TODO: Start RPC server once mempool type mismatch is resolved
-        // The RPC server expects Arc<Mempool> but GUI uses Arc<RwLock<Mempool>>
+        // RPC server initialization - mempool type mismatch resolved
+        // Now using Arc<Mempool> directly (Mempool is internally synchronized)
+        // TODO: Enable RPC server when needed for external JSON-RPC access
         let rpc_handle = None;
 
         let node = CitrateNode {
@@ -759,7 +756,8 @@ impl NodeManager {
     }
 
     /// Expose mempool for local submissions
-    pub async fn get_mempool(&self) -> Option<Arc<RwLock<Mempool>>> {
+    /// Mempool is internally synchronized, so Arc<Mempool> is safe to use directly
+    pub async fn get_mempool(&self) -> Option<Arc<Mempool>> {
         self.node
             .read()
             .await
@@ -988,9 +986,9 @@ impl NodeManager {
         };
 
         // Collect pending from mempool (outgoing and incoming)
+        // Mempool is internally synchronized - call methods directly
         {
-            let mempool_guard = mempool.read().await;
-            let memtx = mempool_guard.get_transactions(1000).await; // coarse upper bound
+            let memtx = mempool.get_transactions(1000).await; // coarse upper bound
             for tx in memtx {
                 let from_addr = Self::pk_to_address_hex(&tx.from).to_lowercase();
                 let to_addr = tx
@@ -1089,13 +1087,8 @@ impl NodeManager {
         let mut last_block = 0usize;
 
         if let Some(node) = self.node.read().await.as_ref() {
-            pending = node
-                .mempool
-                .read()
-                .await
-                .get_transactions(10_000)
-                .await
-                .len();
+            // Mempool is internally synchronized - call methods directly
+            pending = node.mempool.get_transactions(10_000).await.len();
             let latest = node.storage.blocks.get_latest_height().unwrap_or(0);
             if latest > 0 {
                 if let Ok(Some(bh)) = node.storage.blocks.get_block_by_height(latest) {
@@ -1115,7 +1108,8 @@ impl NodeManager {
     /// Snapshot current mempool pending txs (best-effort, limited)
     pub async fn get_mempool_pending(&self, limit: usize) -> Result<Vec<PendingTx>> {
         if let Some(node) = self.node.read().await.as_ref() {
-            let txs = node.mempool.read().await.get_transactions(limit).await;
+            // Mempool is internally synchronized - call methods directly
+            let txs = node.mempool.get_transactions(limit).await;
             let mut out = Vec::new();
             for tx in txs {
                 let from = Self::pk_to_address_hex(&tx.from);
@@ -1324,7 +1318,7 @@ fn parse_bootnode(s: &str) -> Option<(citrate_network::peer::PeerId, SocketAddr)
 async fn start_block_production(
     storage: Arc<StorageManager>,
     executor: Arc<Executor>,
-    mempool: Arc<RwLock<Mempool>>,
+    mempool: Arc<Mempool>,
     ghostdag: Arc<GhostDag>,
     reward_address: String,
     _running: Arc<RwLock<bool>>,
@@ -1406,12 +1400,12 @@ fn calculate_block_hash(header: &BlockHeader) -> Hash {
     Hash::new(hash_array)
 }
 
-/// Run the block producer  
+/// Run the block producer
 #[allow(dead_code)]
 async fn run_block_producer(
     storage: Arc<StorageManager>,
     _executor: Arc<Executor>,
-    mempool: Arc<RwLock<Mempool>>,
+    mempool: Arc<Mempool>,
     ghostdag: Arc<GhostDag>,
     dag_store: Arc<DagStore>,
     reward_address: String,
@@ -1457,11 +1451,8 @@ async fn run_block_producer(
             vec![]
         };
 
-        // Get transactions from mempool
-        let txs = {
-            let mempool_guard = mempool.read().await;
-            mempool_guard.get_transactions(100).await
-        };
+        // Get transactions from mempool - Mempool is internally synchronized
+        let txs = mempool.get_transactions(100).await;
 
         // Get latest height
         let height = storage.blocks.get_latest_height().unwrap_or(0) + 1;
@@ -1530,7 +1521,7 @@ async fn run_block_producer(
 struct CitrateNode {
     storage: Arc<StorageManager>,
     executor: Arc<Executor>,
-    mempool: Arc<RwLock<Mempool>>,
+    mempool: Arc<Mempool>,
     ghostdag: Arc<GhostDag>,
     peer_manager: Arc<PeerManager>,
     _running: Arc<RwLock<bool>>,

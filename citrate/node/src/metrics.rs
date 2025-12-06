@@ -15,14 +15,13 @@
 //!
 //! # Usage
 //! ```rust
-//! use citrate_node::metrics::{init_metrics, NODE_UPTIME, BLOCK_HEIGHT};
+//! use citrate_node::metrics::{init_metrics, record_block_height};
 //!
 //! // Initialize metrics server
 //! init_metrics("127.0.0.1:9090")?;
 //!
 //! // Record metrics
-//! NODE_UPTIME.set(uptime_seconds);
-//! BLOCK_HEIGHT.set(height);
+//! record_block_height(100);
 //! ```
 
 use metrics::{counter, gauge, histogram, describe_counter, describe_gauge, describe_histogram, Unit};
@@ -30,7 +29,6 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
@@ -135,7 +133,7 @@ pub fn init_metrics(addr: &str) -> anyhow::Result<()> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs_f64();
-    gauge!(METRIC_NODE_START_TIME).set(start_time);
+    gauge!(METRIC_NODE_START_TIME, start_time);
 
     tracing::info!("Metrics server started on http://{}/metrics", addr);
 
@@ -344,135 +342,145 @@ fn register_metric_descriptions() {
 
 /// Record node uptime
 pub fn record_uptime(start_time: Instant) {
-    gauge!(METRIC_NODE_UPTIME).set(start_time.elapsed().as_secs_f64());
+    gauge!(METRIC_NODE_UPTIME, start_time.elapsed().as_secs_f64());
 }
 
 /// Record peer count
 pub fn record_peer_count(count: usize) {
-    gauge!(METRIC_PEER_COUNT).set(count as f64);
+    gauge!(METRIC_PEER_COUNT, count as f64);
 }
 
 /// Record peer connection event
 pub fn record_peer_connected(peer_id: &str) {
-    counter!(METRIC_PEER_CONNECTIONS_TOTAL, "peer_id" => peer_id.to_string()).increment(1);
+    let labels = [("peer_id", peer_id.to_string())];
+    counter!(METRIC_PEER_CONNECTIONS_TOTAL, 1, &labels);
 }
 
 /// Record peer disconnection event
 pub fn record_peer_disconnected(peer_id: &str) {
-    counter!(METRIC_PEER_DISCONNECTIONS_TOTAL, "peer_id" => peer_id.to_string()).increment(1);
+    let labels = [("peer_id", peer_id.to_string())];
+    counter!(METRIC_PEER_DISCONNECTIONS_TOTAL, 1, &labels);
 }
 
 /// Record peer latency
 pub fn record_peer_latency(latency: Duration) {
-    histogram!(METRIC_PEER_LATENCY).record(latency.as_secs_f64());
+    histogram!(METRIC_PEER_LATENCY, latency.as_secs_f64());
 }
 
 /// Record mempool metrics
 pub fn record_mempool_size(tx_count: usize, bytes: usize) {
-    gauge!(METRIC_MEMPOOL_SIZE).set(tx_count as f64);
-    gauge!(METRIC_MEMPOOL_BYTES).set(bytes as f64);
+    gauge!(METRIC_MEMPOOL_SIZE, tx_count as f64);
+    gauge!(METRIC_MEMPOOL_BYTES, bytes as f64);
 }
 
 /// Record transaction received
 pub fn record_tx_received(tx_type: &str) {
-    counter!(METRIC_TX_RECEIVED_TOTAL, "type" => tx_type.to_string()).increment(1);
+    let labels = [("type", tx_type.to_string())];
+    counter!(METRIC_TX_RECEIVED_TOTAL, 1, &labels);
 }
 
 /// Record transaction rejected
 pub fn record_tx_rejected(reason: &str) {
-    counter!(METRIC_TX_REJECTED_TOTAL, "reason" => reason.to_string()).increment(1);
+    let labels = [("reason", reason.to_string())];
+    counter!(METRIC_TX_REJECTED_TOTAL, 1, &labels);
 }
 
 /// Record transaction included in block
 pub fn record_tx_included() {
-    counter!(METRIC_TX_INCLUDED_TOTAL).increment(1);
+    counter!(METRIC_TX_INCLUDED_TOTAL, 1);
 }
 
 /// Record block height
 pub fn record_block_height(height: u64) {
-    gauge!(METRIC_BLOCK_HEIGHT).set(height as f64);
+    gauge!(METRIC_BLOCK_HEIGHT, height as f64);
 }
 
 /// Record block production
 pub fn record_block_produced(build_time: Duration, size_bytes: usize, tx_count: usize) {
-    counter!(METRIC_BLOCKS_PRODUCED_TOTAL).increment(1);
-    histogram!(METRIC_BLOCK_BUILD_TIME).record(build_time.as_secs_f64());
-    histogram!(METRIC_BLOCK_SIZE).record(size_bytes as f64);
-    histogram!(METRIC_TX_PER_BLOCK).record(tx_count as f64);
+    counter!(METRIC_BLOCKS_PRODUCED_TOTAL, 1);
+    histogram!(METRIC_BLOCK_BUILD_TIME, build_time.as_secs_f64());
+    histogram!(METRIC_BLOCK_SIZE, size_bytes as f64);
+    histogram!(METRIC_TX_PER_BLOCK, tx_count as f64);
 }
 
 /// Record orphan block
 pub fn record_orphan_block() {
-    counter!(METRIC_ORPHAN_BLOCKS_TOTAL).increment(1);
+    counter!(METRIC_ORPHAN_BLOCKS_TOTAL, 1);
 }
 
 /// Record DAG metrics
 pub fn record_dag_metrics(tips: usize, blue_score: u64, width: usize, depth: u64) {
-    gauge!(METRIC_DAG_TIPS_COUNT).set(tips as f64);
-    gauge!(METRIC_DAG_BLUE_SCORE).set(blue_score as f64);
-    gauge!(METRIC_DAG_WIDTH).set(width as f64);
-    gauge!(METRIC_DAG_DEPTH).set(depth as f64);
+    gauge!(METRIC_DAG_TIPS_COUNT, tips as f64);
+    gauge!(METRIC_DAG_BLUE_SCORE, blue_score as f64);
+    gauge!(METRIC_DAG_WIDTH, width as f64);
+    gauge!(METRIC_DAG_DEPTH, depth as f64);
 }
 
 /// Record sync status
 pub fn record_sync_status(is_syncing: bool, progress: f64, sync_peers: usize) {
-    gauge!(METRIC_SYNC_STATUS).set(if is_syncing { 1.0 } else { 0.0 });
-    gauge!(METRIC_SYNC_PROGRESS).set(progress);
-    gauge!(METRIC_SYNC_PEERS).set(sync_peers as f64);
+    gauge!(METRIC_SYNC_STATUS, if is_syncing { 1.0 } else { 0.0 });
+    gauge!(METRIC_SYNC_PROGRESS, progress);
+    gauge!(METRIC_SYNC_PEERS, sync_peers as f64);
 }
 
 /// Record RPC request
 pub fn record_rpc_request(method: &str, latency: Duration, success: bool) {
-    counter!(METRIC_RPC_REQUESTS_TOTAL, "method" => method.to_string()).increment(1);
-    histogram!(METRIC_RPC_LATENCY, "method" => method.to_string()).record(latency.as_secs_f64());
+    let labels = [("method", method.to_string())];
+    counter!(METRIC_RPC_REQUESTS_TOTAL, 1, &labels);
+    histogram!(METRIC_RPC_LATENCY, latency.as_secs_f64(), &labels);
     if !success {
-        counter!(METRIC_RPC_ERRORS_TOTAL, "method" => method.to_string()).increment(1);
+        counter!(METRIC_RPC_ERRORS_TOTAL, 1, &labels);
     }
 }
 
 /// Record RPC error with specific error type
 pub fn record_rpc_error(method: &str, error_type: &str) {
-    counter!(METRIC_RPC_ERRORS_TOTAL, "method" => method.to_string(), "error" => error_type.to_string()).increment(1);
+    let labels = [("method", method.to_string()), ("error", error_type.to_string())];
+    counter!(METRIC_RPC_ERRORS_TOTAL, 1, &labels);
 }
 
 /// Record active RPC connections
 pub fn record_rpc_connections(count: usize) {
-    gauge!(METRIC_RPC_ACTIVE_CONNECTIONS).set(count as f64);
+    gauge!(METRIC_RPC_ACTIVE_CONNECTIONS, count as f64);
 }
 
 /// Record AI inference request
 pub fn record_ai_request(model: &str, latency: Duration, tokens: usize, success: bool) {
-    counter!(METRIC_AI_REQUESTS_TOTAL, "model" => model.to_string()).increment(1);
-    histogram!(METRIC_AI_LATENCY, "model" => model.to_string()).record(latency.as_secs_f64());
-    counter!(METRIC_AI_TOKENS_TOTAL, "model" => model.to_string()).increment(tokens as u64);
+    let labels = [("model", model.to_string())];
+    counter!(METRIC_AI_REQUESTS_TOTAL, 1, &labels);
+    histogram!(METRIC_AI_LATENCY, latency.as_secs_f64(), &labels);
+    counter!(METRIC_AI_TOKENS_TOTAL, tokens as u64, &labels);
     if !success {
-        counter!(METRIC_AI_ERRORS_TOTAL, "model" => model.to_string()).increment(1);
+        counter!(METRIC_AI_ERRORS_TOTAL, 1, &labels);
     }
 }
 
 /// Record loaded AI models count
 pub fn record_ai_models_loaded(count: usize) {
-    gauge!(METRIC_AI_MODELS_LOADED).set(count as f64);
+    gauge!(METRIC_AI_MODELS_LOADED, count as f64);
 }
 
 /// Record IPFS upload
 pub fn record_ipfs_upload(latency: Duration, bytes: usize) {
-    counter!(METRIC_IPFS_UPLOADS_TOTAL).increment(1);
-    histogram!(METRIC_IPFS_LATENCY, "operation" => "upload").record(latency.as_secs_f64());
-    counter!(METRIC_IPFS_BYTES_UPLOADED).increment(bytes as u64);
+    counter!(METRIC_IPFS_UPLOADS_TOTAL, 1);
+    let labels = [("operation", "upload".to_string())];
+    histogram!(METRIC_IPFS_LATENCY, latency.as_secs_f64(), &labels);
+    counter!(METRIC_IPFS_BYTES_UPLOADED, bytes as u64);
 }
 
 /// Record IPFS download
 pub fn record_ipfs_download(latency: Duration, bytes: usize) {
-    counter!(METRIC_IPFS_DOWNLOADS_TOTAL).increment(1);
-    histogram!(METRIC_IPFS_LATENCY, "operation" => "download").record(latency.as_secs_f64());
-    counter!(METRIC_IPFS_BYTES_DOWNLOADED).increment(bytes as u64);
+    counter!(METRIC_IPFS_DOWNLOADS_TOTAL, 1);
+    let labels = [("operation", "download".to_string())];
+    histogram!(METRIC_IPFS_LATENCY, latency.as_secs_f64(), &labels);
+    counter!(METRIC_IPFS_BYTES_DOWNLOADED, bytes as u64);
 }
 
 /// Record IPFS pin operation
 pub fn record_ipfs_pin(latency: Duration) {
-    counter!(METRIC_IPFS_PINS_TOTAL).increment(1);
-    histogram!(METRIC_IPFS_LATENCY, "operation" => "pin").record(latency.as_secs_f64());
+    counter!(METRIC_IPFS_PINS_TOTAL, 1);
+    let labels = [("operation", "pin".to_string())];
+    histogram!(METRIC_IPFS_LATENCY, latency.as_secs_f64(), &labels);
 }
 
 // ============================================================================
@@ -483,7 +491,6 @@ pub fn record_ipfs_pin(latency: Duration) {
 /// Useful for measuring operation latency.
 pub struct MetricsTimer {
     metric_name: &'static str,
-    labels: Vec<(&'static str, String)>,
     start: Instant,
 }
 
@@ -492,15 +499,8 @@ impl MetricsTimer {
     pub fn new(metric_name: &'static str) -> Self {
         Self {
             metric_name,
-            labels: Vec::new(),
             start: Instant::now(),
         }
-    }
-
-    /// Add a label to the timer.
-    pub fn with_label(mut self, key: &'static str, value: impl Into<String>) -> Self {
-        self.labels.push((key, value.into()));
-        self
     }
 
     /// Get elapsed time without recording.
@@ -518,18 +518,7 @@ impl MetricsTimer {
 impl Drop for MetricsTimer {
     fn drop(&mut self) {
         let duration = self.start.elapsed().as_secs_f64();
-        match self.labels.len() {
-            0 => histogram!(self.metric_name).record(duration),
-            1 => {
-                let (k, v) = &self.labels[0];
-                histogram!(self.metric_name, *k => v.clone()).record(duration);
-            }
-            _ => {
-                // For multiple labels, we need to use the macro differently
-                // This is a simplified version - full implementation would use dynamic labels
-                histogram!(self.metric_name).record(duration);
-            }
-        }
+        histogram!(self.metric_name, duration);
     }
 }
 
@@ -543,9 +532,7 @@ mod tests {
 
     #[test]
     fn test_metrics_timer() {
-        let timer = MetricsTimer::new(METRIC_RPC_LATENCY)
-            .with_label("method", "test");
-
+        let timer = MetricsTimer::new(METRIC_RPC_LATENCY);
         std::thread::sleep(Duration::from_millis(10));
         assert!(timer.elapsed() >= Duration::from_millis(10));
     }

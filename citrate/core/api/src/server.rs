@@ -1,5 +1,6 @@
 // citrate/core/api/src/server.rs
 
+use crate::filter::FilterRegistry;
 use crate::{ai_rpc, economics_rpc, eth_rpc};
 use crate::methods::{AiApi, ChainApi, MempoolApi, NetworkApi, StateApi, TransactionApi};
 use crate::metrics::rpc_request;
@@ -314,6 +315,9 @@ impl RpcServer {
     ) -> Self {
         let mut io_handler = IoHandler::new();
 
+        // Create filter registry for eth_newFilter/eth_getFilterChanges
+        let filter_registry = Arc::new(FilterRegistry::new());
+
         // Register Ethereum-compatible RPC methods
         eth_rpc::register_eth_methods(
             &mut io_handler,
@@ -321,6 +325,7 @@ impl RpcServer {
             mempool.clone(),
             executor.clone(),
             chain_id,
+            filter_registry,
         );
 
         // Register economics-related RPC methods
@@ -818,10 +823,11 @@ impl RpcServer {
             }
         });
 
-        // net_version (chain ID)
-        io_handler.add_sync_method("net_version", |_params: Params| {
+        // net_version (chain ID) - must use configured chain_id, not hardcoded
+        let net_version_chain_id = chain_id;
+        io_handler.add_sync_method("net_version", move |_params: Params| {
             rpc_request("net_version");
-            Ok(Value::String("1337".to_string()))
+            Ok(Value::String(net_version_chain_id.to_string()))
         });
 
         // web3_clientVersion

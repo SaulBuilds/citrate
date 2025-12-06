@@ -79,6 +79,117 @@ mod tests {
         let addr = Address::from_public_key(&pk);
         assert_ne!(addr.0, bytes[0..20]);
     }
+
+    #[test]
+    fn test_dual_address_no_collision() {
+        // Test that embedded EVM addresses and hashed addresses from different
+        // public keys never collide. This is a critical security property.
+        use std::collections::HashSet;
+
+        let mut addresses = HashSet::new();
+
+        // Generate 100 embedded EVM addresses (first 20 bytes vary, last 12 are zero)
+        for i in 0u8..100 {
+            let mut bytes = [0u8; 32];
+            // Set first 20 bytes to various patterns
+            bytes[0] = i;
+            bytes[1] = i.wrapping_mul(7);
+            bytes[2] = i.wrapping_mul(13);
+            for j in 3..20 {
+                bytes[j] = ((i as usize + j) % 256) as u8;
+            }
+            // Last 12 bytes are zero for embedded EVM address
+            let pk = PublicKey::new(bytes);
+            let addr = Address::from_public_key(&pk);
+            assert!(
+                addresses.insert(addr),
+                "Collision detected for embedded EVM address with pattern {}",
+                i
+            );
+        }
+
+        // Generate 100 hashed addresses (full 32-byte public keys)
+        for i in 0u8..100 {
+            let mut bytes = [0u8; 32];
+            // Fill all 32 bytes with varying patterns
+            for j in 0..32 {
+                bytes[j] = ((i as usize * 3 + j * 5) % 256) as u8;
+            }
+            // Ensure this is NOT an embedded EVM address by setting last 12 bytes non-zero
+            bytes[31] = 1; // At least one non-zero byte in last 12
+            let pk = PublicKey::new(bytes);
+            let addr = Address::from_public_key(&pk);
+            assert!(
+                addresses.insert(addr),
+                "Collision detected for hashed address with pattern {}",
+                i
+            );
+        }
+
+        // Total should be 200 unique addresses
+        assert_eq!(addresses.len(), 200);
+    }
+
+    #[test]
+    fn test_embedded_address_deterministic() {
+        // Same embedded EVM bytes should always produce the same address
+        let mut bytes = [0u8; 32];
+        for i in 0..20 {
+            bytes[i] = (i as u8) + 0xAB;
+        }
+        let pk1 = PublicKey::new(bytes);
+        let pk2 = PublicKey::new(bytes);
+        let addr1 = Address::from_public_key(&pk1);
+        let addr2 = Address::from_public_key(&pk2);
+        assert_eq!(addr1, addr2);
+    }
+
+    #[test]
+    fn test_hashed_address_deterministic() {
+        // Same full public key should always produce the same address
+        let bytes = [0x42u8; 32];
+        let pk1 = PublicKey::new(bytes);
+        let pk2 = PublicKey::new(bytes);
+        let addr1 = Address::from_public_key(&pk1);
+        let addr2 = Address::from_public_key(&pk2);
+        assert_eq!(addr1, addr2);
+    }
+
+    #[test]
+    fn test_zero_detection_edge_cases() {
+        // All zeros should be treated as embedded (though this is a degenerate case)
+        let all_zero = [0u8; 32];
+        let pk = PublicKey::new(all_zero);
+        let addr = Address::from_public_key(&pk);
+        // First 20 bytes are all zero, so it gets hashed (per the condition)
+        // The condition is: first 20 NOT all zero AND last 12 all zero
+        // With all zeros, first 20 ARE all zero, so it gets hashed
+        assert_ne!(addr.0, [0u8; 20]); // Should not be zero address from hashing
+
+        // First 20 bytes = 0 except one byte, last 12 = 0 → embedded
+        let mut edge_case = [0u8; 32];
+        edge_case[0] = 1;
+        let pk2 = PublicKey::new(edge_case);
+        let addr2 = Address::from_public_key(&pk2);
+        assert_eq!(addr2.0[0], 1);
+        assert_eq!(addr2.0[1..], [0u8; 19]);
+    }
+
+    #[test]
+    fn test_address_format_parity() {
+        // Verify that addresses derived from embedded EVM format match the original bytes
+        let mut evm_bytes = [0u8; 32];
+        let expected_addr: [u8; 20] = [
+            0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE, 0x12, 0x34,
+            0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x11, 0x22, 0x33, 0x44,
+        ];
+        evm_bytes[..20].copy_from_slice(&expected_addr);
+        // Last 12 bytes are zero
+
+        let pk = PublicKey::new(evm_bytes);
+        let addr = Address::from_public_key(&pk);
+        assert_eq!(addr.0, expected_addr, "Embedded EVM address should match original bytes exactly");
+    }
 }
 
 /// Model identifier

@@ -34,7 +34,7 @@ citrate-consensus = { path = "../../../core/consensus" }
 citrate-execution = { path = "../../../core/execution" }
 citrate-storage = { path = "../../../core/storage" }
 citrate-network = { path = "../../../core/network" }
-# citrate-api = { path = "../../../core/api" } # TODO: Fix mempool type mismatch
+citrate-api = { path = "../../../core/api" }
 citrate-sequencer = { path = "../../../core/sequencer" }
 citrate-mcp = { path = "../../../core/mcp" }
 citrate-economics = { path = "../../../core/economics" }

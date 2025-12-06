@@ -9,7 +9,9 @@ import {
   Key,
   Copy,
   CheckCircle,
-  Send
+  Send,
+  Download,
+  Trash2
 } from 'lucide-react';
 import { SkeletonCard, SkeletonList } from './Skeleton';
 
@@ -19,6 +21,8 @@ export const Wallet: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportAccount, setExportAccount] = useState<Account | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [activity, setActivity] = useState<TxActivity[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -276,6 +280,18 @@ export const Wallet: React.FC = () => {
                       Set Rewards
                     </button>
                     <button
+                      className="btn-sm btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExportAccount(account);
+                        setShowExportModal(true);
+                      }}
+                      title="Export Private Key"
+                    >
+                      <Download size={14} />
+                      Export
+                    </button>
+                    <button
                       className="btn-sm btn-danger"
                       onClick={async (e) => {
                         e.stopPropagation();
@@ -294,6 +310,7 @@ export const Wallet: React.FC = () => {
                         }
                       }}
                     >
+                      <Trash2 size={14} />
                       Delete
                     </button>
                   </div>
@@ -462,6 +479,17 @@ export const Wallet: React.FC = () => {
             loadAccounts();
             loadActivity();
             setShowSendModal(false);
+          }}
+        />
+      )}
+
+      {/* Export Private Key Modal */}
+      {showExportModal && exportAccount && (
+        <ExportPrivateKeyModal
+          account={exportAccount}
+          onClose={() => {
+            setShowExportModal(false);
+            setExportAccount(null);
           }}
         />
       )}
@@ -1593,6 +1621,306 @@ const SendTransactionModal: React.FC<{
         .btn-outline:hover {
           background: var(--bg-tertiary);
           border-color: var(--border-secondary);
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Export Private Key Modal
+const ExportPrivateKeyModal: React.FC<{
+  account: Account;
+  onClose: () => void;
+}> = ({ account, onClose }) => {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [privateKey, setPrivateKey] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [pressTimer, setPressTimer] = useState<number | null>(null);
+
+  const startReveal = () => {
+    if (pressTimer || !privateKey) return;
+    const id = window.setTimeout(() => {
+      setRevealed(true);
+      setPressTimer(null);
+    }, 2000);
+    setPressTimer(id);
+  };
+
+  const cancelReveal = () => {
+    if (pressTimer) {
+      window.clearTimeout(pressTimer);
+      setPressTimer(null);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!password) {
+      setError('Password is required');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const key = await walletService.exportPrivateKey(account.address, password);
+      setPrivateKey(key);
+    } catch (err: any) {
+      setError(err.toString());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h3>Export Private Key</h3>
+
+        <div className="warning-banner">
+          <strong>⚠️ Security Warning</strong>
+          <p>Never share your private key with anyone. Anyone with access to your private key can steal your funds.</p>
+        </div>
+
+        {error && <div className="error-message">{error}</div>}
+
+        <div className="form-group">
+          <label>Account</label>
+          <input type="text" value={`${account.label} (${account.address.slice(0, 10)}...)`} disabled />
+        </div>
+
+        {!privateKey ? (
+          <>
+            <div className="form-group">
+              <label>Enter Password to Decrypt</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Account password"
+                onKeyPress={e => e.key === 'Enter' && handleExport()}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleExport}
+                disabled={loading || !password}
+              >
+                {loading ? 'Decrypting...' : 'Export Key'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="reveal-area"
+                 onMouseDown={startReveal}
+                 onMouseUp={cancelReveal}
+                 onMouseLeave={cancelReveal}
+                 onTouchStart={startReveal}
+                 onTouchEnd={cancelReveal}>
+              {revealed
+                ? 'Private key revealed below'
+                : 'Press and hold for 2 seconds to reveal'}
+            </div>
+
+            {revealed && (
+              <div className="private-key-display">
+                <label>Private Key (Hex)</label>
+                <div className="key-row">
+                  <code className="key-value">{privateKey}</code>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => copyToClipboard(privateKey)}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={onClose}>
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <style jsx>{`
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal {
+          background: var(--bg-primary);
+          border-radius: 1rem;
+          padding: 2rem;
+          width: 90%;
+          max-width: 500px;
+          border: 1px solid var(--border-primary);
+        }
+
+        .modal h3 {
+          margin: 0 0 1.5rem 0;
+          color: var(--text-primary);
+        }
+
+        .warning-banner {
+          background: var(--warning-bg);
+          border: 1px solid var(--warning);
+          border-radius: 0.5rem;
+          padding: 1rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .warning-banner strong {
+          display: block;
+          color: var(--warning);
+          margin-bottom: 0.5rem;
+        }
+
+        .warning-banner p {
+          margin: 0;
+          color: var(--warning);
+          font-size: 0.875rem;
+        }
+
+        .form-group {
+          margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+          display: block;
+          margin-bottom: 0.5rem;
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+
+        .form-group input {
+          width: 100%;
+          padding: 0.75rem;
+          border: 1px solid var(--border-primary);
+          border-radius: 0.5rem;
+          font-size: 1rem;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+
+        .form-group input:disabled {
+          background: var(--bg-tertiary);
+          color: var(--text-muted);
+        }
+
+        .error-message {
+          background: var(--error-bg);
+          color: var(--error);
+          padding: 0.75rem;
+          border-radius: 0.5rem;
+          margin-bottom: 1rem;
+        }
+
+        .reveal-area {
+          margin: 1rem 0;
+          padding: 1rem;
+          background: var(--warning-bg);
+          border: 1px dashed var(--warning);
+          border-radius: 0.5rem;
+          text-align: center;
+          color: var(--warning);
+          cursor: pointer;
+          user-select: none;
+        }
+
+        .private-key-display {
+          margin-bottom: 1.5rem;
+        }
+
+        .private-key-display label {
+          display: block;
+          margin-bottom: 0.5rem;
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+
+        .key-row {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .key-value {
+          flex: 1;
+          padding: 0.75rem;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-primary);
+          border-radius: 0.5rem;
+          font-family: monospace;
+          font-size: 0.75rem;
+          word-break: break-all;
+          color: var(--text-primary);
+        }
+
+        .modal-actions {
+          display: flex;
+          gap: 1rem;
+          justify-content: flex-end;
+        }
+
+        .btn {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.5rem;
+          border: none;
+          border-radius: 0.5rem;
+          font-size: 1rem;
+          font-weight: 500;
+          cursor: pointer;
+        }
+
+        .btn-sm {
+          padding: 0.5rem 1rem;
+          font-size: 0.875rem;
+        }
+
+        .btn-primary {
+          background: var(--brand-primary);
+          color: white;
+        }
+
+        .btn-primary:hover {
+          background: var(--brand-hover);
+        }
+
+        .btn-secondary {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+
+        .btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
       `}</style>
     </div>

@@ -121,8 +121,23 @@ impl EfficientSyncManager {
             }
         }
 
-        // Process queue iteratively
+        // Process queue iteratively with a maximum iteration limit to prevent infinite loops
+        // when blocks have missing parents that can't be resolved
+        let max_iterations = blocks.len() * 3; // Allow up to 3 passes over the blocks
+        let mut iteration_count = 0;
+        let mut deferred_blocks: VecDeque<Block> = VecDeque::new();
+
         while let Some(block) = self.process_queue.pop_front() {
+            iteration_count += 1;
+            if iteration_count > max_iterations {
+                // Move remaining blocks to deferred and exit
+                deferred_blocks.push_back(block);
+                while let Some(remaining) = self.process_queue.pop_front() {
+                    deferred_blocks.push_back(remaining);
+                }
+                break;
+            }
+
             let block_size = self.estimate_block_size(&block);
             self.current_queue_memory = self.current_queue_memory.saturating_sub(block_size);
 
@@ -135,6 +150,9 @@ impl EfficientSyncManager {
                 }
             }
         }
+
+        // Count deferred blocks as skipped
+        skipped += deferred_blocks.len();
 
         Ok(BatchResult {
             processed,
@@ -318,14 +336,27 @@ impl EfficientSyncManager {
         let mut temp_queue = VecDeque::new();
         std::mem::swap(&mut self.process_queue, &mut temp_queue);
 
+        // Limit iterations to 3x queue size to prevent infinite loops
+        let max_iterations = queue_size * 3;
+        let mut iteration_count = 0;
+
         for block in temp_queue {
+            iteration_count += 1;
+            if iteration_count > max_iterations {
+                // Skip remaining blocks to prevent infinite loop
+                debug!("Queue processing reached iteration limit, skipping remaining blocks");
+                break;
+            }
+
             match self.process_single_block(block.clone()).await {
                 Ok(true) => {
                     // Successfully processed
                 }
                 Ok(false) | Err(_) => {
-                    // Failed or skipped, re-queue
-                    self.process_queue.push_back(block);
+                    // Failed or skipped - only re-queue if we haven't exceeded limits
+                    if self.process_queue.len() < queue_size {
+                        self.process_queue.push_back(block);
+                    }
                 }
             }
         }
@@ -855,7 +886,7 @@ mod tests {
         let valid_header = BlockHeader {
             version: 1,
             block_hash: Hash::new([1; 32]),
-            selected_parent_hash: Hash::new([0; 32]), // Has parent
+            selected_parent_hash: Hash::new([2; 32]), // Has parent (non-zero)
             merge_parent_hashes: vec![],
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { modelService } from '../services/tauri';
+import { modelService, ipfsService } from '../services/tauri';
 import { ModelInfo, ModelDeployment, InferenceRequest } from '../types';
 import {
   Brain,
@@ -8,7 +8,8 @@ import {
   Download,
   Activity,
   Clock,
-  Zap
+  Zap,
+  Loader2
 } from 'lucide-react';
 import { SkeletonCard } from './Skeleton';
 
@@ -18,6 +19,51 @@ export const Models: React.FC = () => {
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [showInferenceModal, setShowInferenceModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownloadWeights = async (model: ModelInfo) => {
+    if (!model.weightsCid) {
+      setDownloadError('No weights CID available for this model');
+      return;
+    }
+
+    setDownloading(true);
+    setDownloadError(null);
+
+    try {
+      // First, try to get the content from IPFS
+      const content = await ipfsService.get(model.weightsCid);
+
+      if (content && content.data) {
+        // Convert byte array to blob
+        const blob = new Blob([new Uint8Array(content.data)], {
+          type: content.content_type || 'application/octet-stream'
+        });
+
+        // Create download link
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${model.name.replace(/[^a-zA-Z0-9]/g, '_')}_weights.bin`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Fallback: open IPFS gateway URL in new tab
+        const gatewayUrl = content?.gateway_url || `https://ipfs.io/ipfs/${model.weightsCid}`;
+        window.open(gatewayUrl, '_blank');
+      }
+    } catch (error: any) {
+      console.error('Download failed:', error);
+      // Fallback: try to open IPFS gateway URL
+      const gatewayUrl = `https://ipfs.io/ipfs/${model.weightsCid}`;
+      window.open(gatewayUrl, '_blank');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     loadModels();
@@ -181,11 +227,19 @@ export const Models: React.FC = () => {
           </div>
 
           <div className="model-actions">
-            <button className="btn btn-secondary">
-              <Download size={16} />
-              Download Weights
+            <button
+              className="btn btn-secondary"
+              onClick={() => handleDownloadWeights(selectedModel)}
+              disabled={downloading || !selectedModel.weightsCid}
+            >
+              {downloading ? (
+                <Loader2 size={16} className="spinning" />
+              ) : (
+                <Download size={16} />
+              )}
+              {downloading ? 'Downloading...' : 'Download Weights'}
             </button>
-            <button 
+            <button
               className="btn btn-primary"
               onClick={() => setShowInferenceModal(true)}
             >
@@ -193,6 +247,11 @@ export const Models: React.FC = () => {
               Run Inference
             </button>
           </div>
+          {downloadError && (
+            <div className="download-error">
+              {downloadError}
+            </div>
+          )}
         </div>
       )}
 
@@ -419,6 +478,29 @@ export const Models: React.FC = () => {
         .text-yellow { color: #f59e0b; }
         .text-purple { color: #8b5cf6; }
         .text-muted { color: #9ca3af; }
+
+        .download-error {
+          margin-top: 1rem;
+          padding: 0.75rem;
+          background: #fee2e2;
+          border-radius: 0.5rem;
+          color: #991b1b;
+          font-size: 0.875rem;
+        }
+
+        .btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .spinning {
+          animation: spin 1s linear infinite;
+        }
       `}</style>
     </div>
   );

@@ -328,11 +328,35 @@ impl AINetworkHandler {
                             // Create response hash using the correct method
                             let output_hash = Hash::from_bytes(&output_bytes);
 
-                            // TODO: Fix NetworkMessage to include AIMessage variant
-                            // For now, return None since AIMessage doesn't exist
+                            // Generate a commitment-based proof
+                            // proof = commitment || response where commitment = H(statement || response)
+                            use sha3::{Digest, Sha3_256};
+                            let mut hasher = Sha3_256::new();
+                            hasher.update(output_hash.as_bytes());
+                            hasher.update(request_id.as_bytes());
+                            let response_bytes: [u8; 32] = hasher.finalize().into();
+
+                            let mut proof_hasher = Sha3_256::new();
+                            proof_hasher.update(output_hash.as_bytes());
+                            proof_hasher.update(&response_bytes);
+                            let commitment: [u8; 32] = proof_hasher.finalize().into();
+
+                            // Build proof: commitment (32 bytes) + response (32 bytes)
+                            let mut proof = Vec::with_capacity(64);
+                            proof.extend_from_slice(&commitment);
+                            proof.extend_from_slice(&response_bytes);
+
+                            // Get provider ID (use a deterministic ID based on model)
+                            let provider = model_id.as_bytes().to_vec();
+
                             info!("Inference completed for request {} with output hash: {:?}", request_id, output_hash);
 
-                            return Ok(None);
+                            return Ok(Some(NetworkMessage::InferenceResponse {
+                                request_id,
+                                output_hash,
+                                proof,
+                                provider,
+                            }));
                         },
                         Err(e) => {
                             error!("Inference failed: {}", e);

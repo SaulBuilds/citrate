@@ -29,6 +29,7 @@ tokio-util = { version = "0.7", features = ["codec"] }
 dashmap = "5.5"
 rand = { workspace = true }
 chrono = { workspace = true }
+sha3 = { workspace = true }
 parking_lot = { workspace = true }
 
 [dev-dependencies]

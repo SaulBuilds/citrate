@@ -1,6 +1,7 @@
 // citrate/core/api/src/eth_rpc.rs
 
 use crate::eth_tx_decoder;
+use crate::filter::{FilterRegistry, FilterType};
 use crate::methods::{ChainApi, StateApi, TransactionApi};
 use futures::executor::block_on;
 use hex;
@@ -21,6 +22,7 @@ pub fn register_eth_methods(
     mempool: Arc<Mempool>,
     executor: Arc<Executor>,
     chain_id: u64,
+    filter_registry: Arc<FilterRegistry>,
 ) {
     // eth_blockNumber - Returns the latest block number
     let storage_bn = storage.clone();
@@ -913,10 +915,179 @@ pub fn register_eth_methods(
         }
     });
 
-    // eth_estimateGas - Estimate gas for transaction
-    io_handler.add_sync_method("eth_estimateGas", move |_params: Params| {
-        // Return default gas estimate
-        Ok(Value::String("0x5208".to_string())) // 21000 gas
+    // eth_estimateGas - Estimate gas for transaction by dry-running execution
+    let executor_estimate = executor.clone();
+    io_handler.add_sync_method("eth_estimateGas", move |params: Params| {
+        use citrate_consensus::types::{Block, BlockHeader, PublicKey, Signature, VrfProof};
+
+        let exec = executor_estimate.clone();
+
+        // Parse params: [callObject, blockTag (optional)]
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(_) => {
+                // No params - return default gas for simple transfer
+                return Ok(Value::String("0x5208".to_string())); // 21000 gas
+            }
+        };
+
+        if params.is_empty() {
+            // No call object - return default gas for simple transfer
+            return Ok(Value::String("0x5208".to_string())); // 21000 gas
+        }
+
+        // call object
+        let obj = match &params[0] {
+            Value::Object(map) => map,
+            _ => {
+                // Invalid params - return default
+                return Ok(Value::String("0x5208".to_string()));
+            }
+        };
+
+        // to (optional for contract deployment)
+        let to_pk = if let Some(to_s) = obj.get("to").and_then(|v| v.as_str()) {
+            let ts = to_s.trim().trim_start_matches("0x");
+            if let Ok(to_bytes) = hex::decode(ts) {
+                if to_bytes.len() == 20 {
+                    let mut to_pk_bytes = [0u8; 32];
+                    to_pk_bytes[..20].copy_from_slice(&to_bytes);
+                    Some(PublicKey::new(to_pk_bytes))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // from (optional)
+        let from_pk = if let Some(from_s) = obj.get("from").and_then(|v| v.as_str()) {
+            let fs = from_s.trim().trim_start_matches("0x");
+            if let Ok(fbytes) = hex::decode(fs) {
+                if fbytes.len() == 20 {
+                    let mut pkb = [0u8; 32];
+                    pkb[..20].copy_from_slice(&fbytes);
+                    PublicKey::new(pkb)
+                } else {
+                    PublicKey::new([0u8; 32])
+                }
+            } else {
+                PublicKey::new([0u8; 32])
+            }
+        } else {
+            PublicKey::new([0u8; 32])
+        };
+
+        // data (optional)
+        let data = if let Some(d) = obj.get("data").and_then(|v| v.as_str()) {
+            let ds = d.trim().trim_start_matches("0x");
+            hex::decode(ds).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        // value (optional)
+        let value_u128: u128 = if let Some(vs) = obj.get("value").and_then(|v| v.as_str()) {
+            let s = vs.trim();
+            if let Some(hexs) = s.strip_prefix("0x") {
+                u128::from_str_radix(hexs, 16).unwrap_or(0)
+            } else {
+                s.parse::<u128>().unwrap_or(0)
+            }
+        } else {
+            0
+        };
+
+        // Use a high gas limit for estimation (will return actual used)
+        let gas_limit: u64 = if let Some(gs) = obj.get("gas").and_then(|v| v.as_str()) {
+            let s = gs.trim();
+            if let Some(hexs) = s.strip_prefix("0x") {
+                u64::from_str_radix(hexs, 16).unwrap_or(15_000_000)
+            } else {
+                s.parse::<u64>().unwrap_or(15_000_000)
+            }
+        } else {
+            15_000_000 // Default to block gas limit for estimation
+        };
+
+        // Check if this is a simple transfer (no data, has to address)
+        if data.is_empty() && to_pk.is_some() {
+            // Simple value transfer - return 21000 gas
+            return Ok(Value::String("0x5208".to_string()));
+        }
+
+        // Build a lightweight block context for execution
+        let blk = Block {
+            header: BlockHeader {
+                version: 1,
+                block_hash: citrate_consensus::types::Hash::default(),
+                selected_parent_hash: citrate_consensus::types::Hash::default(),
+                merge_parent_hashes: vec![],
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+                height: 0,
+                blue_score: 0,
+                blue_work: 0,
+                pruning_point: citrate_consensus::types::Hash::default(),
+                proposer_pubkey: PublicKey::new([0u8; 32]),
+                vrf_reveal: VrfProof {
+                    proof: vec![],
+                    output: citrate_consensus::types::Hash::default(),
+                },
+            },
+            state_root: citrate_consensus::types::Hash::default(),
+            tx_root: citrate_consensus::types::Hash::default(),
+            receipt_root: citrate_consensus::types::Hash::default(),
+            artifact_root: citrate_consensus::types::Hash::default(),
+            ghostdag_params: Default::default(),
+            transactions: vec![],
+            signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
+        };
+
+        // Create a pseudo-transaction for estimation
+        let mut tx = citrate_consensus::types::Transaction {
+            hash: citrate_consensus::types::Hash::default(),
+            nonce: 0,
+            from: from_pk,
+            to: to_pk,
+            value: value_u128,
+            gas_limit,
+            gas_price: 1, // Minimal gas price for estimation
+            data,
+            signature: Signature::new([0u8; 64]),
+            tx_type: None,
+        };
+
+        // Determine transaction type from data
+        tx.determine_type();
+
+        // Snapshot state, execute, then restore
+        let snapshot = exec.state_db().snapshot();
+        let res = block_on(exec.execute_transaction(&blk, &tx));
+        exec.state_db().restore(snapshot);
+
+        match res {
+            Ok(receipt) => {
+                // Return gas used plus 10% buffer for safety margin
+                let gas_with_buffer = receipt.gas_used.saturating_add(receipt.gas_used / 10);
+                // Minimum 21000 for any transaction
+                let final_gas = gas_with_buffer.max(21000);
+                Ok(Value::String(format!("0x{:x}", final_gas)))
+            }
+            Err(_) => {
+                // Execution failed - return a higher estimate or error
+                // For failed executions, we still return an estimate so users
+                // can see what gas would be needed (they may have insufficient balance etc)
+                Ok(Value::String("0x7a120".to_string())) // 500000 gas as fallback
+            }
+        }
     });
 
     // eth_feeHistory - Get fee history for EIP-1559
@@ -1047,6 +1218,630 @@ pub fn register_eth_methods(
     io_handler.add_sync_method("eth_maxPriorityFeePerGas", move |_params: Params| {
         // Return 1 gwei max priority fee
         Ok(Value::String("0x3b9aca00".to_string()))
+    });
+
+    // eth_getLogs - Get logs matching filter criteria
+    let storage_logs = storage.clone();
+    io_handler.add_sync_method("eth_getLogs", move |params: Params| {
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing filter object"));
+        }
+
+        let filter = &params[0];
+
+        // Get current height for "latest" resolution
+        let current_height = storage_logs.blocks.get_latest_height().unwrap_or(0);
+
+        // Parse fromBlock (default to 0)
+        let from_block = match filter.get("fromBlock").and_then(|v| v.as_str()) {
+            Some("latest") | Some("pending") => current_height,
+            Some("earliest") => 0,
+            Some(hex_str) if hex_str.starts_with("0x") => {
+                u64::from_str_radix(&hex_str[2..], 16).unwrap_or(0)
+            }
+            None => 0,
+            _ => 0,
+        };
+
+        // Parse toBlock (default to latest)
+        let to_block = match filter.get("toBlock").and_then(|v| v.as_str()) {
+            Some("latest") | Some("pending") => current_height,
+            Some("earliest") => 0,
+            Some(hex_str) if hex_str.starts_with("0x") => {
+                u64::from_str_radix(&hex_str[2..], 16).unwrap_or(current_height)
+            }
+            None => current_height,
+            _ => current_height,
+        };
+
+        // Limit block range to prevent excessive queries
+        let max_block_range = 1000u64;
+        let effective_to = to_block.min(from_block.saturating_add(max_block_range));
+
+        // Parse address filter (single address or array)
+        let address_filter: Vec<Address> = match filter.get("address") {
+            Some(Value::String(addr_str)) => {
+                let addr_hex = addr_str.trim_start_matches("0x");
+                if let Ok(bytes) = hex::decode(addr_hex) {
+                    if bytes.len() == 20 {
+                        let mut arr = [0u8; 20];
+                        arr.copy_from_slice(&bytes);
+                        vec![Address(arr)]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            Some(Value::Array(addrs)) => {
+                addrs
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(|addr_str| {
+                        let addr_hex = addr_str.trim_start_matches("0x");
+                        hex::decode(addr_hex).ok().and_then(|bytes| {
+                            if bytes.len() == 20 {
+                                let mut arr = [0u8; 20];
+                                arr.copy_from_slice(&bytes);
+                                Some(Address(arr))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect()
+            }
+            _ => vec![],
+        };
+
+        // Parse topics filter (array of arrays, each position can be null or array of hashes)
+        let topics_filter: Vec<Option<Vec<Hash>>> = match filter.get("topics") {
+            Some(Value::Array(topics)) => {
+                topics
+                    .iter()
+                    .map(|topic_entry| {
+                        match topic_entry {
+                            Value::Null => None, // null means "any"
+                            Value::String(hash_str) => {
+                                // Single topic hash
+                                let hash_hex = hash_str.trim_start_matches("0x");
+                                hex::decode(hash_hex).ok().and_then(|bytes| {
+                                    if bytes.len() == 32 {
+                                        let mut arr = [0u8; 32];
+                                        arr.copy_from_slice(&bytes);
+                                        Some(vec![Hash::new(arr)])
+                                    } else {
+                                        None
+                                    }
+                                })
+                            }
+                            Value::Array(hashes) => {
+                                // Array of topic hashes (OR logic)
+                                let parsed: Vec<Hash> = hashes
+                                    .iter()
+                                    .filter_map(|v| v.as_str())
+                                    .filter_map(|hash_str| {
+                                        let hash_hex = hash_str.trim_start_matches("0x");
+                                        hex::decode(hash_hex).ok().and_then(|bytes| {
+                                            if bytes.len() == 32 {
+                                                let mut arr = [0u8; 32];
+                                                arr.copy_from_slice(&bytes);
+                                                Some(Hash::new(arr))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    })
+                                    .collect();
+                                if parsed.is_empty() {
+                                    None
+                                } else {
+                                    Some(parsed)
+                                }
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            }
+            _ => vec![],
+        };
+
+        // Collect matching logs
+        let mut result_logs: Vec<Value> = Vec::new();
+        let mut log_index_global = 0usize;
+
+        for height in from_block..=effective_to {
+            // Get block hash at this height
+            let block_hash = match storage_logs.blocks.get_block_by_height(height) {
+                Ok(Some(hash)) => hash,
+                _ => continue,
+            };
+
+            // Get all transaction hashes in this block
+            let tx_hashes = match storage_logs.transactions.get_block_transactions(&block_hash) {
+                Ok(hashes) => hashes,
+                Err(_) => continue,
+            };
+
+            for (tx_index, tx_hash) in tx_hashes.iter().enumerate() {
+                // Get receipt for this transaction
+                let receipt = match storage_logs.transactions.get_receipt(tx_hash) {
+                    Ok(Some(r)) => r,
+                    _ => continue,
+                };
+
+                // Filter and collect logs from this receipt
+                for (log_index_in_tx, log) in receipt.logs.iter().enumerate() {
+                    // Check address filter
+                    if !address_filter.is_empty() && !address_filter.contains(&log.address) {
+                        continue;
+                    }
+
+                    // Check topics filter
+                    let topics_match = topics_filter.iter().enumerate().all(|(i, topic_filter)| {
+                        match topic_filter {
+                            None => true, // null means any
+                            Some(allowed_topics) => {
+                                if i >= log.topics.len() {
+                                    false // Log doesn't have this topic position
+                                } else {
+                                    allowed_topics.contains(&log.topics[i])
+                                }
+                            }
+                        }
+                    });
+
+                    if !topics_match {
+                        continue;
+                    }
+
+                    // Log matches all filters
+                    result_logs.push(json!({
+                        "address": format!("0x{}", hex::encode(log.address.0)),
+                        "topics": log.topics.iter()
+                            .map(|t| format!("0x{}", hex::encode(t.as_bytes())))
+                            .collect::<Vec<_>>(),
+                        "data": format!("0x{}", hex::encode(&log.data)),
+                        "blockNumber": format!("0x{:x}", height),
+                        "blockHash": format!("0x{}", hex::encode(block_hash.as_bytes())),
+                        "transactionHash": format!("0x{}", hex::encode(tx_hash.as_bytes())),
+                        "transactionIndex": format!("0x{:x}", tx_index),
+                        "logIndex": format!("0x{:x}", log_index_global),
+                        "removed": false
+                    }));
+
+                    log_index_global += 1;
+                    let _ = log_index_in_tx; // Suppress unused warning
+                }
+            }
+        }
+
+        Ok(Value::Array(result_logs))
+    });
+
+    // eth_newFilter - Create a new log filter
+    let storage_new_filter = storage.clone();
+    let filter_registry_new = filter_registry.clone();
+    io_handler.add_sync_method("eth_newFilter", move |params: Params| {
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing filter object"));
+        }
+
+        let filter = &params[0];
+        let current_height = storage_new_filter.blocks.get_latest_height().unwrap_or(0);
+
+        // Parse fromBlock
+        let from_block = match filter.get("fromBlock").and_then(|v| v.as_str()) {
+            Some("latest") | Some("pending") => Some(current_height),
+            Some("earliest") => Some(0),
+            Some(hex_str) if hex_str.starts_with("0x") => {
+                u64::from_str_radix(&hex_str[2..], 16).ok()
+            }
+            None => None,
+            _ => None,
+        };
+
+        // Parse toBlock
+        let to_block = match filter.get("toBlock").and_then(|v| v.as_str()) {
+            Some("latest") | Some("pending") => Some(current_height),
+            Some("earliest") => Some(0),
+            Some(hex_str) if hex_str.starts_with("0x") => {
+                u64::from_str_radix(&hex_str[2..], 16).ok()
+            }
+            None => None,
+            _ => None,
+        };
+
+        // Parse address filter
+        let addresses: Vec<Address> = match filter.get("address") {
+            Some(Value::String(addr_str)) => {
+                let addr_hex = addr_str.trim_start_matches("0x");
+                if let Ok(bytes) = hex::decode(addr_hex) {
+                    if bytes.len() == 20 {
+                        let mut arr = [0u8; 20];
+                        arr.copy_from_slice(&bytes);
+                        vec![Address(arr)]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![]
+                }
+            }
+            Some(Value::Array(addrs)) => {
+                addrs
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(|addr_str| {
+                        let addr_hex = addr_str.trim_start_matches("0x");
+                        hex::decode(addr_hex).ok().and_then(|bytes| {
+                            if bytes.len() == 20 {
+                                let mut arr = [0u8; 20];
+                                arr.copy_from_slice(&bytes);
+                                Some(Address(arr))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect()
+            }
+            _ => vec![],
+        };
+
+        // Parse topics filter
+        let topics: Vec<Option<Vec<Hash>>> = match filter.get("topics") {
+            Some(Value::Array(topics)) => {
+                topics
+                    .iter()
+                    .map(|topic_entry| {
+                        match topic_entry {
+                            Value::Null => None,
+                            Value::String(hash_str) => {
+                                let hash_hex = hash_str.trim_start_matches("0x");
+                                hex::decode(hash_hex).ok().and_then(|bytes| {
+                                    if bytes.len() == 32 {
+                                        let mut arr = [0u8; 32];
+                                        arr.copy_from_slice(&bytes);
+                                        Some(vec![Hash::new(arr)])
+                                    } else {
+                                        None
+                                    }
+                                })
+                            }
+                            Value::Array(hashes) => {
+                                let parsed: Vec<Hash> = hashes
+                                    .iter()
+                                    .filter_map(|v| v.as_str())
+                                    .filter_map(|hash_str| {
+                                        let hash_hex = hash_str.trim_start_matches("0x");
+                                        hex::decode(hash_hex).ok().and_then(|bytes| {
+                                            if bytes.len() == 32 {
+                                                let mut arr = [0u8; 32];
+                                                arr.copy_from_slice(&bytes);
+                                                Some(Hash::new(arr))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    })
+                                    .collect();
+                                if parsed.is_empty() { None } else { Some(parsed) }
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            }
+            _ => vec![],
+        };
+
+        let filter_id = filter_registry_new.new_log_filter(
+            from_block,
+            to_block,
+            addresses,
+            topics,
+            current_height,
+        );
+
+        Ok(Value::String(format!("0x{:x}", filter_id)))
+    });
+
+    // eth_newBlockFilter - Create a new block filter
+    let storage_block_filter = storage.clone();
+    let filter_registry_block = filter_registry.clone();
+    io_handler.add_sync_method("eth_newBlockFilter", move |_params: Params| {
+        let current_height = storage_block_filter.blocks.get_latest_height().unwrap_or(0);
+        let filter_id = filter_registry_block.new_block_filter(current_height);
+        Ok(Value::String(format!("0x{:x}", filter_id)))
+    });
+
+    // eth_newPendingTransactionFilter - Create a new pending transaction filter
+    let filter_registry_pending = filter_registry.clone();
+    io_handler.add_sync_method("eth_newPendingTransactionFilter", move |_params: Params| {
+        let filter_id = filter_registry_pending.new_pending_transaction_filter();
+        Ok(Value::String(format!("0x{:x}", filter_id)))
+    });
+
+    // eth_uninstallFilter - Remove a filter
+    let filter_registry_uninstall = filter_registry.clone();
+    io_handler.add_sync_method("eth_uninstallFilter", move |params: Params| {
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing filter ID"));
+        }
+
+        let filter_id = match params[0].as_str() {
+            Some(hex_str) => {
+                let hex = hex_str.trim_start_matches("0x");
+                u64::from_str_radix(hex, 16).unwrap_or(0)
+            }
+            None => return Err(jsonrpc_core::Error::invalid_params("Invalid filter ID")),
+        };
+
+        let removed = filter_registry_uninstall.uninstall_filter(filter_id);
+        Ok(Value::Bool(removed))
+    });
+
+    // eth_getFilterChanges - Get changes since last poll
+    let storage_filter_changes = storage.clone();
+    let filter_registry_changes = filter_registry.clone();
+    io_handler.add_sync_method("eth_getFilterChanges", move |params: Params| {
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing filter ID"));
+        }
+
+        let filter_id = match params[0].as_str() {
+            Some(hex_str) => {
+                let hex = hex_str.trim_start_matches("0x");
+                u64::from_str_radix(hex, 16).unwrap_or(0)
+            }
+            None => return Err(jsonrpc_core::Error::invalid_params("Invalid filter ID")),
+        };
+
+        let filter = match filter_registry_changes.get_filter(filter_id) {
+            Some(f) => f,
+            None => {
+                return Err(jsonrpc_core::Error {
+                    code: jsonrpc_core::ErrorCode::InvalidRequest,
+                    message: "Filter not found".to_string(),
+                    data: None,
+                })
+            }
+        };
+
+        let current_height = storage_filter_changes.blocks.get_latest_height().unwrap_or(0);
+        let last_poll_block = filter.last_poll_block;
+
+        match filter.filter_type {
+            FilterType::Block => {
+                // Return new block hashes since last poll
+                let mut block_hashes = Vec::new();
+                for height in (last_poll_block + 1)..=current_height {
+                    if let Ok(Some(hash)) = storage_filter_changes.blocks.get_block_by_height(height) {
+                        block_hashes.push(Value::String(format!("0x{}", hex::encode(hash.as_bytes()))));
+                    }
+                }
+                filter_registry_changes.update_last_poll_block(filter_id, current_height);
+                Ok(Value::Array(block_hashes))
+            }
+            FilterType::PendingTransaction => {
+                // For pending transactions, we'd need to track which ones are new
+                // This is a simplified implementation that returns empty array
+                Ok(Value::Array(vec![]))
+            }
+            FilterType::Log { from_block, to_block, ref addresses, ref topics } => {
+                // Calculate effective block range
+                let effective_from = last_poll_block + 1;
+                let effective_to = match to_block {
+                    Some(t) => t.min(current_height),
+                    None => current_height,
+                };
+
+                // Skip if from_block was set and we haven't reached it yet
+                if let Some(fb) = from_block {
+                    if effective_from < fb {
+                        filter_registry_changes.update_last_poll_block(filter_id, current_height);
+                        return Ok(Value::Array(vec![]));
+                    }
+                }
+
+                let mut result_logs: Vec<Value> = Vec::new();
+
+                for height in effective_from..=effective_to {
+                    let block_hash = match storage_filter_changes.blocks.get_block_by_height(height) {
+                        Ok(Some(hash)) => hash,
+                        _ => continue,
+                    };
+
+                    let tx_hashes = match storage_filter_changes.transactions.get_block_transactions(&block_hash) {
+                        Ok(hashes) => hashes,
+                        Err(_) => continue,
+                    };
+
+                    for (tx_index, tx_hash) in tx_hashes.iter().enumerate() {
+                        let receipt = match storage_filter_changes.transactions.get_receipt(tx_hash) {
+                            Ok(Some(r)) => r,
+                            _ => continue,
+                        };
+
+                        for (log_index, log) in receipt.logs.iter().enumerate() {
+                            // Check address filter
+                            if !addresses.is_empty() && !addresses.contains(&log.address) {
+                                continue;
+                            }
+
+                            // Check topics filter
+                            let topics_match = topics.iter().enumerate().all(|(i, topic_filter)| {
+                                match topic_filter {
+                                    None => true,
+                                    Some(allowed_topics) => {
+                                        if i >= log.topics.len() {
+                                            false
+                                        } else {
+                                            allowed_topics.contains(&log.topics[i])
+                                        }
+                                    }
+                                }
+                            });
+
+                            if !topics_match {
+                                continue;
+                            }
+
+                            result_logs.push(json!({
+                                "address": format!("0x{}", hex::encode(log.address.0)),
+                                "topics": log.topics.iter()
+                                    .map(|t| format!("0x{}", hex::encode(t.as_bytes())))
+                                    .collect::<Vec<_>>(),
+                                "data": format!("0x{}", hex::encode(&log.data)),
+                                "blockNumber": format!("0x{:x}", height),
+                                "blockHash": format!("0x{}", hex::encode(block_hash.as_bytes())),
+                                "transactionHash": format!("0x{}", hex::encode(tx_hash.as_bytes())),
+                                "transactionIndex": format!("0x{:x}", tx_index),
+                                "logIndex": format!("0x{:x}", log_index),
+                                "removed": false
+                            }));
+                        }
+                    }
+                }
+
+                filter_registry_changes.update_last_poll_block(filter_id, current_height);
+                Ok(Value::Array(result_logs))
+            }
+        }
+    });
+
+    // eth_getFilterLogs - Get all logs matching filter (for log filters only)
+    let storage_filter_logs = storage.clone();
+    let filter_registry_logs = filter_registry.clone();
+    io_handler.add_sync_method("eth_getFilterLogs", move |params: Params| {
+        let params: Vec<Value> = match params.parse() {
+            Ok(p) => p,
+            Err(e) => return Err(jsonrpc_core::Error::invalid_params(e.to_string())),
+        };
+
+        if params.is_empty() {
+            return Err(jsonrpc_core::Error::invalid_params("Missing filter ID"));
+        }
+
+        let filter_id = match params[0].as_str() {
+            Some(hex_str) => {
+                let hex = hex_str.trim_start_matches("0x");
+                u64::from_str_radix(hex, 16).unwrap_or(0)
+            }
+            None => return Err(jsonrpc_core::Error::invalid_params("Invalid filter ID")),
+        };
+
+        let filter = match filter_registry_logs.get_filter(filter_id) {
+            Some(f) => f,
+            None => {
+                return Err(jsonrpc_core::Error {
+                    code: jsonrpc_core::ErrorCode::InvalidRequest,
+                    message: "Filter not found".to_string(),
+                    data: None,
+                })
+            }
+        };
+
+        let current_height = storage_filter_logs.blocks.get_latest_height().unwrap_or(0);
+
+        match filter.filter_type {
+            FilterType::Log { from_block, to_block, ref addresses, ref topics } => {
+                let effective_from = from_block.unwrap_or(0);
+                let effective_to = to_block.unwrap_or(current_height).min(current_height);
+                let max_range = 1000u64;
+                let effective_to = effective_to.min(effective_from.saturating_add(max_range));
+
+                let mut result_logs: Vec<Value> = Vec::new();
+
+                for height in effective_from..=effective_to {
+                    let block_hash = match storage_filter_logs.blocks.get_block_by_height(height) {
+                        Ok(Some(hash)) => hash,
+                        _ => continue,
+                    };
+
+                    let tx_hashes = match storage_filter_logs.transactions.get_block_transactions(&block_hash) {
+                        Ok(hashes) => hashes,
+                        Err(_) => continue,
+                    };
+
+                    for (tx_index, tx_hash) in tx_hashes.iter().enumerate() {
+                        let receipt = match storage_filter_logs.transactions.get_receipt(tx_hash) {
+                            Ok(Some(r)) => r,
+                            _ => continue,
+                        };
+
+                        for (log_index, log) in receipt.logs.iter().enumerate() {
+                            if !addresses.is_empty() && !addresses.contains(&log.address) {
+                                continue;
+                            }
+
+                            let topics_match = topics.iter().enumerate().all(|(i, topic_filter)| {
+                                match topic_filter {
+                                    None => true,
+                                    Some(allowed_topics) => {
+                                        if i >= log.topics.len() {
+                                            false
+                                        } else {
+                                            allowed_topics.contains(&log.topics[i])
+                                        }
+                                    }
+                                }
+                            });
+
+                            if !topics_match {
+                                continue;
+                            }
+
+                            result_logs.push(json!({
+                                "address": format!("0x{}", hex::encode(log.address.0)),
+                                "topics": log.topics.iter()
+                                    .map(|t| format!("0x{}", hex::encode(t.as_bytes())))
+                                    .collect::<Vec<_>>(),
+                                "data": format!("0x{}", hex::encode(&log.data)),
+                                "blockNumber": format!("0x{:x}", height),
+                                "blockHash": format!("0x{}", hex::encode(block_hash.as_bytes())),
+                                "transactionHash": format!("0x{}", hex::encode(tx_hash.as_bytes())),
+                                "transactionIndex": format!("0x{:x}", tx_index),
+                                "logIndex": format!("0x{:x}", log_index),
+                                "removed": false
+                            }));
+                        }
+                    }
+                }
+
+                Ok(Value::Array(result_logs))
+            }
+            _ => {
+                Err(jsonrpc_core::Error {
+                    code: jsonrpc_core::ErrorCode::InvalidRequest,
+                    message: "eth_getFilterLogs only works with log filters".to_string(),
+                    data: None,
+                })
+            }
+        }
     });
 
     // citrate_getMempoolSnapshot - Get all pending transactions in mempool

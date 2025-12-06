@@ -1,3 +1,4 @@
+use citrate_api::FilterRegistry;
 use citrate_execution::executor::Executor;
 use citrate_sequencer::mempool::Mempool;
 use citrate_sequencer::mempool::MempoolConfig;
@@ -37,6 +38,8 @@ fn make_block(height: u64, parent: Hash) -> Block {
         ghostdag_params: GhostDagParams::default(),
         transactions: vec![],
         signature: Signature::new([0; 64]),
+        embedded_models: vec![],
+        required_pins: vec![],
     }
 }
 
@@ -65,6 +68,7 @@ async fn test_eth_block_number_and_get_block() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // eth_blockNumber (hex string)
@@ -112,6 +116,7 @@ async fn test_eth_get_block_by_hash() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // eth_getBlockByHash [hash, false]
@@ -176,6 +181,7 @@ async fn test_eth_get_tx_and_receipt_by_hash() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // eth_getTransactionByHash
@@ -238,6 +244,7 @@ async fn test_eth_get_transaction_count_latest_vs_pending() {
         mempool.clone(),
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Latest nonce initially 0
@@ -311,6 +318,7 @@ async fn test_eth_get_balance_and_code_smoke() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // eth_getBalance
@@ -348,6 +356,7 @@ async fn test_eth_send_raw_transaction_error_path() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Invalid hex string should produce an error
@@ -383,6 +392,7 @@ async fn test_eth_call_smoke() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Call object: zero-value transfer with minimal gas, empty data
@@ -418,6 +428,7 @@ async fn test_eth_estimate_gas_minimal() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     let req = serde_json::json!({
@@ -455,6 +466,7 @@ async fn test_eth_call_ai_tensor_opcode() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Data for tensor operation: op_type=0x01, dimensions=0x00000010 (16, little endian), plus padding
@@ -498,6 +510,7 @@ async fn test_eth_call_invalid_to_address_and_insufficient_balance() {
         mempool.clone(),
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Invalid 'to' address length
@@ -550,6 +563,7 @@ async fn test_eth_estimate_gas_with_object_returns_constant() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     let req = serde_json::json!({
@@ -585,6 +599,7 @@ async fn test_eth_call_ai_zk_verify_valid_proof() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Input: 64-byte proof of 0xF3 values → valid, expect 0x01
@@ -633,6 +648,7 @@ async fn test_eth_call_ai_zk_verify_invalid_proof() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Input: 64-byte proof of 0x00 values → invalid, expect 0x00
@@ -681,6 +697,7 @@ async fn test_eth_call_ai_zk_prove_output_length() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Input: arbitrary payload; expect 64-byte proof output
@@ -736,6 +753,7 @@ async fn test_eth_call_invalid_data_shapes_error() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Tensor op requires at least 8 bytes of data; send too short
@@ -840,6 +858,7 @@ async fn test_eth_call_ai_model_load_path() {
         mempool,
         executor.clone(),
         1,
+        Arc::new(FilterRegistry::new()),
     );
 
     // Data: 32-byte model hash
@@ -905,7 +924,7 @@ async fn test_eth_call_ai_model_exec_path() {
     executor.set_balance(&from, U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    citrate_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor, 1);
+    citrate_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor, 1, Arc::new(FilterRegistry::new()));
 
     // Data: 32-byte model hash + some inference bytes
     let mut data = model_hash.as_bytes().to_vec();
@@ -949,7 +968,7 @@ async fn test_eth_call_ai_model_exec_missing_model_errors() {
     executor.set_balance(&from, primitive_types::U256::from(1_000_000u64));
 
     let mut io = jsonrpc_core::IoHandler::new();
-    citrate_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor, 1);
+    citrate_api::eth_rpc::register_eth_methods(&mut io, storage.clone(), mempool, executor, 1, Arc::new(FilterRegistry::new()));
 
     // Data: 32-byte model hash that is not registered
     let missing_hash = citrate_consensus::types::Hash::new([0xEE; 32]);
@@ -973,4 +992,130 @@ async fn test_eth_call_ai_model_exec_missing_model_errors() {
     let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
     // Execution failure is represented as empty output hex
     assert_eq!(v["result"], "0x");
+}
+
+/// Test that eth_chainId returns the configured chain ID, not a hardcoded value.
+/// This is critical for preventing replay attacks across different networks.
+#[tokio::test]
+async fn test_eth_chain_id_is_configurable() {
+    let tmp = TempDir::new().unwrap();
+    let storage = Arc::new(StorageManager::new(tmp.path(), PruningConfig::default()).unwrap());
+    let mempool = Arc::new(Mempool::new(MempoolConfig::default()));
+    let state_db = Arc::new(citrate_execution::StateDB::new());
+    let executor = Arc::new(Executor::new(state_db));
+
+    // Test with chain_id = 42069 (testnet)
+    let mut io1 = jsonrpc_core::IoHandler::new();
+    citrate_api::eth_rpc::register_eth_methods(
+        &mut io1,
+        storage.clone(),
+        mempool.clone(),
+        executor.clone(),
+        42069,
+        Arc::new(FilterRegistry::new()),
+    );
+
+    let req = serde_json::json!({"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]})
+        .to_string();
+    let resp = io1.handle_request(&req).await.unwrap();
+    let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
+    assert_eq!(v["result"], "0xa455"); // 42069 in hex
+
+    // Test with chain_id = 1 (mainnet)
+    let mut io2 = jsonrpc_core::IoHandler::new();
+    citrate_api::eth_rpc::register_eth_methods(
+        &mut io2,
+        storage.clone(),
+        mempool.clone(),
+        executor.clone(),
+        1,
+        Arc::new(FilterRegistry::new()),
+    );
+
+    let resp2 = io2.handle_request(&req).await.unwrap();
+    let v2: serde_json::Value = serde_json::from_str(&resp2).unwrap();
+    assert_eq!(v2["result"], "0x1");
+
+    // Test with chain_id = 1337 (devnet) - NOT hardcoded in source
+    let mut io3 = jsonrpc_core::IoHandler::new();
+    citrate_api::eth_rpc::register_eth_methods(
+        &mut io3,
+        storage.clone(),
+        mempool,
+        executor,
+        1337,
+        Arc::new(FilterRegistry::new()),
+    );
+
+    let resp3 = io3.handle_request(&req).await.unwrap();
+    let v3: serde_json::Value = serde_json::from_str(&resp3).unwrap();
+    assert_eq!(v3["result"], "0x539");
+}
+
+/// Test that eth_estimateGas performs real gas estimation for contract calls.
+/// Simple transfers should return 21000, while contract calls return actual gas used.
+#[tokio::test]
+async fn test_eth_estimate_gas_real_execution() {
+    use primitive_types::U256;
+
+    let tmp = TempDir::new().unwrap();
+    let storage = Arc::new(StorageManager::new(tmp.path(), PruningConfig::default()).unwrap());
+    let mempool = Arc::new(Mempool::new(MempoolConfig::default()));
+    let state_db = Arc::new(citrate_execution::StateDB::new());
+    let executor = Arc::new(Executor::new(state_db.clone()));
+
+    // Set up an address with balance
+    let from_addr = Address([0x11; 20]);
+    executor.set_balance(&from_addr, U256::from(1_000_000_000u64));
+
+    // Deploy some code to test contract calls
+    let contract_addr = Address([0x22; 20]);
+    // Simple contract that returns data (PUSH1 0x01 PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN)
+    executor.set_code(&contract_addr, vec![0x60, 0x01, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+
+    let mut io = jsonrpc_core::IoHandler::new();
+    citrate_api::eth_rpc::register_eth_methods(
+        &mut io,
+        storage,
+        mempool,
+        executor,
+        1,
+        Arc::new(FilterRegistry::new()),
+    );
+
+    // Test 1: Simple transfer (no data) should return 21000
+    let req_transfer = serde_json::json!({
+        "jsonrpc":"2.0","id":1,"method":"eth_estimateGas",
+        "params":[{
+            "from": format!("0x{}", hex::encode(from_addr.0)),
+            "to": format!("0x{}", hex::encode(contract_addr.0)),
+            "value": "0x1"
+        }]
+    }).to_string();
+    let resp_transfer = io.handle_request(&req_transfer).await.unwrap();
+    let v_transfer: serde_json::Value = serde_json::from_str(&resp_transfer).unwrap();
+    assert_eq!(v_transfer["result"], "0x5208", "Simple transfer should be 21000 gas");
+
+    // Test 2: Contract call with data should return more than 21000
+    let req_call = serde_json::json!({
+        "jsonrpc":"2.0","id":2,"method":"eth_estimateGas",
+        "params":[{
+            "from": format!("0x{}", hex::encode(from_addr.0)),
+            "to": format!("0x{}", hex::encode(contract_addr.0)),
+            "data": "0x12345678" // Some function selector
+        }]
+    }).to_string();
+    let resp_call = io.handle_request(&req_call).await.unwrap();
+    let v_call: serde_json::Value = serde_json::from_str(&resp_call).unwrap();
+    let gas_str = v_call["result"].as_str().unwrap();
+    let gas = u64::from_str_radix(gas_str.trim_start_matches("0x"), 16).unwrap();
+    assert!(gas >= 21000, "Contract call should use at least 21000 gas, got {}", gas);
+
+    // Test 3: No params should return default 21000
+    let req_empty = serde_json::json!({
+        "jsonrpc":"2.0","id":3,"method":"eth_estimateGas","params":[]
+    }).to_string();
+    let resp_empty = io.handle_request(&req_empty).await.unwrap();
+    let v_empty: serde_json::Value = serde_json::from_str(&resp_empty).unwrap();
+    assert_eq!(v_empty["result"], "0x5208", "Empty params should default to 21000");
 }

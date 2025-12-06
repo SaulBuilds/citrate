@@ -1,17 +1,39 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { dagService } from '../services/tauri';
 import { DAGData, DAGNode } from '../types';
-import { 
-  Network, 
-  Info, 
+import ForceGraph2D, { ForceGraphMethods } from 'react-force-graph-2d';
+import {
+  Network,
+  Info,
   RefreshCw,
   Layers,
   GitBranch,
   Box,
   Activity,
   Clock,
-  Hash
+  Hash,
+  Grid3X3,
+  Share2
 } from 'lucide-react';
+
+// Graph data types for force-graph
+interface GraphNode {
+  id: string;
+  hash: string;
+  height: number;
+  isBlue: boolean;
+  isTip: boolean | undefined;
+  blueScore: number;
+  transactions: number;
+  x?: number;
+  y?: number;
+}
+
+interface GraphLink {
+  source: string;
+  target: string;
+  isSelected: boolean;
+}
 
 export const DAGVisualization: React.FC = () => {
   const [dagData, setDagData] = useState<DAGData | null>(null);
@@ -21,6 +43,127 @@ export const DAGVisualization: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'graph'>('graph');
+  const graphRef = useRef<ForceGraphMethods>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+  // Convert DAG data to force-graph format
+  const graphData = useMemo(() => {
+    if (!dagData || !dagData.nodes.length) {
+      return { nodes: [], links: [] };
+    }
+
+    const nodes: GraphNode[] = dagData.nodes.map(node => ({
+      id: node.hash || node.id,
+      hash: node.hash,
+      height: node.height,
+      isBlue: node.isBlue,
+      isTip: node.isTip,
+      blueScore: node.blueScore,
+      transactions: node.transactions || 0,
+    }));
+
+    const links: GraphLink[] = dagData.links?.map(link => ({
+      source: typeof link.source === 'string' ? link.source : (link.source as any).id,
+      target: typeof link.target === 'string' ? link.target : (link.target as any).id,
+      isSelected: link.isSelected,
+    })) || [];
+
+    return { nodes, links };
+  }, [dagData]);
+
+  // Handle container resize
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        setDimensions({
+          width: containerRef.current.offsetWidth,
+          height: containerRef.current.offsetHeight - 50,
+        });
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  // Node canvas rendering
+  const nodeCanvasObject = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    const size = node.isTip ? 12 : 8;
+    const fontSize = 10 / globalScale;
+
+    // Draw node circle
+    ctx.beginPath();
+    ctx.arc(node.x || 0, node.y || 0, size, 0, 2 * Math.PI);
+
+    // Color based on status
+    if (node.isTip) {
+      ctx.fillStyle = '#a78bfa'; // Purple for tips
+    } else if (node.isBlue) {
+      ctx.fillStyle = '#3b82f6'; // Blue
+    } else {
+      ctx.fillStyle = '#ef4444'; // Red
+    }
+    ctx.fill();
+
+    // Draw border
+    ctx.strokeStyle = node.isTip ? '#7c3aed' : '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw height label
+    ctx.font = `${fontSize}px Sans-Serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#374151';
+    ctx.fillText(`H:${node.height}`, node.x || 0, (node.y || 0) + size + 2);
+  }, []);
+
+  // Link rendering
+  const linkCanvasObject = useCallback((link: any, ctx: CanvasRenderingContext2D) => {
+    const start = link.source;
+    const end = link.target;
+
+    if (!start || !end || typeof start.x === 'undefined') return;
+
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.strokeStyle = link.isSelected ? '#667eea' : '#9ca3af';
+    ctx.lineWidth = link.isSelected ? 2 : 1;
+    ctx.stroke();
+
+    // Draw arrow
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    const arrowLength = 8;
+    ctx.beginPath();
+    ctx.moveTo(end.x, end.y);
+    ctx.lineTo(
+      end.x - arrowLength * Math.cos(angle - Math.PI / 6),
+      end.y - arrowLength * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      end.x - arrowLength * Math.cos(angle + Math.PI / 6),
+      end.y - arrowLength * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fillStyle = link.isSelected ? '#667eea' : '#9ca3af';
+    ctx.fill();
+  }, []);
+
+  const handleGraphNodeClick = useCallback((node: any) => {
+    if (dagData) {
+      const dagNode = dagData.nodes.find(n => n.hash === node.hash || n.id === node.id);
+      if (dagNode) {
+        setSelectedNode(dagNode);
+        dagService.getBlockDetails(dagNode.hash)
+          .then(setBlockDetails)
+          .catch(() => setBlockDetails(null));
+      }
+    }
+  }, [dagData]);
 
   useEffect(() => {
     loadDAGData();
@@ -61,26 +204,31 @@ export const DAGVisualization: React.FC = () => {
           const status: any = await invoke('get_status');
           const blockHeight = status.block_height || 0;
 
-          // Create mock DAG data from recent blocks
-          const nodes: DAGNode[] = [];
+          // Create fallback DAG data from recent blocks
+          const fallbackNodes: DAGNode[] = [];
           const startHeight = Math.max(0, blockHeight - 20);
 
           for (let i = startHeight; i <= blockHeight; i++) {
-            nodes.push({
+            fallbackNodes.push({
+              id: `block_${i}`,
               hash: `block_${i}`,
               height: i,
               timestamp: Date.now() - ((blockHeight - i) * 2000),
-              parents: i > 0 ? [`block_${i-1}`] : [],
-              selected_parent: i > 0 ? `block_${i-1}` : null,
-              blue_score: i,
-              is_blue: true,
-              tx_count: 0
+              selectedParent: i > 0 ? `block_${i-1}` : undefined,
+              mergeParents: [],
+              blueScore: i,
+              isBlue: true,
+              isTip: i === blockHeight,
+              transactions: 0,
+              proposer: '0x',
+              size: 0
             });
           }
 
           setDagData({
-            nodes: nodes.reverse(),
-            edges: [],
+            nodes: fallbackNodes.reverse(),
+            links: [],
+            tips: [],
             statistics: {
               totalBlocks: blockHeight + 1,
               maxHeight: blockHeight,
@@ -142,7 +290,23 @@ export const DAGVisualization: React.FC = () => {
       <div className="dag-header">
         <h2>DAG Visualization</h2>
         <div className="dag-controls">
-          <button 
+          <div className="view-toggle">
+            <button
+              className={`toggle-btn ${viewMode === 'graph' ? 'active' : ''}`}
+              onClick={() => setViewMode('graph')}
+              title="Graph View"
+            >
+              <Share2 size={16} />
+            </button>
+            <button
+              className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+              title="Table View"
+            >
+              <Grid3X3 size={16} />
+            </button>
+          </div>
+          <button
             className={`btn ${autoRefresh ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setAutoRefresh(!autoRefresh)}
           >
@@ -181,7 +345,7 @@ export const DAGVisualization: React.FC = () => {
         </div>
       )}
 
-      <div className="dag-container">
+      <div className="dag-container" ref={containerRef}>
         {error && (
           <div className="error-message">
             <Info size={20} />
@@ -195,6 +359,43 @@ export const DAGVisualization: React.FC = () => {
             <p>Loading DAG data...</p>
           </div>
         ) : dagData && dagData.nodes.length > 0 ? (
+          viewMode === 'graph' ? (
+            <div className="graph-container">
+              <ForceGraph2D
+                ref={graphRef as any}
+                graphData={graphData}
+                width={dimensions.width}
+                height={dimensions.height}
+                nodeCanvasObject={nodeCanvasObject}
+                linkCanvasObject={linkCanvasObject}
+                onNodeClick={handleGraphNodeClick}
+                nodeLabel={(node: any) => `Block ${node.height}\nHash: ${node.hash?.slice(0, 16)}...\nBlue Score: ${node.blueScore}\nTxs: ${node.transactions}`}
+                linkDirectionalArrowLength={6}
+                linkDirectionalArrowRelPos={1}
+                d3AlphaDecay={0.02}
+                d3VelocityDecay={0.3}
+                cooldownTicks={100}
+                enableZoomInteraction={true}
+                enablePanInteraction={true}
+                minZoom={0.5}
+                maxZoom={4}
+              />
+              <div className="graph-legend">
+                <div className="legend-item">
+                  <span className="legend-dot blue"></span>
+                  <span>Blue Block</span>
+                </div>
+                <div className="legend-item">
+                  <span className="legend-dot red"></span>
+                  <span>Red Block</span>
+                </div>
+                <div className="legend-item">
+                  <span className="legend-dot tip"></span>
+                  <span>Current Tip</span>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="blocks-table">
             <table>
               <thead>
@@ -232,6 +433,7 @@ export const DAGVisualization: React.FC = () => {
               </tbody>
             </table>
           </div>
+          )
         ) : (
           <div className="empty-state">
             <Network size={48} />
@@ -344,6 +546,80 @@ export const DAGVisualization: React.FC = () => {
         .dag-controls {
           display: flex;
           gap: 1rem;
+          align-items: center;
+        }
+
+        .view-toggle {
+          display: flex;
+          background: #f3f4f6;
+          border-radius: 0.5rem;
+          padding: 0.25rem;
+        }
+
+        .toggle-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.5rem 0.75rem;
+          border: none;
+          border-radius: 0.375rem;
+          background: transparent;
+          color: #6b7280;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+          color: #374151;
+        }
+
+        .toggle-btn.active {
+          background: white;
+          color: #667eea;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .graph-container {
+          position: relative;
+          width: 100%;
+          height: 100%;
+        }
+
+        .graph-legend {
+          position: absolute;
+          bottom: 1rem;
+          left: 1rem;
+          background: white;
+          padding: 0.75rem 1rem;
+          border-radius: 0.5rem;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          display: flex;
+          gap: 1rem;
+          font-size: 0.875rem;
+        }
+
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .legend-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+        }
+
+        .legend-dot.blue {
+          background: #3b82f6;
+        }
+
+        .legend-dot.red {
+          background: #ef4444;
+        }
+
+        .legend-dot.tip {
+          background: #a78bfa;
         }
 
         .btn {

@@ -17,7 +17,7 @@ use citrate_network::NetworkMessage;
 use citrate_network::{PeerManager, PeerManagerConfig};
 use citrate_sequencer::mempool::{Mempool, MempoolConfig};
 use citrate_storage::StorageManager;
-// use citrate_api::{RpcServer, RpcConfig}; // TODO: Fix mempool type mismatch
+use citrate_api::{RpcServer, RpcConfig, RpcCloseHandle};
 use crate::sync::iterative_sync::{IterativeSyncManager, SyncConfig};
 use crate::wallet::WalletManager;
 use sha3::{Digest, Sha3_256};
@@ -139,9 +139,10 @@ impl NodeManager {
         let dag_store = Arc::new(DagStore::new());
         let ghostdag = Arc::new(GhostDag::new(ghostdag_params, dag_store.clone()));
 
-        // Initialize execution environment with simplified setup
+        // Initialize execution environment with chain ID from config
         let state_db = Arc::new(StateDB::new());
-        let executor = Arc::new(Executor::new(state_db.clone()));
+        let executor = Arc::new(Executor::with_chain_id(state_db.clone(), config.mempool.chain_id));
+        info!("Executor initialized with chain_id: {} from config", config.mempool.chain_id);
 
         // Initialize mempool from config
         let cfg_mempool = &config.mempool;
@@ -645,10 +646,42 @@ impl NodeManager {
             (None, None)
         };
 
-        // RPC server initialization - mempool type mismatch resolved
-        // Now using Arc<Mempool> directly (Mempool is internally synchronized)
-        // TODO: Enable RPC server when needed for external JSON-RPC access
-        let rpc_handle = None;
+        // RPC server initialization - enabled for external JSON-RPC access
+        let rpc_handles = if config.enable_rpc {
+            let rpc_addr: SocketAddr = format!("127.0.0.1:{}", config.rpc_port)
+                .parse()
+                .unwrap_or_else(|_| "127.0.0.1:8545".parse().unwrap());
+
+            let rpc_config = RpcConfig {
+                listen_addr: rpc_addr,
+                max_connections: 100,
+                cors_domains: vec!["*".to_string()],
+                threads: 4,
+            };
+
+            let rpc_server = RpcServer::new(
+                rpc_config,
+                storage.clone(),
+                mempool.clone(),
+                peer_manager.clone(),
+                executor.clone(),
+                config.mempool.chain_id,
+            );
+
+            match rpc_server.spawn() {
+                Ok((close_handle, join_handle)) => {
+                    info!("RPC server started on {}", rpc_addr);
+                    Some(RpcHandles { close_handle, join_handle })
+                }
+                Err(e) => {
+                    error!("Failed to start RPC server: {}", e);
+                    None
+                }
+            }
+        } else {
+            info!("RPC server disabled by configuration");
+            None
+        };
 
         let node = CitrateNode {
             storage,
@@ -660,7 +693,7 @@ impl NodeManager {
             start_time: std::time::Instant::now(),
             block_producer_handle,
             block_producer_running,
-            rpc_handle,
+            rpc_handles,
         };
 
         *node_guard = Some(node);
@@ -688,9 +721,12 @@ impl NodeManager {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
 
-            // Stop RPC server (when implemented)
-            if let Some(handle) = node.rpc_handle.take() {
-                handle.abort();
+            // Stop RPC server gracefully
+            if let Some(handles) = node.rpc_handles.take() {
+                info!("Shutting down RPC server...");
+                handles.close_handle.close();
+                // Wait for the thread to finish
+                let _ = handles.join_handle.join();
             }
 
             // Explicitly drop all components to release resources
@@ -1517,6 +1553,13 @@ async fn run_block_producer(
     info!("Block producer stopped");
 }
 
+/// RPC server handles for graceful shutdown
+struct RpcHandles {
+    close_handle: RpcCloseHandle,
+    #[allow(dead_code)]
+    join_handle: std::thread::JoinHandle<()>,
+}
+
 /// Simplified Citrate node instance
 struct CitrateNode {
     storage: Arc<StorageManager>,
@@ -1528,7 +1571,7 @@ struct CitrateNode {
     start_time: std::time::Instant,
     block_producer_handle: Option<JoinHandle<()>>,
     block_producer_running: Option<Arc<RwLock<bool>>>,
-    rpc_handle: Option<JoinHandle<()>>,
+    rpc_handles: Option<RpcHandles>,
 }
 
 impl CitrateNode {
@@ -1590,6 +1633,11 @@ pub struct PendingTx {
     pub nonce: u64,
 }
 
+/// Default value for enable_rpc field (enabled by default)
+fn default_enable_rpc() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeConfig {
@@ -1607,6 +1655,8 @@ pub struct NodeConfig {
     pub enable_network: bool,
     #[serde(default)]
     pub discovery: bool,
+    #[serde(default = "default_enable_rpc")]
+    pub enable_rpc: bool,
     #[serde(default)]
     pub mempool: MempoolSettings,
     pub consensus: ConsensusConfig,
@@ -1800,6 +1850,7 @@ impl Default for NodeConfig {
             external_rpc: None,
             enable_network: false,
             discovery: true,
+            enable_rpc: true, // Enable RPC server by default
             mempool: MempoolSettings {
                 min_gas_price: 1_000_000_000,
                 max_per_sender: 100,

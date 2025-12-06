@@ -17,6 +17,7 @@ pub fn register_eth_methods(
     storage: Arc<StorageManager>,
     mempool: Arc<Mempool>,
     executor: Arc<Executor>,
+    chain_id: u64,
 ) {
     // eth_blockNumber - Returns the latest block number
     let storage_bn = storage.clone();
@@ -157,9 +158,9 @@ pub fn register_eth_methods(
         Ok(Value::Null)
     });
 
-    // eth_chainId - Returns the chain ID
+    // eth_chainId - Returns the configured chain ID
     io_handler.add_sync_method("eth_chainId", move |_params: Params| {
-        Ok(Value::String("0x539".to_string())) // 1337 in hex
+        Ok(Value::String(format!("0x{:x}", chain_id)))
     });
 
     // eth_syncing - Returns sync status
@@ -329,7 +330,36 @@ pub fn register_eth_methods(
     });
 
     // eth_estimateGas - Estimate gas for transaction
-    io_handler.add_sync_method("eth_estimateGas", move |_params: Params| {
+    // For simple RPC, we return estimates based on transaction type
+    io_handler.add_sync_method("eth_estimateGas", move |params: Params| {
+        let params: Vec<serde_json::Value> = match params.parse() {
+            Ok(p) => p,
+            Err(_) => return Ok(Value::String("0x5208".to_string())), // 21000 default
+        };
+
+        if params.is_empty() {
+            return Ok(Value::String("0x5208".to_string())); // 21000 default
+        }
+
+        // Check if call object has data (indicates contract call/deployment)
+        if let Some(obj) = params[0].as_object() {
+            let has_data = obj.get("data")
+                .and_then(|v| v.as_str())
+                .map(|s| s.len() > 2) // "0x" is empty
+                .unwrap_or(false);
+
+            let has_to = obj.get("to").is_some();
+
+            if !has_to && has_data {
+                // Contract deployment - estimate higher
+                return Ok(Value::String("0x4c4b40".to_string())); // 5000000 gas
+            } else if has_data {
+                // Contract call - estimate medium
+                return Ok(Value::String("0x186a0".to_string())); // 100000 gas
+            }
+        }
+
+        // Simple transfer
         Ok(Value::String("0x5208".to_string())) // 21000 gas
     });
 }

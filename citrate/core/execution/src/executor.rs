@@ -212,7 +212,12 @@ impl Executor {
         state_db: Arc<StateDB>,
         state_store: Option<Arc<S>>,
     ) -> Self {
-        Self::with_storage_and_chain_id(state_db, state_store, DEFAULT_CHAIN_ID)
+        // Check for chain ID from environment variable, consistent with new()
+        let chain_id = std::env::var("CITRATE_CHAIN_ID")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_CHAIN_ID);
+        Self::with_storage_and_chain_id(state_db, state_store, chain_id)
     }
 
     pub fn with_storage_and_chain_id<S: StateStoreTrait + 'static>(

@@ -24,7 +24,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing_subscriber::{
-    fmt::{format::FmtSpan, time::UtcTime},
+    fmt::format::FmtSpan,
     layer::SubscriberExt,
     util::SubscriberInitExt,
     EnvFilter, Layer,
@@ -296,7 +296,6 @@ pub fn init_logging(config: &LogConfig) -> anyhow::Result<()> {
                 .with(
                     tracing_subscriber::fmt::layer()
                         .json()
-                        .with_timer(UtcTime::rfc_3339())
                         .with_target(config.include_target)
                         .with_file(config.include_location)
                         .with_line_number(config.include_location)

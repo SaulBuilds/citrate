@@ -118,7 +118,14 @@ export class SearchIndexBuilder {
       batchSize: options?.batchSize || 10,
       debounceMs: options?.debounceMs || 2000,
       maxRetries: options?.maxRetries || 3,
-      ipfsTimeout: options?.ipfsTimeout || 10000
+      ipfsTimeout: options?.ipfsTimeout || 10000,
+      ipfsGateways: options?.ipfsGateways || [
+        'https://gateway.pinata.cloud/ipfs/',
+        'https://cloudflare-ipfs.com/ipfs/',
+        'https://ipfs.io/ipfs/'
+      ],
+      maxConcurrentFetches: options?.maxConcurrentFetches || 10,
+      fetchTimeoutMs: options?.fetchTimeoutMs || 10000
     };
 
     // Initialize empty index

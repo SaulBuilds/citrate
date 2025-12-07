@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { EnrichedModelMetadata, ValidationResult } from '../utils/types/reviews';
+import { EnrichedModelMetadata, ValidationResult, ModelSize } from '../utils/types/reviews';
 import { ipfsMetadataFetcher, RawIPFSMetadata } from '../utils/search/ipfsMetadataFetcher';
 import { validateModelMetadata } from '../utils/metadata/validation';
 import { uploadMetadataToIPFS, ProgressCallback } from '../utils/metadata/ipfsUploader';
@@ -247,14 +247,14 @@ function convertRawMetadata(
 /**
  * Categorize model size
  */
-function categorizeSize(sizeBytes: number): 'tiny' | 'small' | 'medium' | 'large' | 'xlarge' {
+function categorizeSize(sizeBytes: number): ModelSize {
   const GB = 1024 * 1024 * 1024;
 
-  if (sizeBytes < GB) return 'tiny';
-  if (sizeBytes < 5 * GB) return 'small';
-  if (sizeBytes < 20 * GB) return 'medium';
-  if (sizeBytes < 100 * GB) return 'large';
-  return 'xlarge';
+  if (sizeBytes < GB) return ModelSize.TINY;
+  if (sizeBytes < 5 * GB) return ModelSize.SMALL;
+  if (sizeBytes < 20 * GB) return ModelSize.MEDIUM;
+  if (sizeBytes < 100 * GB) return ModelSize.LARGE;
+  return ModelSize.XLARGE;
 }
 
 export default useModelMetadata;

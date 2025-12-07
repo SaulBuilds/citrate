@@ -5,7 +5,7 @@
  * Integrates with SearchIndexBuilder for real-time index updates.
  */
 
-import FlexSearch from 'flexsearch';
+import FlexSearch, { Document } from 'flexsearch';
 import {
   SearchDocument,
   SearchQuery,
@@ -15,7 +15,6 @@ import {
   SearchSuggestion,
   SortOption,
   ModelCategory,
-  ModelSize,
   FlexSearchConfig
 } from './types';
 import { SearchIndexBuilder } from './searchIndexBuilder';
@@ -37,7 +36,8 @@ const DEFAULT_FLEXSEARCH_CONFIG: FlexSearchConfig = {
 
 export class SearchEngine {
   private indexBuilder: SearchIndexBuilder;
-  private flexIndex: FlexSearch.Document<SearchDocument>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private flexIndex: Document<SearchDocument, any>;
   private config: FlexSearchConfig;
 
   constructor(indexBuilder: SearchIndexBuilder, config?: Partial<FlexSearchConfig>) {
@@ -45,51 +45,16 @@ export class SearchEngine {
     this.config = { ...DEFAULT_FLEXSEARCH_CONFIG, ...config };
 
     // Initialize FlexSearch with weighted fields
-    this.flexIndex = new FlexSearch.Document<SearchDocument>({
+    // Using 'as any' because FlexSearch types don't match runtime API
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.flexIndex = new (FlexSearch as any).Document({
       tokenize: this.config.tokenize,
       threshold: this.config.threshold,
       resolution: this.config.resolution,
       depth: this.config.depth,
       document: {
         id: 'modelId',
-        index: [
-          {
-            field: 'name',
-            tokenize: 'forward',
-            optimize: true,
-            resolution: 9,
-            boost: 10  // Highest weight
-          },
-          {
-            field: 'tags',
-            tokenize: 'strict',
-            optimize: true,
-            resolution: 9,
-            boost: 7
-          },
-          {
-            field: 'description',
-            tokenize: 'forward',
-            optimize: true,
-            resolution: 7,
-            boost: 5
-          },
-          {
-            field: 'category',
-            tokenize: 'strict',
-            boost: 3
-          },
-          {
-            field: 'framework',
-            tokenize: 'forward',
-            boost: 2
-          },
-          {
-            field: 'creatorName',
-            tokenize: 'forward',
-            boost: 1
-          }
-        ]
+        index: ['name', 'tags', 'description', 'category', 'framework', 'creatorName']
       }
     });
 
@@ -117,21 +82,15 @@ export class SearchEngine {
    */
   rebuildFlexIndex(): void {
     // Clear existing index
-    this.flexIndex = new FlexSearch.Document<SearchDocument>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.flexIndex = new (FlexSearch as any).Document({
       tokenize: this.config.tokenize,
       threshold: this.config.threshold,
       resolution: this.config.resolution,
       depth: this.config.depth,
       document: {
         id: 'modelId',
-        index: [
-          { field: 'name', tokenize: 'forward', optimize: true, resolution: 9, boost: 10 },
-          { field: 'tags', tokenize: 'strict', optimize: true, resolution: 9, boost: 7 },
-          { field: 'description', tokenize: 'forward', optimize: true, resolution: 7, boost: 5 },
-          { field: 'category', tokenize: 'strict', boost: 3 },
-          { field: 'framework', tokenize: 'forward', boost: 2 },
-          { field: 'creatorName', tokenize: 'forward', boost: 1 }
-        ]
+        index: ['name', 'tags', 'description', 'category', 'framework', 'creatorName']
       }
     });
 
@@ -613,14 +572,27 @@ export class SearchEngine {
 let globalSearchEngine: SearchEngine | null = null;
 
 export function initializeSearchEngine(
-  indexBuilder: SearchIndexBuilder,
+  indexBuilder?: SearchIndexBuilder,
   config?: Partial<FlexSearchConfig>
 ): SearchEngine {
   if (globalSearchEngine) {
     console.warn('Search engine already initialized, creating new instance');
   }
 
-  globalSearchEngine = new SearchEngine(indexBuilder, config);
+  // If no index builder provided, try to get the global one
+  const builder = indexBuilder || (globalSearchEngine as SearchEngine | null)?.['indexBuilder'];
+  if (!builder) {
+    // Create a minimal index builder for standalone use
+    const { getSearchIndexBuilder } = require('./searchIndexBuilder');
+    const existingBuilder = getSearchIndexBuilder();
+    if (existingBuilder) {
+      globalSearchEngine = new SearchEngine(existingBuilder, config);
+    } else {
+      throw new Error('No index builder available. Call initializeSearchIndex first.');
+    }
+  } else {
+    globalSearchEngine = new SearchEngine(builder, config);
+  }
   return globalSearchEngine;
 }
 

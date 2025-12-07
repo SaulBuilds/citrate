@@ -31,7 +31,9 @@ export enum ModelSize {
  * Search Document - The core indexed document for each model
  * Weight indicates importance for text search relevance
  */
-export interface SearchDocument {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface SearchDocument extends Record<string, any> {
+
   // Core identifiers
   modelId: string;           // Unique identifier (modelHash from contract)
 
@@ -209,6 +211,9 @@ export interface IndexBuilderOptions {
   debounceMs?: number;       // Debounce time for updates
   maxRetries?: number;       // IPFS fetch retries
   ipfsTimeout?: number;      // Timeout in ms for IPFS requests
+  ipfsGateways?: string[];   // IPFS gateway URLs
+  maxConcurrentFetches?: number; // Max concurrent IPFS fetches
+  fetchTimeoutMs?: number;   // Fetch timeout in ms
 }
 
 /**

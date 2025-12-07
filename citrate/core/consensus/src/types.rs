@@ -146,6 +146,24 @@ pub struct BlockHeader {
     pub pruning_point: Hash,
     pub proposer_pubkey: PublicKey,
     pub vrf_reveal: VrfProof,
+
+    /// EIP-1559 base fee per gas (in wei). Used for accurate fee history.
+    /// Default 0 for backwards compatibility with older blocks.
+    #[serde(default)]
+    pub base_fee_per_gas: u64,
+
+    /// Total gas used by all transactions in this block.
+    /// Required for EIP-1559 base fee calculation.
+    #[serde(default)]
+    pub gas_used: u64,
+
+    /// Block gas limit. Default is 30M gas.
+    #[serde(default = "default_gas_limit")]
+    pub gas_limit: u64,
+}
+
+fn default_gas_limit() -> u64 {
+    30_000_000 // 30M gas default
 }
 
 /// Full block structure as specified in CLAUDE.md

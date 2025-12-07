@@ -1511,6 +1511,9 @@ impl RpcServer {
                         proof: vec![],
                         output: citrate_consensus::types::Hash::default(),
                     },
+                    base_fee_per_gas: 1_000_000_000, // 1 gwei
+                    gas_used: 0,
+                    gas_limit: 30_000_000,
                 },
                 state_root: citrate_consensus::types::Hash::default(),
                 tx_root: citrate_consensus::types::Hash::default(),

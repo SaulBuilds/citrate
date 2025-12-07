@@ -6,12 +6,13 @@ use citrate_consensus::{
 };
 use citrate_execution::executor::Executor;
 use citrate_execution::parallel::ParallelExecutor;
+use citrate_execution::types::TransactionReceipt;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256, Sha3_256};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[derive(Error, Debug)]
 pub enum BlockBuilderError {
@@ -30,8 +31,14 @@ pub enum BlockBuilderError {
     #[error("Builder not ready")]
     NotReady,
 
-    #[error("State root calculation failed")]
-    StateRootError,
+    #[error("State root calculation failed: {0}")]
+    StateRootError(String),
+
+    #[error("Receipt root calculation failed: no executor available - receipts are required for consensus")]
+    ReceiptRootError,
+
+    #[error("Transaction execution failed: {0}")]
+    ExecutionError(String),
 }
 
 /// Block builder configuration
@@ -131,6 +138,9 @@ impl BlockBuilder {
     }
 
     /// Build a new block
+    ///
+    /// CONSENSUS-CRITICAL: This method executes transactions and computes real state/receipt roots.
+    /// Without an executor, block building will fail for non-empty blocks to ensure consensus integrity.
     pub async fn build_block(
         &self,
         selected_parent: Hash,
@@ -148,13 +158,7 @@ impl BlockBuilder {
             return Err(BlockBuilderError::NoTransactions);
         }
 
-        // Calculate roots
-        let tx_root = self.calculate_tx_root(&transactions);
-        let state_root = self.calculate_state_root(&transactions)?;
-        let receipt_root = self.calculate_receipt_root(&transactions);
-        let artifact_root = Hash::default(); // Placeholder for AI artifacts
-
-        // Build block header
+        // Build block header first (needed for execution context)
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -164,7 +168,7 @@ impl BlockBuilder {
             version: 1,
             block_hash: Hash::default(), // Will be calculated after
             selected_parent_hash: selected_parent,
-            merge_parent_hashes: merge_parents,
+            merge_parent_hashes: merge_parents.clone(),
             timestamp,
             height: parent_height + 1,
             blue_score: parent_blue_score + 1, // Will be properly calculated by consensus
@@ -172,33 +176,113 @@ impl BlockBuilder {
             pruning_point: Hash::default(),
             proposer_pubkey: self.proposer_key,
             vrf_reveal: vrf_proof,
+            // EIP-1559 fields - will be updated after execution
+            base_fee_per_gas: 0,
+            gas_used: 0,
+            gas_limit: self.config.max_gas_per_block,
         };
 
-        // Create block
+        // Create preliminary block for execution context
         let mut block = Block {
             header,
-            state_root,
-            tx_root,
-            receipt_root,
-            artifact_root,
+            state_root: Hash::default(),
+            tx_root: Hash::default(),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
             ghostdag_params: GhostDagParams::default(),
-            transactions,
+            transactions: transactions.clone(),
             signature: Signature::new([1; 64]), // Placeholder signature
-            embedded_models: vec![], // Empty for non-genesis blocks
-            required_pins: vec![],   // Empty for non-genesis blocks
+            embedded_models: vec![],
+            required_pins: vec![],
         };
+
+        // Execute transactions and collect receipts
+        let (executed_txs, receipts) = self.execute_transactions(&block, transactions).await?;
+        block.transactions = executed_txs;
+
+        // Calculate roots from real execution results
+        let tx_root = self.calculate_tx_root(&block.transactions);
+        let state_root = self.calculate_state_root_from_execution(&receipts)?;
+        let receipt_root = self.calculate_receipt_root_from_receipts(&receipts)?;
+        let artifact_root = Hash::default(); // Placeholder for AI artifacts
+
+        // Calculate total gas used from receipts (EIP-1559 requirement)
+        let total_gas_used: u64 = receipts.iter().map(|r| r.gas_used).sum();
+
+        // Calculate base fee for next block using EIP-1559 formula
+        // base_fee = parent_base_fee * (1 + 1/8 * (gas_used - target) / target)
+        // For simplicity, we use a constant initial base fee and adjust based on utilization
+        let gas_target = block.header.gas_limit / 2; // Target is 50% of limit
+        let base_fee = self.calculate_base_fee(0, total_gas_used, gas_target);
+
+        block.tx_root = tx_root;
+        block.state_root = state_root;
+        block.receipt_root = receipt_root;
+        block.artifact_root = artifact_root;
+        block.header.gas_used = total_gas_used;
+        block.header.base_fee_per_gas = base_fee;
 
         // Calculate block hash
         block.header.block_hash = self.calculate_block_hash(&block);
 
         info!(
-            "Built block {} at height {} with {} transactions",
+            "Built block {} at height {} with {} transactions (receipts: {})",
             block.header.block_hash,
             block.header.height,
-            block.transactions.len()
+            block.transactions.len(),
+            receipts.len()
         );
 
         Ok(block)
+    }
+
+    /// Execute transactions via the executor and collect receipts
+    ///
+    /// Returns (successfully executed transactions, their receipts)
+    /// Failed transactions are excluded from the block.
+    async fn execute_transactions(
+        &self,
+        block: &Block,
+        transactions: Vec<Transaction>,
+    ) -> Result<(Vec<Transaction>, Vec<TransactionReceipt>), BlockBuilderError> {
+        // For empty blocks, no execution needed
+        if transactions.is_empty() {
+            return Ok((vec![], vec![]));
+        }
+
+        // FAIL-LOUD: Non-empty blocks require an executor for consensus integrity
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            BlockBuilderError::StateRootError(
+                "Cannot build block with transactions without executor - state/receipt roots would be synthetic".to_string()
+            )
+        })?;
+
+        let mut executed_txs = Vec::with_capacity(transactions.len());
+        let mut receipts = Vec::with_capacity(transactions.len());
+
+        for tx in transactions {
+            match executor.execute_transaction(block, &tx).await {
+                Ok(receipt) => {
+                    if receipt.status {
+                        executed_txs.push(tx);
+                        receipts.push(receipt);
+                    } else {
+                        // Transaction failed but was executed - include it with failed receipt
+                        // This is important for nonce tracking and gas consumption
+                        debug!("Transaction {} failed during execution", tx.hash);
+                        executed_txs.push(tx);
+                        receipts.push(receipt);
+                    }
+                }
+                Err(e) => {
+                    // Execution error - skip this transaction
+                    warn!("Transaction {} execution error: {:?}", tx.hash, e);
+                    // Don't include in block - it couldn't be executed
+                }
+            }
+        }
+
+        Ok((executed_txs, receipts))
     }
 
     /// Select transactions for inclusion
@@ -291,6 +375,40 @@ impl BlockBuilder {
         }
     }
 
+    /// Calculate EIP-1559 base fee based on parent block's gas usage
+    ///
+    /// Formula: base_fee = parent_base_fee * (1 + elasticity * (gas_used - target) / target)
+    /// Where elasticity = 1/8 (12.5% max change per block)
+    fn calculate_base_fee(&self, parent_base_fee: u64, gas_used: u64, gas_target: u64) -> u64 {
+        // Minimum base fee of 1 gwei
+        const MIN_BASE_FEE: u64 = 1_000_000_000;
+
+        // If this is the first block or parent had no base fee, use minimum
+        if parent_base_fee == 0 {
+            return MIN_BASE_FEE;
+        }
+
+        // Calculate the adjustment
+        if gas_used == gas_target {
+            // Exactly at target, no change
+            return parent_base_fee;
+        }
+
+        if gas_used > gas_target {
+            // Above target, increase base fee
+            let gas_delta = gas_used - gas_target;
+            // Increase = parent_base_fee * gas_delta / gas_target / 8
+            let increase = parent_base_fee.saturating_mul(gas_delta) / gas_target / 8;
+            parent_base_fee.saturating_add(increase.max(1))
+        } else {
+            // Below target, decrease base fee
+            let gas_delta = gas_target - gas_used;
+            // Decrease = parent_base_fee * gas_delta / gas_target / 8
+            let decrease = parent_base_fee.saturating_mul(gas_delta) / gas_target / 8;
+            parent_base_fee.saturating_sub(decrease).max(MIN_BASE_FEE)
+        }
+    }
+
     /// Calculate transaction root
     fn calculate_tx_root(&self, transactions: &[Transaction]) -> Hash {
         // Use Keccak-256 for transaction root to align with tx.hash generation
@@ -303,59 +421,196 @@ impl BlockBuilder {
         Hash::from_bytes(&hasher.finalize())
     }
 
-    /// Calculate state root from executor's current state
+    /// Calculate state root from executor's committed state after execution
     ///
-    /// The state root is calculated as a Keccak-256 hash of all account states
-    /// sorted by address. Each account contributes: address || balance || nonce || code_hash
-    fn calculate_state_root(
+    /// CONSENSUS-CRITICAL: State root must come from actual committed state.
+    /// Returns error if executor is unavailable (fail-loud for consensus integrity).
+    fn calculate_state_root_from_execution(
         &self,
-        transactions: &[Transaction],
+        receipts: &[TransactionReceipt],
     ) -> Result<Hash, BlockBuilderError> {
-        // If we have an executor with state access, use it
-        // Otherwise, derive state root from transaction effects
+        // For empty blocks, return deterministic empty state root
+        if receipts.is_empty() {
+            // If we have executor, still get real state root
+            if let Some(executor) = &self.executor {
+                if let Ok(root) = executor.get_state_root() {
+                    return Ok(root);
+                }
+            }
+            // Empty block with no executor - return deterministic empty root
+            let mut hasher = Keccak256::new();
+            hasher.update(b"citrate_empty_state_root_v1");
+            return Ok(Hash::from_bytes(&hasher.finalize()));
+        }
+
+        // FAIL-LOUD: Non-empty blocks require executor for real state root
+        let executor = self.executor.as_ref().ok_or_else(|| {
+            BlockBuilderError::StateRootError(
+                "Cannot compute state root without executor - tx-hash fallback is not consensus-safe".to_string()
+            )
+        })?;
+
+        // Get real state root from executor's state database
+        executor.get_state_root().map_err(|e| {
+            BlockBuilderError::StateRootError(format!("Failed to get state root from executor: {}", e))
+        })
+    }
+
+    /// Calculate receipt root from actual transaction receipts
+    ///
+    /// CONSENSUS-CRITICAL: Receipt root is computed as a Merkle-like hash over
+    /// real execution receipts (tx_hash, gas_used, status, logs_bloom).
+    fn calculate_receipt_root_from_receipts(
+        &self,
+        receipts: &[TransactionReceipt],
+    ) -> Result<Hash, BlockBuilderError> {
+        // For empty blocks, return deterministic empty receipt root
+        if receipts.is_empty() {
+            let mut hasher = Keccak256::new();
+            hasher.update(b"citrate_empty_receipt_root_v1");
+            return Ok(Hash::from_bytes(&hasher.finalize()));
+        }
+
+        // Compute receipt root from real receipt data
         let mut hasher = Keccak256::new();
+        hasher.update(b"citrate_receipt_root_v1");
 
-        // Include parent state commitment
-        hasher.update(b"state_root_v1");
+        // Cumulative gas for receipt trie (Ethereum-style)
+        let mut cumulative_gas: u64 = 0;
 
-        // Include each transaction's effect on state
-        for tx in transactions {
-            // Hash: from_address || to_address || value || nonce
+        for receipt in receipts {
+            cumulative_gas += receipt.gas_used;
+
+            // Receipt fields that affect consensus:
+            // - tx_hash: identifies the transaction
+            // - cumulative_gas_used: running total for receipt trie
+            // - status: success/failure
+            // - logs: event emissions (simplified to count + data hash)
+            hasher.update(receipt.tx_hash.as_bytes());
+            hasher.update(cumulative_gas.to_le_bytes());
+            hasher.update(receipt.gas_used.to_le_bytes());
+            hasher.update(&[if receipt.status { 1u8 } else { 0u8 }]);
+
+            // Hash logs bloom (simplified: hash of all log data)
+            let mut logs_hasher = Keccak256::new();
+            for log in &receipt.logs {
+                logs_hasher.update(log.address.as_bytes());
+                for topic in &log.topics {
+                    logs_hasher.update(topic.as_bytes());
+                }
+                logs_hasher.update(&log.data);
+            }
+            hasher.update(&logs_hasher.finalize());
+        }
+
+        Ok(Hash::from_bytes(&hasher.finalize()))
+    }
+
+    /// Build a block for testing purposes with synthetic roots
+    ///
+    /// WARNING: This method bypasses executor and uses synthetic state/receipt roots.
+    /// It is ONLY for testing transaction selection, ordering, and gas cap logic.
+    /// DO NOT USE IN PRODUCTION - blocks built this way are not consensus-safe!
+    #[cfg(test)]
+    pub async fn build_block_for_testing(
+        &self,
+        selected_parent: Hash,
+        merge_parents: Vec<Hash>,
+        parent_height: u64,
+        parent_blue_score: u64,
+        vrf_proof: VrfProof,
+    ) -> Result<Block, BlockBuilderError> {
+        info!("Building TEST block with parent {} (synthetic roots)", selected_parent);
+
+        let transactions = self.select_transactions().await?;
+
+        if transactions.is_empty() && self.config.min_transactions > 0 {
+            return Err(BlockBuilderError::NoTransactions);
+        }
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Calculate synthetic gas used for tests
+        let gas_used: u64 = transactions.iter().map(|tx| tx.gas_limit).sum();
+
+        let header = BlockHeader {
+            version: 1,
+            block_hash: Hash::default(),
+            selected_parent_hash: selected_parent,
+            merge_parent_hashes: merge_parents,
+            timestamp,
+            height: parent_height + 1,
+            blue_score: parent_blue_score + 1,
+            blue_work: 0,
+            pruning_point: Hash::default(),
+            proposer_pubkey: self.proposer_key,
+            vrf_reveal: vrf_proof,
+            base_fee_per_gas: 1_000_000_000, // 1 gwei for tests
+            gas_used,
+            gas_limit: self.config.max_gas_per_block,
+        };
+
+        // Use legacy synthetic methods for tests
+        let tx_root = self.calculate_tx_root(&transactions);
+        let state_root = self.calculate_state_root_legacy(&transactions);
+        let receipt_root = self.calculate_receipt_root_legacy(&transactions);
+
+        let mut block = Block {
+            header,
+            state_root,
+            tx_root,
+            receipt_root,
+            artifact_root: Hash::default(),
+            ghostdag_params: GhostDagParams::default(),
+            transactions,
+            signature: Signature::new([1; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
+        };
+
+        block.header.block_hash = self.calculate_block_hash(&block);
+        Ok(block)
+    }
+
+    /// Legacy method for tests - calculates synthetic state root from transactions
+    /// WARNING: Not consensus-safe! Only for backward compatibility in tests.
+    #[cfg(test)]
+    fn calculate_state_root_legacy(&self, transactions: &[Transaction]) -> Hash {
+        let mut hasher = Keccak256::new();
+        hasher.update(b"citrate_state_root_v1");
+
+        let mut sorted_txs: Vec<&Transaction> = transactions.iter().collect();
+        sorted_txs.sort_by(|a, b| a.hash.as_bytes().cmp(b.hash.as_bytes()));
+
+        for tx in sorted_txs {
             hasher.update(tx.from.as_bytes());
             if let Some(to) = &tx.to {
                 hasher.update(to.as_bytes());
             } else {
-                hasher.update(&[0u8; 32]); // Contract creation
+                hasher.update(&[0u8; 32]);
             }
             hasher.update(tx.value.to_le_bytes());
             hasher.update(tx.nonce.to_le_bytes());
             hasher.update(tx.hash.as_bytes());
         }
 
-        // Add timestamp for uniqueness
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        hasher.update(&now.to_le_bytes());
-
-        Ok(Hash::from_bytes(&hasher.finalize()))
+        Hash::from_bytes(&hasher.finalize())
     }
 
-    /// Calculate receipt root from transaction execution results
-    ///
-    /// The receipt root is a Merkle root of all transaction receipts in the block.
-    /// For now we compute a deterministic hash from transaction hashes and gas usage.
-    fn calculate_receipt_root(&self, transactions: &[Transaction]) -> Hash {
+    /// Legacy method for tests - calculates synthetic receipt root
+    /// WARNING: Not consensus-safe! Only for backward compatibility in tests.
+    #[cfg(test)]
+    fn calculate_receipt_root_legacy(&self, transactions: &[Transaction]) -> Hash {
         let mut hasher = Keccak256::new();
-
         hasher.update(b"receipt_root_v1");
 
-        // Each receipt: tx_hash || gas_used || status (success=1)
         for tx in transactions {
             hasher.update(tx.hash.as_bytes());
-            hasher.update(tx.gas_limit.to_le_bytes()); // Approximation: gas_limit as gas_used
-            hasher.update(&[1u8]); // Assuming success
+            hasher.update(tx.gas_limit.to_le_bytes());
+            hasher.update(&[1u8]);
         }
 
         Hash::from_bytes(&hasher.finalize())
@@ -505,7 +760,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_block_with_transactions() {
+    async fn test_build_block_with_transactions_requires_executor() {
         let (builder, mempool) = setup_test_builder().await;
 
         // Add transactions to mempool
@@ -523,13 +778,14 @@ mod tests {
             output: Hash::new([0; 32]),
         };
 
-        let block = builder
+        // Without executor, building a block with transactions should fail
+        // This is the fail-loud behavior for consensus safety
+        let result = builder
             .build_block(parent, vec![], 0, 1, vrf_proof)
-            .await
-            .unwrap();
+            .await;
 
-        assert_eq!(block.header.height, 1);
-        assert_eq!(block.transactions.len(), 5);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BlockBuilderError::StateRootError(_)));
     }
 
     #[tokio::test]
@@ -621,6 +877,9 @@ mod tests {
                     proof: vec![],
                     output: Hash::default(),
                 },
+                base_fee_per_gas: 1_000_000_000,
+                gas_used: 0,
+                gas_limit: 30_000_000,
             },
             state_root: Hash::default(),
             tx_root: Hash::default(),
@@ -629,6 +888,8 @@ mod tests {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([1; 64]), // Non-zero signature for tests
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Valid block
@@ -688,7 +949,7 @@ mod tests {
             output: Hash::new([0; 32]),
         };
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf)
             .await
             .unwrap();
 
@@ -743,7 +1004,7 @@ mod tests {
             .unwrap();
 
         let block = builder0
-            .build_block(parent, vec![], 0, 1, vrf)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf)
             .await
             .unwrap();
 
@@ -800,7 +1061,7 @@ mod tests {
             output: Hash::new([0; 32]),
         };
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf)
             .await
             .unwrap();
 
@@ -844,7 +1105,7 @@ mod tests {
             output: Hash::new([0; 32]),
         };
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf)
             .await
             .unwrap();
 
@@ -886,7 +1147,7 @@ mod tests {
             output: Hash::new([0; 32]),
         };
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf)
             .await
             .unwrap();
 
@@ -934,7 +1195,7 @@ mod tests {
         cfg.enable_bundling = false; // disable bundling to avoid class grouping side-effects
         let builder = BlockBuilder::new(cfg, mempool.clone(), builder0.proposer_key);
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf)
             .await
             .unwrap();
         assert!(block.transactions.len() >= 2);
@@ -972,7 +1233,7 @@ mod tests {
         };
 
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf_proof)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf_proof)
             .await
             .unwrap();
 
@@ -1077,7 +1338,7 @@ mod tests {
         };
 
         let block = builder
-            .build_block(parent, vec![], 0, 1, vrf_proof)
+            .build_block_for_testing(parent, vec![], 0, 1, vrf_proof)
             .await
             .unwrap();
         let total_gas: u64 = block.transactions.iter().map(|tx| tx.gas_limit).sum();

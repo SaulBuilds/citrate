@@ -1,155 +1,158 @@
 # Current Sprint
 
-**Active Sprint**: Sprint 5 - Multi-Window & Terminal Integration
-**Phase**: Phase 4 (Advanced Features)
-**Status**: COMPLETE (45/45 points - 100%)
-**Started**: 2025-12-03
-**Completed**: 2025-12-03
+**Active Sprint**: Sprint 8 - Stable Release Preparation
+**Phase**: Final Push to v1.0
+**Status**: IN PROGRESS
+**Started**: 2025-12-06
 
 ---
 
-## Quick Links
+## Sprint Goal
 
-- **Full Sprint Details**: [sprints/sprint-05-multi-window/SPRINT.md](sprints/sprint-05-multi-window/SPRINT.md)
-- **Daily Progress**: [sprints/sprint-05-multi-window/DAILY.md](sprints/sprint-05-multi-window/DAILY.md)
-
----
-
-## Sprint Goal - ACHIEVED
-
-Transformed Citrate from single-window to multi-window development environment:
-1. WindowManager infrastructure for multi-window state
-2. Interactive PTY-based terminal window
-3. dApp preview window with webview
-4. Monaco-based code editor window
-5. Inter-window IPC for agent integration
-6. Window state persistence across sessions
+Prepare a stable, downloadable release with:
+1. All builds clean and fresh
+2. IPFS integration operational with required models
+3. RPC endpoint configured (ngrok + future api.citrate.ai)
+4. AI onboarding agent fully functional
+5. Cross-platform packages ready (macOS, Windows, Linux)
 
 ---
 
-## Final Status
+## Prerequisites Checklist
 
-| Metric | Value |
-|--------|-------|
-| **Total Points** | 45 |
-| **Completed Points** | 45 |
-| **Completion Rate** | 100% |
-| **Work Packages** | 6/6 |
-| **Duration** | 1 day |
-
----
-
-## Work Package Status
-
-| WP | Title | Points | Priority | Status |
-|----|-------|--------|----------|--------|
-| WP-5.1 | WindowManager Infrastructure | 8 | P0 | [x] Done |
-| WP-5.2 | TerminalWindow (PTY) | 13 | P0 | [x] Done |
-| WP-5.3 | AppPreviewWindow | 8 | P0 | [x] Done |
-| WP-5.4 | CodeEditorWindow (Monaco) | 8 | P1 | [x] Done |
-| WP-5.5 | Inter-Window IPC | 5 | P0 | [x] Done |
-| WP-5.6 | Window Persistence | 3 | P2 | [x] Done |
-
-**Legend**: `[ ]` Not Started | `[~]` In Progress | `[x]` Done | `[!]` Blocked
+| Task | Status | Notes |
+|------|--------|-------|
+| Clean all caches and builds | [x] Done | `target/`, `node_modules/`, `.citrate/` removed |
+| Kill background processes | [x] Done | All citrate/tauri processes stopped |
+| Verify genesis models | [~] In Progress | BGE-M3 (417MB) present, Mistral 7B CID configured |
+| RPC URL configuration | [ ] Pending | Need to verify localhost:8545 + ngrok setup |
+| IPFS daemon configuration | [ ] Pending | Need kubo installation verification |
 
 ---
 
-## Key Deliverables
+## Work Packages
 
-### New Dependencies Added
-- **Rust**: `portable-pty = "0.8"` - Cross-platform PTY
-- **NPM**: `@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-web-links`
+### WP-8.1: Infrastructure Cleanup (P0) - 5 points
+- [x] Clean all Rust target directories
+- [x] Clean all node_modules
+- [x] Clear chain data (~/.citrate, ~/.citrate-devnet)
+- [ ] Verify `cargo build --release` succeeds
+- [ ] Verify `npm install && npm run build` in GUI
 
-### Files Created
+### WP-8.2: Genesis & Model Setup (P0) - 8 points
+- [ ] Verify BGE-M3 embedding model in assets
+- [ ] Download/pin Mistral 7B Instruct to IPFS (CID: QmUsYyxg71bV8USRQ6Ccm3SdMqeWgEEVnCYkgNDaxvBTZB)
+- [ ] Download/pin Qwen2 0.5B for fast inference
+- [ ] Create model download script for first-run setup
+- [ ] Test model loading in GUI agent
 
-**Frontend:**
+### WP-8.3: RPC Configuration (P0) - 5 points
+- [ ] Document RPC endpoint locations:
+  - Local: `http://localhost:8545` (JSON-RPC)
+  - Local WS: `ws://localhost:8546`
+  - Future: `https://api.citrate.ai` (when DNS configured)
+- [ ] Test ngrok tunnel setup: `ngrok http 8545`
+- [ ] Create production RPC config template
+- [ ] Verify GUI connects to embedded node RPC
+
+### WP-8.4: AI Onboarding Agent (P0) - 13 points
+- [ ] Implement skill-level assessment questions
+- [ ] Create personalized onboarding flow:
+  - Beginner: Explain blockchain basics, guide wallet setup
+  - Intermediate: Show development tools, explain dApp creation
+  - Advanced: Technical deep-dive, API documentation
+- [ ] Add contextual help for each operation
+- [ ] Implement progressive disclosure of features
+- [ ] Test conversation flow end-to-end
+
+### WP-8.5: IPFS Integration (P0) - 8 points
+- [ ] Verify kubo (go-ipfs) installation instructions
+- [ ] Implement fallback gateway support
+- [ ] Add model download progress UI
+- [ ] Implement CID verification for downloaded models
+- [ ] Create first-run IPFS setup wizard
+
+### WP-8.6: Cross-Platform Packaging (P0) - 13 points
+- [ ] macOS: Build .dmg with code signing
+- [ ] Windows: Build .msi installer
+- [ ] Linux: Build .AppImage and .deb
+- [ ] Include bundled dependencies
+- [ ] Create installation documentation
+- [ ] Test on fresh systems
+
+### WP-8.7: SDK & Tooling (P1) - 8 points
+- [ ] Verify JavaScript SDK builds and publishes
+- [ ] Verify Python SDK installs
+- [ ] Test CLI tools on all platforms
+- [ ] Document SDK usage examples
+- [ ] Create quickstart guides
+
+### WP-8.8: Documentation & Polish (P1) - 5 points
+- [ ] Update README with fresh installation steps
+- [ ] Create QUICK_START.md for new users
+- [ ] Document ngrok RPC setup
+- [ ] Add troubleshooting guide
+- [ ] Create release notes
+
+**Total Points**: 65
+
+---
+
+## Domain Configuration
+
+### Current Status
+- Domain: `citrate.ai` (purchased)
+- Planned subdomains:
+  - `api.citrate.ai` - Production RPC endpoint
+  - `docs.citrate.ai` - Documentation portal
+  - `explorer.citrate.ai` - Block explorer
+
+### Temporary Setup (ngrok)
+```bash
+# Start RPC tunnel
+ngrok http 8545
+
+# This provides a URL like: https://xxxx.ngrok-free.app
+# Use this for testing until api.citrate.ai DNS is configured
 ```
-src/types/window.ts              # Window type definitions
-src/types/ipc.ts                 # IPC message types
-src/contexts/WindowContext.tsx   # Window state management
-src/services/ipc.ts              # IPC service
-src/services/windowPersistence.ts # Window state persistence
-src/hooks/useIPC.ts              # IPC React hooks
-src/hooks/useWindowPersistence.ts # Persistence hooks
-src/hooks/index.ts               # Hooks export index
-src/components/terminal/Terminal.tsx # xterm.js terminal
-src/components/terminal/index.ts
-src/components/preview/AppPreview.tsx # App preview webview
-src/components/preview/index.ts
-src/components/editor/CodeEditor.tsx # Monaco code editor
-src/components/editor/index.ts
-```
-
-**Backend (Rust):**
-```
-src-tauri/src/windows/mod.rs     # Window types & helpers
-src-tauri/src/windows/manager.rs # WindowManager struct
-src-tauri/src/terminal/mod.rs    # Terminal types
-src-tauri/src/terminal/session.rs # PTY session management
-src-tauri/src/terminal/manager.rs # TerminalManager struct
-```
-
-### Tauri Commands Added
-- `create_window` - Create new window
-- `close_window` - Close window
-- `focus_window` - Focus window
-- `send_to_window` - Send IPC message
-- `broadcast_to_windows` - Broadcast to all windows
-- `get_window_state` - Get window state
-- `get_all_windows` - List all windows
-- `get_windows_by_type` - Filter by type
-- `has_window_type` - Check window type exists
-- `get_window_count` - Count open windows
-- `terminal_create` - Create PTY session
-- `terminal_write` - Write to terminal
-- `terminal_resize` - Resize terminal
-- `terminal_close` - Close terminal session
-- `terminal_list` - List terminal sessions
-- `terminal_get` - Get session info
 
 ---
 
-## Previous Sprints
+## Model Requirements
 
-**Sprint 4 - Advanced Tools**: COMPLETE
-- 42/47 points (89% - SEARCH_WEB deferred)
-- All P0/P1 work packages delivered
-- 14 new tools: marketplace, terminal, storage, scaffold, generation
+### Genesis Embedded
+| Model | Size | Status | Location |
+|-------|------|--------|----------|
+| BGE-M3 (Q4) | 417 MB | [x] Present | `node/assets/bge-m3-q4.gguf` |
 
-**Sprint 3 - Core Tools**: COMPLETE
-- 36/36 points (100%)
-- All 6 work packages delivered
-- Chain query, transaction, contract, inference tools
-
-**Sprint 2 - Frontend Redesign**: COMPLETE
-- 39/39 points (100%)
-- All 8 work packages delivered
-- Chat UI components fully functional
-
-**Sprint 1 - Agent Foundation**: COMPLETE
-- 47/47 points (100%)
-- All 7 work packages delivered
-- Agent backend fully functional
-
-**Sprint 0 - Critical Infrastructure Fixes**: COMPLETE
-- 51/51 points (100%)
-- All P0 blockers resolved
+### IPFS Pinned (Required)
+| Model | CID | Size | Status |
+|-------|-----|------|--------|
+| Mistral 7B Instruct v0.3 | QmUsYyxg71bV8USRQ6Ccm3SdMqeWgEEVnCYkgNDaxvBTZB | 4.1 GB | [ ] Need to verify |
+| Qwen2 0.5B (Q4) | TBD | ~500 MB | [ ] Need to add |
 
 ---
 
-## Cumulative Progress
+## Critical Paths
 
-| Sprint | Points | Cumulative |
-|--------|--------|------------|
-| Sprint 0 | 51 | 51 |
-| Sprint 1 | 47 | 98 |
-| Sprint 2 | 39 | 137 |
-| Sprint 3 | 36 | 173 |
-| Sprint 4 | 42 | 215 |
-| Sprint 5 | 45 | 260 |
-
-**Total Completed**: 260 points
+```
+Clean Build ──► Model Setup ──► RPC Config ──► Agent Test ──► Packaging
+     │              │              │              │              │
+     ▼              ▼              ▼              ▼              ▼
+  WP-8.1        WP-8.2         WP-8.3         WP-8.4         WP-8.6
+```
 
 ---
 
-*Last Updated: 2025-12-03*
+## Blockers & Risks
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Model download fails | HIGH | Use multiple IPFS gateways, include fallback |
+| Cross-platform build fails | MEDIUM | Test incrementally, use CI/CD |
+| ngrok rate limiting | LOW | Document self-hosting options |
+| Agent responses slow | MEDIUM | Use smaller models, implement caching |
+
+---
+
+*Sprint 8 - Last updated: 2025-12-06*

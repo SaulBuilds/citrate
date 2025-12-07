@@ -22,6 +22,9 @@ pub struct VerifierConfig {
     pub grace_period_hours: u64,
     /// IPFS API endpoint
     pub ipfs_api_url: String,
+    /// Production mode: fail-closed if no validators configured
+    /// When true, the verifier will refuse to start without validators
+    pub production_mode: bool,
 }
 
 impl Default for VerifierConfig {
@@ -30,6 +33,19 @@ impl Default for VerifierConfig {
             check_interval_secs: 3600, // Check every hour
             grace_period_hours: 24,    // 24 hour grace period
             ipfs_api_url: "http://127.0.0.1:5001".to_string(),
+            production_mode: false,    // Permissive by default for development
+        }
+    }
+}
+
+impl VerifierConfig {
+    /// Create a production configuration that enforces validator presence
+    pub fn production() -> Self {
+        Self {
+            check_interval_secs: 3600,
+            grace_period_hours: 24,
+            ipfs_api_url: "http://127.0.0.1:5001".to_string(),
+            production_mode: true, // Fail-closed in production
         }
     }
 }
@@ -99,7 +115,16 @@ pub struct ModelVerifier {
 
 impl ModelVerifier {
     /// Create a new model verifier with default (empty) validator provider
+    ///
+    /// WARNING: This creates a verifier with no validators, which means no pin
+    /// verification will be performed. For production use, call `with_validators()`
+    /// or `with_validator_provider()` to provide the active validator set.
     pub fn new(config: VerifierConfig, required_models: Vec<RequiredModel>) -> Self {
+        warn!(
+            "ModelVerifier created with empty validator set. \
+             Pin verification will not run until validators are configured. \
+             Use with_validators() or with_validator_provider() for production."
+        );
         Self::with_validator_provider(
             config,
             required_models,
@@ -123,7 +148,29 @@ impl ModelVerifier {
     }
 
     /// Start the verification background task
-    pub async fn start(&self) {
+    ///
+    /// Returns an error if production_mode is enabled and no validators are configured.
+    /// This ensures fail-closed behavior in production environments.
+    pub async fn start(&self) -> Result<(), String> {
+        // In production mode, verify validators are configured before starting
+        if self.config.production_mode {
+            let initial_validators = self.validator_provider.get_active_validators();
+            if initial_validators.is_empty() {
+                error!(
+                    "FAIL-CLOSED: Production mode enabled but no validators configured. \
+                     Pin verification cannot run without validators. \
+                     Configure validators via with_validators() or set production_mode=false for development."
+                );
+                return Err(
+                    "Production mode requires validators to be configured before starting".to_string()
+                );
+            }
+            info!(
+                "Production mode: {} validators configured, starting verifier",
+                initial_validators.len()
+            );
+        }
+
         let config = self.config.clone();
         let required_models = self.required_models.clone();
         let pin_checks = self.pin_checks.clone();
@@ -142,7 +189,14 @@ impl ModelVerifier {
                 let validators = validator_provider.get_active_validators();
 
                 if validators.is_empty() {
-                    debug!("No active validators registered, skipping verification cycle");
+                    if config.production_mode {
+                        error!(
+                            "FAIL-CLOSED: Production mode - validator set became empty! \
+                             This is a critical error. Pin verification is suspended."
+                        );
+                    } else {
+                        debug!("No active validators registered, skipping verification cycle");
+                    }
                     continue;
                 }
 
@@ -217,6 +271,8 @@ impl ModelVerifier {
                 info!("Completed validator pin verification cycle");
             }
         });
+
+        Ok(())
     }
 
     /// Internal helper to check pin status via IPFS API

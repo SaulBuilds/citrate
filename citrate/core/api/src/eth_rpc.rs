@@ -872,6 +872,9 @@ pub fn register_eth_methods(
                     proof: vec![],
                     output: citrate_consensus::types::Hash::default(),
                 },
+                base_fee_per_gas: 1_000_000_000, // 1 gwei
+                gas_used: 0,
+                gas_limit: 30_000_000,
             },
             state_root: citrate_consensus::types::Hash::default(),
             tx_root: citrate_consensus::types::Hash::default(),
@@ -1039,6 +1042,9 @@ pub fn register_eth_methods(
                     proof: vec![],
                     output: citrate_consensus::types::Hash::default(),
                 },
+                base_fee_per_gas: 1_000_000_000, // 1 gwei
+                gas_used: 0,
+                gas_limit: 30_000_000,
             },
             state_root: citrate_consensus::types::Hash::default(),
             tx_root: citrate_consensus::types::Hash::default(),
@@ -1151,28 +1157,69 @@ pub fn register_eth_methods(
             if let Ok(Some(block_hash)) = storage_fee.blocks.get_block_by_height(height) {
                 // Get block data
                 if let Ok(Some(block)) = storage_fee.blocks.get_block(&block_hash) {
-                    // Calculate gas used from transactions
-                    let total_gas_used: u64 = block.transactions.iter()
-                        .map(|tx| tx.gas_limit.min(21000)) // Estimate gas used
-                        .sum();
+                    // Use persisted gas_used and gas_limit from block header (EIP-1559 fields)
+                    // These are set during block building and represent actual execution results
+                    let block_gas_limit = if block.header.gas_limit > 0 {
+                        block.header.gas_limit
+                    } else {
+                        30_000_000 // Default 30M for older blocks without this field
+                    };
 
-                    // Gas limit per block (15M default like Ethereum)
-                    let block_gas_limit: u64 = 15_000_000;
+                    let total_gas_used = if block.header.gas_used > 0 {
+                        // Use persisted gas_used from block header (best source)
+                        block.header.gas_used
+                    } else {
+                        // Fallback: calculate from receipts or estimate
+                        let mut gas_from_receipts: u64 = 0;
+                        let mut has_receipt_data = false;
+
+                        for tx in &block.transactions {
+                            if let Ok(Some(receipt)) = storage_fee.transactions.get_receipt(&tx.hash) {
+                                gas_from_receipts += receipt.gas_used;
+                                has_receipt_data = true;
+                            }
+                        }
+
+                        if has_receipt_data {
+                            gas_from_receipts
+                        } else {
+                            // Last resort: estimate from transactions
+                            block.transactions.iter()
+                                .map(|tx| {
+                                    if tx.to.is_none() {
+                                        tx.gas_limit.min(100_000) // Contract creation
+                                    } else if tx.data.is_empty() {
+                                        21000 // Simple transfer
+                                    } else {
+                                        tx.gas_limit.min(50_000) // Contract call
+                                    }
+                                })
+                                .sum()
+                        }
+                    };
+
                     let gas_ratio = total_gas_used as f64 / block_gas_limit as f64;
                     gas_used_ratios.push(gas_ratio.min(1.0));
 
-                    // Base fee calculation (simplified EIP-1559 style)
-                    // In a real implementation, this would track actual base fees
-                    let base_fee = if gas_ratio > 0.5 {
-                        // If block is more than 50% full, increase base fee
-                        1_000_000_000_u64 + (gas_ratio * 100_000_000.0) as u64
+                    // Use persisted base_fee_per_gas from block header (EIP-1559)
+                    let base_fee = if block.header.base_fee_per_gas > 0 {
+                        // Use the persisted value (best source - set during block building)
+                        block.header.base_fee_per_gas
                     } else {
-                        // Default 1 gwei
-                        1_000_000_000_u64
+                        // Fallback: calculate from block fullness (older blocks)
+                        let target_gas = block_gas_limit / 2;
+                        if total_gas_used > target_gas {
+                            let delta = total_gas_used - target_gas;
+                            1_000_000_000_u64 + (delta as f64 / target_gas as f64 * 125_000_000.0) as u64
+                        } else {
+                            let delta = target_gas - total_gas_used;
+                            1_000_000_000_u64.saturating_sub((delta as f64 / target_gas as f64 * 125_000_000.0) as u64)
+                        }.max(1_000_000_000)
                     };
                     base_fees.push(format!("0x{:x}", base_fee));
 
-                    // Calculate reward percentiles from transactions
+                    // Calculate reward percentiles from transactions (priority fees)
+                    // For legacy transactions, tip = gas_price - base_fee
                     if !percentiles.is_empty() && !block.transactions.is_empty() {
                         let mut tips: Vec<u64> = block.transactions.iter()
                             .map(|tx| tx.gas_price.saturating_sub(base_fee))

@@ -47,17 +47,22 @@ export const Settings: React.FC = () => {
             };
           }
           // Ensure mempool field exists with defaults
+          // SECURITY: Preserve existing chainId if present, only default for new configs
+          // This prevents accidental chain ID reintroduction
           if (!cfg.mempool) {
             cfg.mempool = {
               minGasPrice: 1000000000,
               maxPerSender: 16,
-              chainId: 1337,
+              chainId: 31337, // Citrate devnet default - use network-specific ID in production
               maxSize: 10000,
               replacementFactor: 110,
               txExpirySecs: 3600,
               allowReplacement: true,
               requireValidSignature: true
             };
+          } else if (cfg.mempool.chainId === undefined) {
+            // Only set default if chainId specifically missing, don't override
+            cfg.mempool.chainId = 31337;
           }
           setConfig(cfg);
         }
@@ -88,17 +93,20 @@ export const Settings: React.FC = () => {
           };
         }
         // Ensure mempool field exists with defaults
+        // SECURITY: Preserve existing chainId if present, only default for new configs
         if (!cfg.mempool) {
           cfg.mempool = {
             minGasPrice: 1000000000,
             maxPerSender: 16,
-            chainId: 1337,
+            chainId: 31337, // Citrate devnet default
             maxSize: 10000,
             replacementFactor: 110,
             txExpirySecs: 3600,
             allowReplacement: true,
             requireValidSignature: true
           };
+        } else if (cfg.mempool.chainId === undefined) {
+          cfg.mempool.chainId = 31337;
         }
       }
       setConfig(cfg);

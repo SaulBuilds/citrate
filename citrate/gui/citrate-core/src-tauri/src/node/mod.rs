@@ -1402,6 +1402,9 @@ fn create_genesis_block() -> Block {
             proof: vec![0u8; 80],
             output: Hash::default(),
         },
+        base_fee_per_gas: 1_000_000_000, // 1 gwei initial base fee
+        gas_used: 0,
+        gas_limit: 30_000_000,
     };
 
     Block {
@@ -1514,6 +1517,9 @@ async fn run_block_producer(
                 proof: vec![0u8; 80],
                 output: Hash::new([0u8; 32]),
             },
+            base_fee_per_gas: 1_000_000_000, // 1 gwei
+            gas_used: 0,
+            gas_limit: 30_000_000,
         };
 
         // Calculate block hash

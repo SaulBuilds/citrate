@@ -1,4 +1,56 @@
 // citrate/core/marketplace/src/analytics_engine.rs
+//
+// # Analytics Data Pipeline
+//
+// ## Overview
+// This module provides analytics for AI models in the marketplace. It follows a
+// FAIL-LOUD design: if data is unavailable, errors are returned rather than
+// fabricated zeros.
+//
+// ## Data Sources
+// - **PerformanceTracker**: In-memory sliding windows tracking inference metrics
+// - **RatingSystem**: Stored reviews and ratings from users
+// - **PerformanceWindows**: Time-bucketed latency/throughput measurements
+//
+// ## Data Flow
+// 1. Transactions execute inference requests → Executor records metrics
+// 2. PerformanceTracker collects metrics into sliding windows
+// 3. AnalyticsEngine queries PerformanceTracker for aggregated stats
+// 4. If no data exists, analytics methods return errors (not zeros)
+//
+// ## Current Limitations
+// - Usage stats come from in-memory PerformanceTracker (lost on restart)
+// - Market stats require marketplace indexer to be configured
+// - No persistence layer for historical analytics (TODO: add time-series DB)
+//
+// ## Fail-Loud Behavior
+// The following methods return errors when data is unavailable:
+// - `analyze_user_engagement()` → "User engagement analytics unavailable"
+// - `analyze_market_position()` → "Market position analytics unavailable"
+//
+// This ensures callers know they're missing real data rather than receiving
+// misleading zeros that could affect business decisions.
+//
+// ## OPERATIONAL WARNING
+// **Analytics data is volatile and not persisted across node restarts.**
+//
+// ### Implications for Production
+// - All inference metrics are reset when the node restarts
+// - Historical usage data is lost on restart
+// - RPC queries for usage stats will return errors until new data accumulates
+//
+// ### Recommended Mitigations
+// 1. **External Aggregation**: Export metrics via Prometheus/Grafana for persistence
+// 2. **Periodic Snapshots**: Implement periodic dump of PerformanceWindows to disk
+// 3. **Time-Series DB**: Future integration with InfluxDB/TimescaleDB for production
+//
+// ### When This Is Acceptable
+// - Development and testing environments
+// - Nodes with short-lived sessions
+// - When external monitoring is configured
+//
+// For production deployments requiring historical analytics, configure external
+// metrics aggregation before go-live.
 
 use crate::{
     performance_tracker::*,
@@ -313,30 +365,58 @@ impl AnalyticsEngine {
         })
     }
 
-    async fn analyze_user_engagement(&self, _model_id: &ModelId) -> Result<UserEngagementMetrics> {
-        // This would integrate with usage analytics
-        // For now, return placeholder values
-        Ok(UserEngagementMetrics {
-            daily_active_users: 0,
-            user_retention_rate: 0.0,
-            session_duration_avg: 0.0,
-            repeat_usage_rate: 0.0,
-            churn_rate: 0.0,
-            engagement_score: 0.0,
-        })
+    async fn analyze_user_engagement(&self, model_id: &ModelId) -> Result<UserEngagementMetrics> {
+        // Query usage analytics from performance tracker
+        // If no data available, return error to fail loud instead of fake zeros
+        let usage_stats = self.performance_tracker.get_usage_stats(model_id).await;
+
+        match usage_stats {
+            Some(stats) => Ok(UserEngagementMetrics {
+                daily_active_users: stats.daily_active_users,
+                user_retention_rate: stats.retention_rate,
+                session_duration_avg: stats.avg_session_duration_secs,
+                repeat_usage_rate: stats.repeat_usage_rate,
+                churn_rate: 1.0 - stats.retention_rate, // Churn = 1 - retention
+                engagement_score: (stats.retention_rate * 0.4)
+                    + (stats.repeat_usage_rate * 0.3)
+                    + ((stats.avg_session_duration_secs / 300.0).min(1.0) * 0.3),
+            }),
+            None => {
+                // SECURITY: Return error instead of fabricated zeros
+                // This ensures callers know no real data is available
+                anyhow::bail!(
+                    "User engagement analytics unavailable for model {:?}. \
+                     Usage tracking may not be configured or no usage data exists.",
+                    model_id
+                )
+            }
+        }
     }
 
-    async fn analyze_market_position(&self, _model_id: &ModelId) -> Result<MarketPositionAnalysis> {
-        // This would integrate with marketplace statistics
-        // For now, return placeholder values
-        Ok(MarketPositionAnalysis {
-            category_rank: 0,
-            overall_rank: 0,
-            market_share: 0.0,
-            competitive_advantage: Vec::new(),
-            market_threats: Vec::new(),
-            growth_potential: 0.0,
-        })
+    async fn analyze_market_position(&self, model_id: &ModelId) -> Result<MarketPositionAnalysis> {
+        // Query marketplace statistics
+        // If no data available, return error to fail loud instead of fake zeros
+        let market_stats = self.performance_tracker.get_market_stats(model_id).await;
+
+        match market_stats {
+            Some(stats) => Ok(MarketPositionAnalysis {
+                category_rank: stats.category_rank,
+                overall_rank: stats.overall_rank,
+                market_share: stats.market_share_percent,
+                competitive_advantage: stats.strengths.clone(),
+                market_threats: stats.weaknesses.clone(),
+                growth_potential: stats.growth_potential_score,
+            }),
+            None => {
+                // SECURITY: Return error instead of fabricated zeros
+                // This ensures callers know no real data is available
+                anyhow::bail!(
+                    "Market position analytics unavailable for model {:?}. \
+                     Marketplace indexing may not be configured or model not listed.",
+                    model_id
+                )
+            }
+        }
     }
 
     async fn generate_recommendations(

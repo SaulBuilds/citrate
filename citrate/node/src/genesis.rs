@@ -142,6 +142,10 @@ pub fn create_genesis_block(config: &GenesisConfig) -> Block {
             proof: vec![],
             output: Hash::default(),
         },
+        // EIP-1559 fields - genesis sets initial base fee
+        base_fee_per_gas: 1_000_000_000, // 1 gwei initial base fee
+        gas_used: 0,                      // No transactions in genesis
+        gas_limit: 30_000_000,            // 30M gas limit
     };
 
     // Create embedded models for genesis

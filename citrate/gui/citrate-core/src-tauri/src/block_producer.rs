@@ -178,6 +178,9 @@ impl BlockProducer {
                 proof: vec![0u8; 80],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 1_000_000_000,
+            gas_used: 0, // Updated after execution
+            gas_limit: 30_000_000,
         };
 
         // Create block
@@ -264,6 +267,9 @@ impl BlockProducer {
                 proof: vec![0u8; 80],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 1_000_000_000, // 1 gwei initial base fee
+            gas_used: 0,
+            gas_limit: 30_000_000,
         };
 
         let genesis_block = Block {
@@ -339,6 +345,9 @@ impl BlockProducer {
                 proof: vec![0u8; 80],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 1_000_000_000,
+            gas_used: 0,
+            gas_limit: 30_000_000,
         };
         let temp_block = Block {
             header: temp_header,

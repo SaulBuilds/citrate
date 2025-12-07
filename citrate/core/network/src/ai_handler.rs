@@ -140,6 +140,7 @@ impl AINetworkHandler {
                 dataset_hash,
                 participants_needed,
                 reward_per_gradient,
+                owner,
             } => {
                 self.handle_training_announce(
                     peer_id,
@@ -148,6 +149,7 @@ impl AINetworkHandler {
                     *dataset_hash,
                     *participants_needed,
                     *reward_per_gradient,
+                    *owner,
                 )
                 .await
             }
@@ -416,10 +418,11 @@ impl AINetworkHandler {
         dataset_hash: Hash,
         participants_needed: u32,
         reward_per_gradient: u128,
+        owner: [u8; 20],
     ) -> Result<Option<NetworkMessage>> {
         info!(
-            "Received training job {} announcement from peer {}",
-            job_id, peer_id
+            "Received training job {} announcement from peer {} with owner {:02x?}",
+            job_id, peer_id, owner
         );
 
         let job = TrainingJob {
@@ -433,10 +436,10 @@ impl AINetworkHandler {
 
         self.active_training.write().await.insert(job_id, job);
 
-        // Register training job in state
+        // Register training job in state with the actual owner from the message
         let training_job = citrate_execution::TrainingJob {
             id: JobId(job_id),
-            owner: Address([0; 20]), // TODO: Get from message
+            owner: Address(owner), // Use owner from message
             model_id: ModelId(model_id),
             dataset_hash,
             gradients_submitted: 0,

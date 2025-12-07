@@ -178,6 +178,14 @@ impl StateDB {
         root
     }
 
+    /// Get the current state root hash (non-mutating)
+    ///
+    /// This returns the root hash of the current state trie without
+    /// committing any changes. Used for block building verification.
+    pub fn get_root_hash(&self) -> anyhow::Result<StateRoot> {
+        Ok(self.calculate_state_root())
+    }
+
     /// Create snapshot for rollback
     pub fn snapshot(&self) -> StateSnapshot {
         StateSnapshot {

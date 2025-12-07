@@ -344,6 +344,14 @@ impl Executor {
         self.state_db.accounts.get_code_hash(address)
     }
 
+    /// Get the state root hash from the current state database
+    ///
+    /// The state root is a cryptographic commitment to the entire state.
+    /// This enables state verification without full state access.
+    pub fn get_state_root(&self) -> anyhow::Result<Hash> {
+        self.state_db.get_root_hash()
+    }
+
     /// Set account balance
     pub fn set_balance(&self, address: &Address, balance: U256) {
         self.state_db.accounts.set_balance(*address, balance);

@@ -332,6 +332,9 @@ impl BlockProducer {
                     proof: vec![],
                     output: Hash::default(),
                 },
+                base_fee_per_gas: 1_000_000_000, // 1 gwei
+                gas_used: 0,
+                gas_limit: 30_000_000,
             },
             state_root: Hash::default(),
             tx_root: Hash::default(),
@@ -382,6 +385,9 @@ impl BlockProducer {
                 proof: vec![],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 1_000_000_000, // 1 gwei - TODO: calculate from parent
+            gas_used: 0, // Will be updated after execution
+            gas_limit: 30_000_000, // 30M gas default
         };
 
         // Compute block hash (simplified)

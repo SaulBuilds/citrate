@@ -160,6 +160,8 @@ pub enum NetworkMessage {
         dataset_hash: Hash,
         participants_needed: u32,
         reward_per_gradient: u128,
+        /// Owner address (20 bytes) - the entity that created and funds this training job
+        owner: [u8; 20],
     },
 
     GradientSubmission {

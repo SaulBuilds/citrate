@@ -244,6 +244,13 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Validate configuration (fail-closed for production mode)
+    // This catches production_mode=true with empty validators early
+    if let Err(e) = config.validate() {
+        error!("{}", e);
+        return Err(anyhow::anyhow!("{}", e));
+    }
+
     // Initialize chain if data directory doesn't exist (first run)
     if !config.storage.data_dir.exists() {
         info!("Data directory doesn't exist, initializing genesis...");

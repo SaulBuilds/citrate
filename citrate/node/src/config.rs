@@ -19,6 +19,85 @@ pub struct NodeConfig {
 
     /// Mining configuration
     pub mining: MiningConfig,
+
+    /// Validator configuration
+    #[serde(default)]
+    pub validator: ValidatorConfig,
+}
+
+/// Validator and production mode configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorConfig {
+    /// Production mode: enforces fail-closed behavior for validators
+    /// When true, the node will refuse to start without validators configured
+    /// Default: false (permissive for development)
+    #[serde(default)]
+    pub production_mode: bool,
+
+    /// Initial validator public keys (hex-encoded 32-byte keys)
+    /// In production mode, at least one validator must be configured
+    #[serde(default)]
+    pub validators: Vec<String>,
+
+    /// IPFS API endpoint for model pin verification
+    #[serde(default = "default_ipfs_url")]
+    pub ipfs_api_url: String,
+
+    /// Pin check interval in seconds
+    #[serde(default = "default_check_interval")]
+    pub check_interval_secs: u64,
+
+    /// Grace period before slashing in hours
+    #[serde(default = "default_grace_period")]
+    pub grace_period_hours: u64,
+}
+
+fn default_ipfs_url() -> String {
+    "http://127.0.0.1:5001".to_string()
+}
+
+fn default_check_interval() -> u64 {
+    3600 // 1 hour
+}
+
+fn default_grace_period() -> u64 {
+    24 // 24 hours
+}
+
+impl Default for ValidatorConfig {
+    fn default() -> Self {
+        Self {
+            production_mode: false,
+            validators: vec![],
+            ipfs_api_url: default_ipfs_url(),
+            check_interval_secs: default_check_interval(),
+            grace_period_hours: default_grace_period(),
+        }
+    }
+}
+
+impl ValidatorConfig {
+    /// Create a production configuration that enforces validator presence
+    pub fn production(validators: Vec<String>) -> Self {
+        Self {
+            production_mode: true,
+            validators,
+            ipfs_api_url: default_ipfs_url(),
+            check_interval_secs: default_check_interval(),
+            grace_period_hours: default_grace_period(),
+        }
+    }
+
+    /// Validate configuration, returning error if production mode constraints are violated
+    pub fn validate(&self) -> Result<(), String> {
+        if self.production_mode && self.validators.is_empty() {
+            return Err(
+                "FAIL-CLOSED: production_mode=true requires at least one validator. \
+                 Configure validators in [validator] section or set production_mode=false for development.".to_string()
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,11 +204,20 @@ impl Default for NodeConfig {
                 target_block_time: 5,
                 min_gas_price: 1_000_000_000,
             },
+            validator: ValidatorConfig::default(),
         }
     }
 }
 
 impl NodeConfig {
+    /// Validate the entire configuration
+    /// Returns error if any subsystem constraints are violated
+    pub fn validate(&self) -> Result<(), String> {
+        // Validate validator configuration (fail-closed in production)
+        self.validator.validate()?;
+        Ok(())
+    }
+
     /// Create devnet configuration
     /// Chain ID can be overridden via CITRATE_CHAIN_ID environment variable
     pub fn devnet() -> Self {

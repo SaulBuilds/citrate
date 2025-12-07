@@ -31,8 +31,8 @@ This sprint focuses on preparing a clean, stable release of Citrate with:
 | Clean Rust target directories | [x] | 0.5h | All `/target` removed |
 | Clean node_modules | [x] | 0.5h | All `node_modules` removed |
 | Clear chain data | [x] | 0.25h | `~/.citrate*` removed |
-| Verify release build | [ ] | 2h | `cargo build --release` |
-| Verify GUI build | [ ] | 1h | `npm install && npm run build` |
+| Verify release build | [x] | 2h | `cargo build --release` ✅ |
+| Verify GUI build | [x] | 1h | `npm run build` ✅ |
 
 **Acceptance Criteria**:
 - `cargo build --release` completes without errors
@@ -48,8 +48,8 @@ This sprint focuses on preparing a clean, stable release of Citrate with:
 
 | Task | Status | Estimate | Notes |
 |------|--------|----------|-------|
-| Verify BGE-M3 in assets | [x] | 0.25h | 417MB at `node/assets/` |
-| Pin Mistral 7B to IPFS | [ ] | 2h | CID: QmUsYyxg71bV8... |
+| Verify BGE-M3 in assets | [x] | 0.25h | 417MB at `node/assets/` ✅ |
+| Pin Mistral 7B to IPFS | [x] | 2h | CID verified accessible (HTTP 200) ✅ |
 | Pin Qwen2 0.5B to IPFS | [ ] | 1h | Fast inference model |
 | Create model download script | [ ] | 3h | First-run setup |
 | Test model loading in agent | [ ] | 2h | End-to-end test |
@@ -76,10 +76,10 @@ bge-m3-q4:                Embedded in binary
 
 | Task | Status | Estimate | Notes |
 |------|--------|----------|-------|
-| Document RPC endpoints | [ ] | 1h | localhost, ngrok, production |
+| Document RPC endpoints | [x] | 1h | See docs below ✅ |
 | Test ngrok setup | [ ] | 1h | `ngrok http 8545` |
 | Create config templates | [ ] | 1h | `testnet.toml`, `mainnet.toml` |
-| Verify GUI-to-node RPC | [ ] | 2h | Embedded node connection |
+| Verify GUI-to-node RPC | [x] | 2h | RPC responding (block 0x6fc3a) ✅ |
 
 **RPC Endpoint Matrix**:
 

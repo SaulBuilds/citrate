@@ -376,6 +376,9 @@ Just tell me which one, or describe your requirements!`;
     }
   };
 
+  // Session ID for agent communication (lazily created)
+  const sessionIdRef = useRef<string | null>(null);
+
   const sendToMCP = async (message: string) => {
     try {
       const model = availableModels.find(m => m.id === selectedModel);
@@ -383,43 +386,45 @@ Just tell me which one, or describe your requirements!`;
         throw new Error('No model selected');
       }
 
-      const requestPayload = {
-        jsonrpc: '2.0',
-        method: 'citrate_chatCompletion',
-        params: [{
-          model: model.id,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are Citrate AI, an intelligent assistant for the Citrate blockchain platform. You can help with smart contracts, wallet operations, DAG visualization, IPFS storage, and AI model management. Be concise and helpful.'
-            },
-            {
-              role: 'user',
-              content: message
-            }
-          ],
-          max_tokens: maxTokens,
-          temperature: temperature
-        }],
-        id: Date.now()
-      };
-
-      const response = await invoke<any>('rpc_call', { request: requestPayload });
-
-      if (response.error) {
-        throw new Error(response.error.message || 'RPC error');
+      // Create a session if we don't have one yet
+      if (!sessionIdRef.current) {
+        try {
+          const session = await invoke<{ id: string }>('agent_create_session');
+          sessionIdRef.current = session.id;
+        } catch (sessionError) {
+          // Agent may not be initialized, use fallback response
+          console.warn('Agent not initialized:', sessionError);
+          return {
+            content: `I'm still initializing. Please try again in a moment, or check that a local AI model is loaded in Settings.\n\nYou can also use the quick actions above to interact with the blockchain directly.`,
+            tokens: 0,
+            thinking: 'Agent initializing...'
+          };
+        }
       }
 
-      const result = response.result;
-      const content = result.choices?.[0]?.message?.content || 'No response generated';
-      const tokens = result.usage?.total_tokens || 0;
+      // Send message to the agent
+      const response = await invoke<{
+        content: string;
+        intent?: string;
+        intent_confidence?: number;
+        tool_invoked: boolean;
+        tool_name?: string;
+      }>('agent_send_message', {
+        sessionId: sessionIdRef.current,
+        message: message
+      });
 
       return {
-        content,
-        tokens,
-        thinking: `Using ${model.name}`
+        content: response.content,
+        tokens: 0, // Agent doesn't report token counts
+        thinking: response.intent ? `Intent: ${response.intent} (${((response.intent_confidence || 0) * 100).toFixed(0)}%)` : `Using ${model.name}`
       };
     } catch (error) {
+      // If session expired or agent reset, clear session and retry once
+      if (sessionIdRef.current && String(error).includes('Session not found')) {
+        sessionIdRef.current = null;
+        return sendToMCP(message);
+      }
       throw new Error(`Failed to generate response: ${error instanceof Error ? error.message : String(error)}`);
     }
   };

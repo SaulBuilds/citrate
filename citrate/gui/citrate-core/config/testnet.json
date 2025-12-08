@@ -1,7 +1,7 @@
 {
   "dataDir": "./gui-data/testnet",
   "network": "testnet",
-  "externalRpc": "http://testnet-rpc.citrate.ai:8545",
+  "externalRpc": "https://lola-subcorneous-tucker.ngrok-free.dev",
   "rpcPort": 8545,
   "wsPort": 8546,
   "p2pPort": 30303,
@@ -12,19 +12,19 @@
   "enableNetwork": false,
   "discovery": false,
   "mempool": {
-  "minGasPrice": 1000000000,
-  "maxPerSender": 200,
-  "allowReplacement": true,
-  "chainId": 42069,
-  "maxSize": 20000,
-  "replacementFactor": 125,
-  "requireValidSignature": true,
-  "txExpirySecs": 3600
+    "minGasPrice": 1000000000,
+    "maxPerSender": 200,
+    "allowReplacement": true,
+    "chainId": 7331,
+    "maxSize": 20000,
+    "replacementFactor": 125,
+    "requireValidSignature": true,
+    "txExpirySecs": 3600
   },
   "consensus": {
-  "kParameter": 18,
-  "pruningWindow": 200000,
-  "blockTimeSeconds": 5,
-  "finalityDepth": 200
+    "kParameter": 18,
+    "pruningWindow": 200000,
+    "blockTimeSeconds": 5,
+    "finalityDepth": 200
   }
 }

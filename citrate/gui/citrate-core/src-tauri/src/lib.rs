@@ -50,6 +50,14 @@ use agent::commands::{
     agent_get_pending_tools, agent_get_session, agent_get_status, agent_is_ready,
     agent_list_sessions, agent_load_local_model, agent_reject_tool, agent_scan_local_models,
     agent_send_message, agent_set_api_key, agent_set_auto_mode, agent_update_config,
+    // Multi-provider AI configuration commands
+    get_ai_providers_config, get_ai_provider_keys, update_ai_providers_config,
+    save_ai_providers_config, test_ai_provider_connection, pin_local_model_to_ipfs, delete_local_model,
+    download_model_from_ipfs, set_preferred_provider_order, set_local_fallback,
+    check_onboarding_status, complete_onboarding,
+    // First-run and onboarding commands
+    check_first_run, setup_bundled_model, get_onboarding_questions,
+    process_onboarding_answer, skip_onboarding,
 };
 
 // Application state
@@ -1910,10 +1918,12 @@ pub fn run() {
             external_rpc: Arc::new(RwLock::new(None)),
             window_manager,
             terminal_manager,
-            ipfs_manager,
+            ipfs_manager: ipfs_manager.clone(),
             hf_manager,
         })
         .manage(agent_state)
+        // Expose IPFS manager separately for agent commands
+        .manage(ipfs_manager)
         .invoke_handler(tauri::generate_handler![
             // Node commands
             start_node,
@@ -1996,6 +2006,19 @@ pub fn run() {
             agent_get_active_model,
             agent_set_api_key,
             agent_set_auto_mode,
+            // Multi-provider AI configuration commands
+            get_ai_providers_config,
+            get_ai_provider_keys,
+            update_ai_providers_config,
+            save_ai_providers_config,
+            test_ai_provider_connection,
+            pin_local_model_to_ipfs,
+            delete_local_model,
+            download_model_from_ipfs,
+            set_preferred_provider_order,
+            set_local_fallback,
+            check_onboarding_status,
+            complete_onboarding,
             // Window commands
             create_window,
             close_window,
@@ -2095,6 +2118,37 @@ pub fn run() {
                     app_state.model_manager.clone(),
                     app_state.dag_manager.clone(),
                 );
+
+                // Check for bundled model in app resources and configure if found
+                if let Ok(resource_path) = app_handle3.path().resource_dir() {
+                    let bundled_model_path = resource_path.join("models").join("qwen2-0_5b-instruct-q4_k_m.gguf");
+                    if bundled_model_path.exists() {
+                        info!("Found bundled model at: {:?}", bundled_model_path);
+
+                        // Copy to user models directory for persistent access
+                        if let Some(models_dir) = agent::llm::local::get_default_models_dir() {
+                            if let Err(e) = std::fs::create_dir_all(&models_dir) {
+                                warn!("Failed to create models directory: {}", e);
+                            } else {
+                                let dest_path = models_dir.join("qwen2-0_5b-instruct-q4_k_m.gguf");
+                                if !dest_path.exists() {
+                                    info!("Copying bundled model to: {:?}", dest_path);
+                                    if let Err(e) = std::fs::copy(&bundled_model_path, &dest_path) {
+                                        warn!("Failed to copy bundled model: {}", e);
+                                    }
+                                }
+                                // Configure the agent with the model path
+                                if dest_path.exists() {
+                                    let model_path = dest_path.to_string_lossy().to_string();
+                                    agent_manager.configure_local_model(model_path).await;
+                                    info!("Bundled model configured for agent");
+                                }
+                            }
+                        }
+                    } else {
+                        info!("No bundled model found at {:?}", bundled_model_path);
+                    }
+                }
 
                 *agent_state.manager.write().await = Some(agent_manager);
                 info!("Agent manager initialized");

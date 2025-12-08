@@ -1,0 +1,47 @@
+# Citrate v1.0 Mainnet Configuration
+# WARNING: This is for production use. Ensure proper security measures.
+
+[chain]
+# Mainnet chain ID
+chain_id = 1
+genesis_hash = ""
+block_time = 5
+ghostdag_k = 18
+
+[network]
+# Bind to all interfaces for production (ensure firewall is configured)
+listen_addr = "0.0.0.0:30303"
+bootstrap_nodes = [
+    # Official bootstrap nodes (to be updated before mainnet launch)
+    # "/ip4/X.X.X.X/tcp/30303/p2p/12D3KooW..."
+]
+max_peers = 100
+
+[rpc]
+enabled = true
+# Bind to localhost only in production; use a reverse proxy for external access
+listen_addr = "127.0.0.1:8545"
+ws_addr = "127.0.0.1:8546"
+
+[storage]
+data_dir = ".citrate-mainnet"
+pruning = false
+keep_blocks = 1000000
+
+[mining]
+enabled = false
+coinbase = "0000000000000000000000000000000000000000000000000000000000000000"
+target_block_time = 5
+min_gas_price = 1000000000
+
+[validator]
+# PRODUCTION MODE: Fail-closed behavior
+# The node will refuse to start without validators configured
+production_mode = true
+validators = [
+    # Add validator public keys here (hex-encoded 32-byte keys)
+    # "0x1234567890abcdef..."
+]
+ipfs_api_url = "http://127.0.0.1:5001"
+check_interval_secs = 3600
+grace_period_hours = 24

@@ -10,6 +10,7 @@ import { IPFS } from './components/IPFS';
 import { Contracts } from './components/Contracts';
 import { Settings as SettingsView } from './components/Settings';
 import { FirstTimeSetup } from './components/FirstTimeSetup';
+import { OnboardingModal } from './components/OnboardingModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AppProvider, useAppTab } from './contexts/AppContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -225,6 +226,12 @@ function AppInner() {
 
       <FirstTimeSetup onSetupComplete={() => {
         // Refresh the current view or trigger any necessary updates
+        setCurrentTab('dashboard');
+      }} />
+
+      {/* AI Onboarding Modal - shown after first-time wallet setup */}
+      <OnboardingModal onComplete={() => {
+        // User completed onboarding, ensure we're on dashboard
         setCurrentTab('dashboard');
       }} />
 

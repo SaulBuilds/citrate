@@ -497,16 +497,47 @@ impl WalletManager {
     }
 }
 
-/// Secure key storage using OS keychain and encryption
+/// Secure key storage with OS keychain and file-based fallback
+/// Uses OS keychain when available, falls back to encrypted file storage in dev mode
 #[allow(dead_code)]
 struct SecureKeyStore {
-    entry: Entry,
+    entry: Option<Entry>,
+    use_file_fallback: bool,
 }
 
 impl SecureKeyStore {
     fn new() -> Result<Self> {
-        let entry = Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
-        Ok(Self { entry })
+        // Try OS keychain first, fall back to file storage if it fails
+        match Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+            Ok(entry) => {
+                // Test if keychain is actually accessible
+                let test_result = entry.get_password();
+                let use_file_fallback = match test_result {
+                    Ok(_) => false,
+                    Err(keyring::Error::NoEntry) => false, // Keychain works, just no entry yet
+                    Err(_) => {
+                        info!("OS keychain not accessible, using encrypted file storage");
+                        true
+                    }
+                };
+                Ok(Self { entry: Some(entry), use_file_fallback })
+            }
+            Err(e) => {
+                info!("Failed to initialize OS keychain: {}. Using encrypted file storage.", e);
+                Ok(Self { entry: None, use_file_fallback: true })
+            }
+        }
+    }
+
+    fn keys_dir() -> std::path::PathBuf {
+        dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("citrate-core")
+            .join("keys")
+    }
+
+    fn key_file_path(address: &str) -> std::path::PathBuf {
+        Self::keys_dir().join(format!("{}.key", address.replace("0x", "")))
     }
 
     fn store_key(&self, address: &str, signing_key: &SigningKey, password: &str) -> Result<()> {
@@ -545,19 +576,53 @@ impl SecureKeyStore {
         };
         let encoded = serde_json::to_string(&record)?;
 
-        // Create a unique entry for this address
-        let entry = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address))?;
-        entry.set_password(&encoded)?;
+        // Try OS keychain first, then fall back to file
+        if !self.use_file_fallback {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address)) {
+                if entry.set_password(&encoded).is_ok() {
+                    return Ok(());
+                }
+                info!("Keychain store failed, falling back to file storage");
+            }
+        }
+
+        // File-based fallback with encrypted storage
+        let keys_dir = Self::keys_dir();
+        std::fs::create_dir_all(&keys_dir)?;
+        let key_path = Self::key_file_path(address);
+        std::fs::write(&key_path, &encoded)?;
+        info!("Stored encrypted key to file for address: {}", address);
 
         Ok(())
     }
 
     fn get_key(&self, address: &str, password: &str) -> Result<SigningKey> {
-        // Retrieve from keychain using address-specific entry
-        let entry = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address))?;
-        let stored = entry
-            .get_password()
-            .map_err(|_| anyhow::anyhow!("Key not found for address"))?;
+        // Try to retrieve from keychain first
+        let stored = if !self.use_file_fallback {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address)) {
+                match entry.get_password() {
+                    Ok(s) => Some(s),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Fall back to file storage if keychain didn't work
+        let stored = match stored {
+            Some(s) => s,
+            None => {
+                let key_path = Self::key_file_path(address);
+                if key_path.exists() {
+                    std::fs::read_to_string(&key_path)?
+                } else {
+                    return Err(anyhow::anyhow!("Key not found for address"));
+                }
+            }
+        };
 
         // Try JSON format first
         #[derive(Deserialize)]
@@ -611,11 +676,19 @@ impl SecureKeyStore {
     }
 
     fn delete_key(&self, address: &str) -> Result<()> {
-        // Delete the address-specific entry
-        let entry = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address))?;
-        entry
-            .delete_password()
-            .map_err(|e| anyhow::anyhow!("Failed to delete key: {}", e))?;
+        // Try to delete from keychain
+        if !self.use_file_fallback {
+            if let Ok(entry) = Entry::new(KEYRING_SERVICE, &format!("wallet_{}", address)) {
+                let _ = entry.delete_password(); // Ignore errors, we'll also try file
+            }
+        }
+
+        // Also delete from file storage if it exists
+        let key_path = Self::key_file_path(address);
+        if key_path.exists() {
+            std::fs::remove_file(&key_path)?;
+        }
+
         info!("Deleted key for address: {}", address);
         Ok(())
     }

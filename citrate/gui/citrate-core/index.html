@@ -5,13 +5,109 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Citrate - AI Layer 1 BlockDAG</title>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(0.98); }
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: #ffffff;
+      }
+      .loading-logo {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 24px;
+        animation: pulse 2s ease-in-out infinite;
+      }
+      .loading-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        letter-spacing: 0.5px;
+      }
+      .loading-subtitle {
+        font-size: 14px;
+        opacity: 0.6;
+        margin-bottom: 24px;
+      }
+      .loading-spinner {
+        width: 24px;
+        height: 24px;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top-color: #ffffff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      .error-display {
+        display: none;
+        padding: 20px;
+        margin: 20px;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 8px;
+        max-width: 600px;
+        text-align: left;
+      }
+      .error-display.show { display: block; }
+      .error-display h3 { color: #ef4444; margin: 0 0 10px 0; }
+      .error-display pre {
+        background: rgba(0,0,0,0.3);
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+    </style>
+    <script>
+      // Global error handler to catch module loading errors
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('Global error:', msg, url, lineNo, columnNo, error);
+        var errorDiv = document.getElementById('error-display');
+        if (errorDiv) {
+          errorDiv.className = 'error-display show';
+          errorDiv.innerHTML = '<h3>JavaScript Error</h3><pre>' +
+            'Message: ' + msg + '\n' +
+            'URL: ' + url + '\n' +
+            'Line: ' + lineNo + '\n' +
+            'Column: ' + columnNo + '\n' +
+            'Error: ' + (error ? error.stack || error : 'N/A') + '</pre>';
+        }
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        console.error('Unhandled promise rejection:', event.reason);
+        var errorDiv = document.getElementById('error-display');
+        if (errorDiv) {
+          errorDiv.className = 'error-display show';
+          errorDiv.innerHTML = '<h3>Unhandled Promise Rejection</h3><pre>' +
+            (event.reason ? (event.reason.stack || event.reason.message || String(event.reason)) : 'Unknown error') + '</pre>';
+        }
+      });
+    </script>
   </head>
 
   <body>
     <div id="root">
       <noscript>You need to enable JavaScript to run this app.</noscript>
-      <div style="font-family: 'Superclarendon', 'Clarendon', Georgia, serif; padding: 1rem; color: #000000;">
-        Loading Citrate GUI… If this hangs, ensure the dev server is running at http://127.0.0.1:3456.
+      <div class="loading-container">
+        <img src="/citrate_logo.png" alt="Citrate" class="loading-logo" onerror="this.style.display='none'" />
+        <div class="loading-title">Citrate</div>
+        <div class="loading-subtitle">AI-Native Layer 1 BlockDAG</div>
+        <div class="loading-spinner"></div>
+        <div id="error-display" class="error-display"></div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

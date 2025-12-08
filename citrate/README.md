@@ -126,19 +126,35 @@ graph TB
 
 ### 1. Installation
 
+#### Option A: Download Pre-built GUI (Recommended for Users)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/citrate-ai/citrate/releases):
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | `Citrate_arm64.dmg` |
+| macOS (Intel) | `Citrate_x64.dmg` |
+| Windows | `Citrate_Setup.exe` |
+| Linux | `Citrate.AppImage` or `citrate.deb` |
+
+#### Option B: Build from Source (For Developers)
+
 ```bash
 # Clone repository
 git clone https://github.com/citrate-ai/citrate.git
-cd citrate
+cd citrate/citrate
 
 # Install system dependencies
 brew install ipfs rocksdb llvm
 rustup update stable
 
 # Build all components (takes 5-10 minutes)
-# Note: The standard build does NOT embed the genesis AI model
-# This allows fast builds for contributors
 cargo build --workspace --release
+
+# Build the GUI (requires Node.js 18+)
+cd gui/citrate-core
+npm install
+npm run tauri build
 
 # Install development tools
 brew install foundry  # For smart contracts
@@ -170,96 +186,70 @@ IPFS environment variables used by the node:
 - `CITRATE_IPFS_API` (single provider) or `CITRATE_IPFS_PROVIDERS` (comma‑separated) for artifact add/pin/status.
   - Example: `export CITRATE_IPFS_API=http://127.0.0.1:5001`
 
-### 3. AI Model Management & llama.cpp Setup
+### 3. AI Model Management & Local LLM Setup
 
-Citrate uses **llama.cpp** for real LLM inference with GGUF models. The genesis block includes:
-- **BGE-M3 Embeddings** (437 MB) - Embedded directly in genesis for semantic search
-- **Mistral 7B Instruct v0.3** (4.07 GB) - GGUF model for LLM inference
+Citrate includes **bundled local LLM inference** powered by `llama-cpp-2` (Rust bindings for llama.cpp). The desktop GUI comes with a pre-bundled model for zero-configuration AI chat.
 
-#### Step 1: Install llama.cpp
+#### GUI Desktop App (Recommended - Zero Configuration)
 
-```bash
-# Clone and build llama.cpp with Metal GPU support
-cd ~
-git clone https://github.com/ggerganov/llama.cpp.git
-cd llama.cpp
-
-# Build with Metal acceleration (Apple Silicon)
-rm -rf build && mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DLLAMA_METAL=ON
-make -j8 llama-cli llama-embedding
-
-# Set environment variable (add to ~/.zshrc or ~/.bashrc)
-export LLAMA_CPP_PATH="$HOME/llama.cpp"
-
-# Verify installation
-~/llama.cpp/build/bin/llama-cli --version
-```
-
-**Build time:** ~2-5 minutes on Apple Silicon
-
-#### Step 2: Download AI Models
+The **Citrate Desktop GUI** bundles a Qwen2-0.5B model (~400MB) for immediate local inference:
 
 ```bash
-# Create models directory
-mkdir -p ~/Downloads/citrate/citrate/models
-cd ~/Downloads/citrate/citrate/models
+# Build and run the GUI (model is bundled automatically)
+cd gui/citrate-core
+npm install
+npm run tauri dev
 
-# Download Mistral 7B Instruct v0.3 (4.07 GB)
-wget https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf
-
-# Or using curl
-curl -L -o Mistral-7B-Instruct-v0.3-Q4_K_M.gguf \
-  https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf
-
-# Verify download
-ls -lh Mistral-7B-Instruct-v0.3-Q4_K_M.gguf  # Should show ~4.07 GB
+# The app will automatically:
+# - Load the bundled Qwen2-0.5B-Instruct model
+# - Use Metal GPU acceleration on Apple Silicon
+# - Provide AI chat without any API keys required
 ```
 
-**Download time:** 5-15 minutes depending on connection speed
+**Features:**
+- **Zero Configuration** - Works out of the box, no API keys needed
+- **Fully Offline** - All inference runs locally on your machine
+- **Metal GPU Acceleration** - Optimized for Apple Silicon (M1/M2/M3/M4)
+- **Privacy-First** - Your data never leaves your device
 
-#### Step 3: Test Inference
+#### Alternative: Download Larger Models
+
+For more capable models, use the download script:
 
 ```bash
-# Start devnet node (from citrate/ directory)
-./target/release/citrate --data-dir .citrate-devnet devnet
+# Download additional models (~4.5GB total)
+./scripts/download-models.sh
 
-# In another terminal, test LLM inference
-curl -X POST http://localhost:8545 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "citrate_chatCompletion",
-    "params": [{
-      "model": "mistral-7b-instruct-v0.3",
-      "messages": [
-        {"role": "user", "content": "What is 2 + 2?"}
-      ],
-      "max_tokens": 50,
-      "temperature": 0.3
-    }],
-    "id": 1
-  }' | jq -r '.result.choices[0].message.content'
-
-# Expected output: "The sum of 2 plus 2 is 4."
+# This downloads:
+# - Mistral 7B Instruct v0.3 (~4.1GB) - General purpose LLM
+# - Qwen2 0.5B (~400MB) - Fast inference model (already bundled in GUI)
 ```
 
-**Inference latency:** ~2-5s on Apple M2 Max
+Models are stored in:
+- **GUI Bundled:** `gui/citrate-core/src-tauri/resources/models/`
+- **User Downloads:** `~/.citrate/models/`
 
-📚 **Detailed Setup Guide:** See [docs/guides/ai-inference-setup.md](docs/guides/ai-inference-setup.md) for troubleshooting, performance benchmarks, and advanced configuration.
+#### API Provider Integration (Optional)
+
+The GUI also supports cloud AI providers for enhanced capabilities:
+
+1. Open **Settings > AI Configuration**
+2. Add your API key for OpenAI or Anthropic
+3. Select your preferred provider
 
 #### Models Included
 
-| Model | Size | Type | Storage | Purpose |
-|-------|------|------|---------|---------|
-| BGE-M3 | 437 MB | Embeddings | Genesis Block | Semantic search, text embeddings |
-| Mistral 7B v0.3 | 4.07 GB | LLM | Local GGUF | Chat, instruction following, code generation |
+| Model | Size | Location | Purpose |
+|-------|------|----------|---------|
+| Qwen2-0.5B-Instruct | 397 MB | Bundled in GUI | Fast local chat, zero-config |
+| Mistral 7B v0.3 | 4.07 GB | Download | Advanced reasoning, code generation |
 
-**Model Details:**
+**Technical Details:**
 - **Format:** GGUF Q4_K_M quantization for optimal size/quality
-- **Inference:** Powered by llama.cpp with Metal GPU acceleration
+- **Inference Engine:** llama-cpp-2 (Rust bindings for llama.cpp)
+- **GPU Acceleration:** Metal on macOS, CUDA on Linux/Windows
 - **License:** Apache 2.0 (fully open source)
-- **Performance:** 2-5s latency on Apple Silicon M2/M3
+- **Performance:** ~1-2s latency for Qwen2 on Apple Silicon
 
 ### 4. Network Deployment Options
 

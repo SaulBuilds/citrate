@@ -3,9 +3,26 @@
  *
  * Compiles Solidity smart contracts using solc-js WASM.
  * Supports version selection, optimizer configuration, and import resolution.
+ *
+ * NOTE: solc is loaded dynamically to avoid blocking app startup.
+ * The solc package uses Node.js internals (util.inherits) that don't work
+ * in browser environments if imported at module level.
  */
 
-import solc from 'solc';
+// Lazy-loaded solc instance
+let solcInstance: typeof import('solc') | null = null;
+
+/**
+ * Lazily load the solc compiler
+ * This avoids the Node.js compatibility error at startup
+ */
+async function getSolc(): Promise<typeof import('solc')> {
+  if (!solcInstance) {
+    // Dynamic import to defer loading until needed
+    solcInstance = await import('solc');
+  }
+  return solcInstance;
+}
 
 export interface CompilationError {
   severity: 'error' | 'warning' | 'info';
@@ -188,6 +205,7 @@ export async function compileContract(
 
     // Compile
     console.log('[Compiler] Starting compilation...');
+    const solc = await getSolc();
     const outputJson = solc.compile(JSON.stringify(input), { import: findImports });
     const output = JSON.parse(outputJson);
 
@@ -304,7 +322,7 @@ export async function compileContract(
       contractSize,
       warnings: warnings.length > 0 ? warnings : undefined,
       metadata: {
-        compiler: `solc-js@${solc.version()}`,
+        compiler: `solc-js@${solc.version ? solc.version() : 'unknown'}`,
         language: 'Solidity',
         output: contract.metadata,
         settings: {
@@ -366,7 +384,8 @@ export async function compileAllContracts(
 /**
  * Get the current solc-js version
  */
-export function getCompilerVersion(): string {
+export async function getCompilerVersion(): Promise<string> {
+  const solc = await getSolc();
   return solc.version();
 }
 

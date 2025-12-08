@@ -3,7 +3,8 @@ import { nodeService } from '../services/tauri';
 import type { NodeConfig, NodeStatus, PeerInfoSummary } from '../types';
 import { validateIPv4, validatePort, ValidationResult } from '../utils/validation';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sun, Moon, Monitor } from 'lucide-react';
+import { Sun, Moon, Monitor, Bot } from 'lucide-react';
+import AIProviderSettings from './AIProviderSettings';
 
 export const Settings: React.FC = () => {
   const { themeMode, setThemeMode } = useTheme();
@@ -470,6 +471,15 @@ export const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* AI Provider Settings Section */}
+      <div className="settings-section">
+        <div className="section-header-with-icon">
+          <Bot size={20} style={{ color: 'var(--brand-primary)' }} />
+          <h3>AI Assistant</h3>
+        </div>
+        <AIProviderSettings />
+      </div>
+
       <div className="settings-section">
         <h3>Node Configuration</h3>
         <div className="form-grid">
@@ -781,6 +791,8 @@ export const Settings: React.FC = () => {
         .settings h2 { margin: 0 0 1rem 0; font-size: 1.5rem; font-weight: 600; }
         .settings-section { background: white; border-radius: 1rem; padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .settings-section h3 { margin: 0 0 1rem 0; font-size: 1.125rem; }
+        .section-header-with-icon { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .section-header-with-icon h3 { margin-bottom: 0; }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; }
         label { display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem; color: #374151; }
         label.full { grid-column: 1 / -1; }

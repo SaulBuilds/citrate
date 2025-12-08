@@ -12,7 +12,13 @@ const isDevMode = process.env.CITRATE_DEV_MODE === 'true' || process.env.NODE_EN
 export default defineConfig(async () => ({
   // Use relative paths for production build so Tauri and file:// preview work
   base: './',
-  plugins: [react()],
+  plugins: [
+    react({
+      babel: {
+        plugins: ['styled-jsx/babel'],
+      },
+    }),
+  ],
 
   // Define global constants for dev mode gating
   define: {

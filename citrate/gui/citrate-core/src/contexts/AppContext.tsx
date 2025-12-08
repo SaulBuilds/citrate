@@ -24,7 +24,7 @@ import {
 } from '../utils/storage';
 
 // View type for navigation
-export type View = 'dashboard' | 'wallet' | 'dag' | 'models' | 'marketplace' | 'chat' | 'ipfs' | 'contracts' | 'settings';
+export type View = 'dashboard' | 'wallet' | 'dag' | 'models' | 'lora' | 'marketplace' | 'chat' | 'ipfs' | 'contracts' | 'terminal' | 'gpu' | 'settings';
 
 // App state interface
 export interface AppState {

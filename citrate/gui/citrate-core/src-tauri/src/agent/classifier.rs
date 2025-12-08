@@ -274,36 +274,41 @@ impl IntentClassifier {
                 ],
                 param_extractors: vec![],
             },
-            // Block info
+            // Block info - requires explicit action words
             PatternRule {
                 intent: Intent::GetBlockInfo,
                 patterns: vec![
-                    "block info".to_string(),
-                    "get block".to_string(),
+                    "show block info".to_string(),
+                    "get block info".to_string(),
+                    "show me block".to_string(),
                     "block details".to_string(),
-                    "block".to_string(),
+                    "block number".to_string(),
+                    "latest block".to_string(),
                 ],
                 param_extractors: vec![],
             },
-            // DAG status
+            // DAG status - requires explicit requests
             PatternRule {
                 intent: Intent::GetDAGStatus,
                 patterns: vec![
-                    "dag status".to_string(),
-                    "dag info".to_string(),
-                    "ghostdag".to_string(),
-                    "dag".to_string(),
+                    "show dag status".to_string(),
+                    "get dag status".to_string(),
+                    "dag metrics".to_string(),
+                    "dag tips".to_string(),
+                    "ghostdag status".to_string(),
+                    "show dag".to_string(),
                 ],
                 param_extractors: vec![],
             },
-            // Node status
+            // Node status - requires explicit status request
             PatternRule {
                 intent: Intent::GetNodeStatus,
                 patterns: vec![
                     "node status".to_string(),
-                    "node info".to_string(),
+                    "show node status".to_string(),
                     "connection status".to_string(),
-                    "connected".to_string(),
+                    "am i connected".to_string(),
+                    "is node running".to_string(),
                 ],
                 param_extractors: vec![],
             },

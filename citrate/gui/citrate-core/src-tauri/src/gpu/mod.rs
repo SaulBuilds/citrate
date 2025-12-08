@@ -306,22 +306,20 @@ impl GPUResourceManager {
             })),
         };
 
-        // Detect GPUs on initialization
-        tokio::spawn({
-            let devices = manager.devices.clone();
-            async move {
-                let detected = detect_gpus().await;
-                let mut devs = devices.write().await;
-                *devs = detected;
-            }
-        });
-
+        // Note: GPU detection is done lazily when get_devices() or refresh_devices() is called
+        // This avoids requiring a tokio runtime during initialization
         manager
     }
 
-    /// Get all detected GPU devices
+    /// Get all detected GPU devices (detects on first call if empty)
     pub async fn get_devices(&self) -> Vec<GPUDevice> {
-        self.devices.read().await.clone()
+        let devices = self.devices.read().await;
+        if devices.is_empty() {
+            drop(devices); // Release read lock
+            // Do lazy detection
+            return self.refresh_devices().await;
+        }
+        devices.clone()
     }
 
     /// Refresh GPU device information

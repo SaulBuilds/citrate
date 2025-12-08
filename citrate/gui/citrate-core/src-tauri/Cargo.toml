@@ -54,6 +54,7 @@ sha2 = "0.10"
 
 # Database
 rocksdb = "0.22"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Networking
 # reqwest already declared above with json feature

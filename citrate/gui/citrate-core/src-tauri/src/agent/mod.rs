@@ -21,6 +21,7 @@ pub mod llm;
 pub mod onboarding;
 pub mod orchestrator;
 pub mod session;
+pub mod storage;
 pub mod streaming;
 pub mod tools;
 
@@ -39,6 +40,7 @@ pub use intent::{Intent, IntentMatch, IntentParams};
 pub use onboarding::{OnboardingManager, SkillLevel, UserAssessment, AssessmentResponse};
 pub use orchestrator::AgentOrchestrator;
 pub use session::{AgentSession, SessionId};
+pub use storage::{ConversationStorage, ConversationMetadata};
 pub use streaming::{StreamToken, StreamingResponse};
 
 use std::sync::Arc;

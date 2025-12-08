@@ -18,6 +18,7 @@ use super::dispatcher::ToolDispatcher;
 use super::intent::{Intent, IntentMatch};
 use super::llm::{LLMBackend, LLMConfig, LLMFactory};
 use super::session::{AgentSession, Message, SessionId};
+use super::storage::{ConversationStorage, ConversationMetadata};
 use super::streaming::StreamManager;
 use super::tools::register_all_tools;
 
@@ -98,6 +99,8 @@ pub struct AgentOrchestrator {
     config: AgentConfig,
     /// Active sessions
     sessions: RwLock<HashMap<String, Arc<AgentSession>>>,
+    /// Persistent storage for conversations
+    storage: Option<Arc<ConversationStorage>>,
     /// Intent classifier
     classifier: IntentClassifier,
     /// Tool dispatcher
@@ -141,9 +144,26 @@ impl AgentOrchestrator {
         // This will check for local models, API keys, and fall back to UnconfiguredLLMBackend
         let llm = Self::create_llm_from_config(&config);
 
+        // Initialize persistent storage if enabled
+        let storage = if config.context.persist_conversations {
+            match ConversationStorage::new() {
+                Ok(s) => {
+                    tracing::info!("Conversation storage initialized successfully");
+                    Some(Arc::new(s))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to initialize conversation storage: {}. Conversations will not persist.", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             config,
             sessions: RwLock::new(HashMap::new()),
+            storage,
             classifier,
             dispatcher,
             llm,
@@ -160,12 +180,71 @@ impl AgentOrchestrator {
         let session = Arc::new(AgentSession::new());
         let session_id = session.id().0.clone();
 
+        // Store in memory
         self.sessions
             .write()
             .await
-            .insert(session_id, session.clone());
+            .insert(session_id.clone(), session.clone());
+
+        // Create conversation in persistent storage
+        if let Some(ref storage) = self.storage {
+            if let Err(e) = storage.create_conversation(session.id(), None).await {
+                tracing::warn!("Failed to create conversation in storage: {}", e);
+            }
+        }
 
         session
+    }
+
+    /// Load a session from storage (restores conversation history)
+    pub async fn load_session(&self, session_id: &str) -> Option<Arc<AgentSession>> {
+        // Check if already in memory
+        if let Some(session) = self.sessions.read().await.get(session_id).cloned() {
+            return Some(session);
+        }
+
+        // Try to load from storage
+        if let Some(ref storage) = self.storage {
+            let sid = SessionId::from_string(session_id.to_string());
+            if storage.conversation_exists(&sid).await.unwrap_or(false) {
+                // Create session and restore history
+                let session = Arc::new(AgentSession::with_id(sid.clone()));
+
+                // Load messages from storage
+                if let Ok(messages) = storage.load_messages(&sid).await {
+                    for msg in messages {
+                        session.add_message(msg).await;
+                    }
+                }
+
+                // Store in memory
+                self.sessions
+                    .write()
+                    .await
+                    .insert(session_id.to_string(), session.clone());
+
+                return Some(session);
+            }
+        }
+
+        None
+    }
+
+    /// List all conversations (both in memory and storage)
+    pub async fn list_conversations(&self) -> Vec<ConversationMetadata> {
+        if let Some(ref storage) = self.storage {
+            storage.list_conversations().await.unwrap_or_default()
+        } else {
+            // Fall back to in-memory sessions
+            let sessions = self.sessions.read().await;
+            sessions.keys().map(|id| ConversationMetadata {
+                session_id: id.clone(),
+                title: "Conversation".to_string(),
+                created_at: 0,
+                updated_at: 0,
+                message_count: 0,
+            }).collect()
+        }
     }
 
     /// Get a session by ID
@@ -189,15 +268,28 @@ impl AgentOrchestrator {
         session_id: &str,
         user_message: &str,
     ) -> OrchestratorResult<ProcessingResult> {
-        // Get or create session
-        let session = self
-            .get_session(session_id)
-            .await
-            .ok_or_else(|| OrchestratorError::SessionNotFound(session_id.to_string()))?;
+        // Get or create session (try loading from storage first)
+        let session = match self.get_session(session_id).await {
+            Some(s) => s,
+            None => {
+                // Try to load from storage
+                self.load_session(session_id).await
+                    .ok_or_else(|| OrchestratorError::SessionNotFound(session_id.to_string()))?
+            }
+        };
+
+        let sid = session.id().clone();
 
         // Create user message
         let user_msg = Message::user(user_message.to_string());
         session.add_message(user_msg.clone()).await;
+
+        // Persist user message to storage
+        if let Some(ref storage) = self.storage {
+            if let Err(e) = storage.save_message(&sid, &user_msg).await {
+                tracing::warn!("Failed to save user message to storage: {}", e);
+            }
+        }
 
         // Classify intent
         let intent_match = self.classify_intent(user_message).await?;
@@ -236,6 +328,13 @@ impl AgentOrchestrator {
 
         // Add response to session
         session.add_message(response.clone()).await;
+
+        // Persist assistant response to storage
+        if let Some(ref storage) = self.storage {
+            if let Err(e) = storage.save_message(&sid, &response).await {
+                tracing::warn!("Failed to save assistant message to storage: {}", e);
+            }
+        }
 
         Ok(ProcessingResult {
             response,

@@ -5,9 +5,12 @@ import { ChatDashboard, MinimalSidebar } from './components/layout';
 import { Wallet } from './components/Wallet';
 import { DAGVisualization } from './components/DAGVisualization';
 import { Models } from './components/Models';
+import LoRATraining from './components/models/LoRATraining';
 import { Marketplace } from './components/Marketplace';
 import { IPFS } from './components/IPFS';
 import { Contracts } from './components/Contracts';
+import { Terminal } from './components/terminal/Terminal';
+import { GPUSettings } from './components/GPUSettings';
 import { Settings as SettingsView } from './components/Settings';
 import { FirstTimeSetup } from './components/FirstTimeSetup';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -85,6 +88,24 @@ function AppInner() {
       ctrl: true,
       description: 'Navigate to Contracts',
       action: () => setCurrentTab('contracts'),
+    },
+    {
+      key: '8',
+      ctrl: true,
+      description: 'Navigate to LoRA Training',
+      action: () => setCurrentTab('lora'),
+    },
+    {
+      key: 't',
+      ctrl: true,
+      description: 'Open Terminal',
+      action: () => setCurrentTab('terminal'),
+    },
+    {
+      key: 'g',
+      ctrl: true,
+      description: 'Open GPU Compute',
+      action: () => setCurrentTab('gpu'),
     },
     {
       key: ',',
@@ -183,12 +204,18 @@ function AppInner() {
         return <DAGVisualization />;
       case 'models':
         return <Models />;
+      case 'lora':
+        return <LoRATraining />;
       case 'marketplace':
         return <Marketplace />;
       case 'ipfs':
         return <IPFS />;
       case 'contracts':
         return <Contracts />;
+      case 'terminal':
+        return <Terminal />;
+      case 'gpu':
+        return <GPUSettings />;
       case 'settings':
         return <SettingsView />;
       default:
@@ -214,7 +241,7 @@ function AppInner() {
             display: flex;
             height: 100vh;
             background: #ffffff;
-            font-family: 'Superclarendon', 'Clarendon', Georgia, serif;
+            font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           }
 
           .main-content {

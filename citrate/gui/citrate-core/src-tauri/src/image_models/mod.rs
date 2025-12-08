@@ -379,25 +379,18 @@ impl ImageModelManager {
         let _ = std::fs::create_dir_all(&models_dir);
         let _ = std::fs::create_dir_all(&output_dir);
 
-        let manager = Self {
-            models: Arc::new(RwLock::new(HashMap::new())),
+        // Initialize default models synchronously (no tokio runtime needed)
+        let mut default_models = HashMap::new();
+        Self::add_default_models(&mut default_models);
+
+        Self {
+            models: Arc::new(RwLock::new(default_models)),
             generation_jobs: Arc::new(RwLock::new(HashMap::new())),
             training_jobs: Arc::new(RwLock::new(HashMap::new())),
             gallery: Arc::new(RwLock::new(Vec::new())),
             models_dir,
             output_dir,
-        };
-
-        // Initialize with default models
-        tokio::spawn({
-            let models = manager.models.clone();
-            async move {
-                let mut m = models.write().await;
-                Self::add_default_models(&mut m);
-            }
-        });
-
-        manager
+        }
     }
 
     fn add_default_models(models: &mut HashMap<String, ImageModel>) {

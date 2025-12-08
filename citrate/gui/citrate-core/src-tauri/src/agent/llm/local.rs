@@ -335,13 +335,18 @@ impl GGUFBackend {
             let mut n_cur = batch.n_tokens();
             let n_len = n_cur + max_tokens as i32;
 
+            tracing::info!("Starting token generation: n_cur={}, n_len={}, max_tokens={}", n_cur, n_len, max_tokens);
+
             while n_cur <= n_len {
                 // Sample next token from the last position in the batch
                 let token = sampler.sample(&ctx, batch.n_tokens() - 1);
                 sampler.accept(token);
 
+                tracing::debug!("Sampled token: {:?}", token);
+
                 // Check for end-of-generation
                 if loaded.model.is_eog_token(token) {
+                    tracing::info!("EOG token detected, stopping generation");
                     break;
                 }
 
@@ -383,6 +388,7 @@ impl GGUFBackend {
                 output.truncate(pos);
             }
 
+            tracing::info!("Generation complete: {} chars", output.len());
             Ok::<String, String>(output.trim().to_string())
         })
         .await

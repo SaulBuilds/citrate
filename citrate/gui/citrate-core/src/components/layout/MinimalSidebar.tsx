@@ -1,10 +1,13 @@
 /**
  * Minimal Sidebar Component
  *
- * Sprint 7: AI-First Dashboard Transformation (WP-7.1)
+ * Sprint 10: Full Feature Exposure (WP-10.1)
  *
- * A compact sidebar that shows only essential navigation and node status.
- * The main interface is now the chat dashboard.
+ * A comprehensive sidebar with grouped navigation exposing all features:
+ * - Blockchain: Wallet, DAG Explorer, Contracts
+ * - AI & Models: Models, LoRA Training, Marketplace, IPFS Storage
+ * - Developer: Terminal, GPU Compute
+ * - Settings
  */
 
 import React, { useState, useEffect } from 'react';
@@ -23,13 +26,18 @@ import {
   Database,
   FileCode,
   ChevronLeft,
-  Activity
+  Activity,
+  Terminal,
+  Cpu,
+  Sparkles,
+  Layers,
+  Code
 } from 'lucide-react';
 import { nodeService } from '../../services/tauri';
 import { NodeStatus } from '../../types';
 import citrateLogo from '../../assets/citrate_lockup.png';
 
-type TabType = 'dashboard' | 'wallet' | 'dag' | 'models' | 'marketplace' | 'ipfs' | 'contracts' | 'settings';
+type TabType = 'dashboard' | 'wallet' | 'dag' | 'models' | 'lora' | 'marketplace' | 'ipfs' | 'contracts' | 'terminal' | 'gpu' | 'settings';
 
 interface MinimalSidebarProps {
   currentTab: TabType;
@@ -43,6 +51,12 @@ interface NavItem {
   shortcut?: string;
 }
 
+interface NavGroup {
+  label: string;
+  icon: React.ReactNode;
+  items: NavItem[];
+}
+
 export const MinimalSidebar: React.FC<MinimalSidebarProps> = ({
   currentTab,
   onTabChange
@@ -51,15 +65,39 @@ export const MinimalSidebar: React.FC<MinimalSidebarProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const navItems: NavItem[] = [
-    { id: 'wallet', label: 'Wallet', icon: <Wallet size={20} />, shortcut: 'Ctrl+2' },
-    { id: 'dag', label: 'DAG Explorer', icon: <Network size={20} />, shortcut: 'Ctrl+3' },
-    { id: 'models', label: 'AI Models', icon: <Brain size={20} />, shortcut: 'Ctrl+4' },
-    { id: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={20} />, shortcut: 'Ctrl+5' },
-    { id: 'ipfs', label: 'IPFS Storage', icon: <Database size={20} />, shortcut: 'Ctrl+7' },
-    { id: 'contracts', label: 'Contracts', icon: <FileCode size={20} />, shortcut: 'Ctrl+8' },
-    { id: 'settings', label: 'Settings', icon: <Settings size={20} />, shortcut: 'Ctrl+,' },
+  // Grouped navigation
+  const navGroups: NavGroup[] = [
+    {
+      label: 'Blockchain',
+      icon: <Layers size={14} />,
+      items: [
+        { id: 'wallet', label: 'Wallet', icon: <Wallet size={20} />, shortcut: 'Ctrl+2' },
+        { id: 'dag', label: 'DAG Explorer', icon: <Network size={20} />, shortcut: 'Ctrl+3' },
+        { id: 'contracts', label: 'Contracts', icon: <FileCode size={20} />, shortcut: 'Ctrl+4' },
+      ]
+    },
+    {
+      label: 'AI & Models',
+      icon: <Brain size={14} />,
+      items: [
+        { id: 'models', label: 'Models', icon: <Brain size={20} />, shortcut: 'Ctrl+5' },
+        { id: 'lora', label: 'LoRA Training', icon: <Sparkles size={20} />, shortcut: 'Ctrl+6' },
+        { id: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={20} />, shortcut: 'Ctrl+7' },
+        { id: 'ipfs', label: 'IPFS Storage', icon: <Database size={20} />, shortcut: 'Ctrl+8' },
+      ]
+    },
+    {
+      label: 'Developer',
+      icon: <Code size={14} />,
+      items: [
+        { id: 'terminal', label: 'Terminal', icon: <Terminal size={20} />, shortcut: 'Ctrl+T' },
+        { id: 'gpu', label: 'GPU Compute', icon: <Cpu size={20} />, shortcut: 'Ctrl+G' },
+      ]
+    },
   ];
+
+  // Flat list for collapsed mode
+  const navItems: NavItem[] = navGroups.flatMap(g => g.items);
 
   useEffect(() => {
     fetchNodeStatus();
@@ -158,21 +196,58 @@ export const MinimalSidebar: React.FC<MinimalSidebarProps> = ({
           )}
         </button>
 
-        <div className="nav-divider" />
+        {shouldShowExpanded ? (
+          /* Grouped navigation when expanded */
+          <>
+            {navGroups.map((group, groupIndex) => (
+              <div key={group.label} className="nav-group">
+                <div className="nav-group-label">
+                  {group.icon}
+                  <span>{group.label}</span>
+                </div>
+                {group.items.map(item => (
+                  <button
+                    key={item.id}
+                    className={`nav-item ${currentTab === item.id ? 'active' : ''}`}
+                    onClick={() => onTabChange(item.id)}
+                    title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
+                  >
+                    <div className="nav-icon">{item.icon}</div>
+                    <span className="nav-label">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </>
+        ) : (
+          /* Flat navigation when collapsed */
+          <>
+            <div className="nav-divider" />
+            {navItems.map(item => (
+              <button
+                key={item.id}
+                className={`nav-item ${currentTab === item.id ? 'active' : ''}`}
+                onClick={() => onTabChange(item.id)}
+                title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
+              >
+                <div className="nav-icon">{item.icon}</div>
+              </button>
+            ))}
+          </>
+        )}
 
-        {navItems.map(item => (
-          <button
-            key={item.id}
-            className={`nav-item ${currentTab === item.id ? 'active' : ''}`}
-            onClick={() => onTabChange(item.id)}
-            title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
-          >
-            <div className="nav-icon">{item.icon}</div>
-            {shouldShowExpanded && (
-              <span className="nav-label">{item.label}</span>
-            )}
-          </button>
-        ))}
+        {/* Settings always at the bottom */}
+        <div className="nav-divider" style={{ marginTop: 'auto' }} />
+        <button
+          className={`nav-item ${currentTab === 'settings' ? 'active' : ''}`}
+          onClick={() => onTabChange('settings')}
+          title="Settings (Ctrl+,)"
+        >
+          <div className="nav-icon"><Settings size={20} /></div>
+          {shouldShowExpanded && (
+            <span className="nav-label">Settings</span>
+          )}
+        </button>
       </nav>
 
       {/* Footer */}
@@ -299,6 +374,22 @@ export const MinimalSidebar: React.FC<MinimalSidebarProps> = ({
           height: 1px;
           background: #e5e7eb;
           margin: 0.5rem 0.75rem;
+        }
+
+        .nav-group {
+          margin-top: 0.75rem;
+        }
+
+        .nav-group-label {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 0.75rem;
+          font-size: 0.6875rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: #9ca3af;
         }
 
         .nav-item {

@@ -513,7 +513,7 @@ max_peers = 50
 
 [consensus]
 validator_key = "path/to/validator.key"
-staking_amount = "32000000000000000000000"  # 32,000 LAT
+staking_amount = "32000000000000000000000"  # 32,000 SALT
 
 [storage]
 data_dir = "/var/lib/citrate"
@@ -529,7 +529,7 @@ EOF
 # 3. Generate validator keys
 cargo run --bin lattice-keygen -- --output ~/.citrate-validator/validator.key
 
-# 4. Fund validator account (minimum 32,000 LAT)
+# 4. Fund validator account (minimum 32,000 SALT)
 cargo run --bin citrate-wallet -- transfer \
   --to $(cat ~/.citrate-validator/validator.key | jq -r .address) \
   --amount 32000

@@ -254,22 +254,50 @@ impl ToolHandler for CallContractTool {
                 encode_function_selector(&func_name)
             };
 
-            // For MVP, return that eth_call execution is prepared but not fully implemented
-            Ok(ToolOutput {
-                tool: "call_contract".to_string(),
-                success: true,
-                message: format!(
-                    "Contract call prepared for {} on {}. Full eth_call execution pending implementation.",
-                    func_name,
-                    if contract_addr.len() > 10 { &contract_addr[..10] } else { &contract_addr }
-                ),
-                data: Some(serde_json::json!({
-                    "contract": contract_addr,
-                    "function": func_name,
-                    "calldata": format!("0x{}", hex::encode(&calldata)),
-                    "note": "Full eth_call execution coming soon"
-                })),
-            })
+            // Execute eth_call via the executor
+            let calldata_hex = format!("0x{}", hex::encode(&calldata));
+
+            match node_manager.eth_call(&contract_addr, &calldata_hex).await {
+                Ok(result) => {
+                    // Decode the result if possible
+                    let result_display = if result.len() > 66 {
+                        format!("{}...", &result[..66])
+                    } else {
+                        result.clone()
+                    };
+
+                    Ok(ToolOutput {
+                        tool: "call_contract".to_string(),
+                        success: true,
+                        message: format!(
+                            "Contract call {} on {} returned: {}",
+                            func_name,
+                            if contract_addr.len() > 10 { &contract_addr[..10] } else { &contract_addr },
+                            result_display
+                        ),
+                        data: Some(serde_json::json!({
+                            "contract": contract_addr,
+                            "function": func_name,
+                            "calldata": calldata_hex,
+                            "result": result,
+                            "status": "success"
+                        })),
+                    })
+                }
+                Err(e) => {
+                    Ok(ToolOutput {
+                        tool: "call_contract".to_string(),
+                        success: false,
+                        message: format!("Contract call failed: {}", e),
+                        data: Some(serde_json::json!({
+                            "contract": contract_addr,
+                            "function": func_name,
+                            "calldata": calldata_hex,
+                            "error": e.to_string()
+                        })),
+                    })
+                }
+            }
         })
     }
 }
@@ -502,4 +530,179 @@ fn encode_function_selector(signature: &str) -> Vec<u8> {
     // Otherwise compute selector from signature
     let hash = Keccak256::digest(signature.as_bytes());
     hash[0..4].to_vec()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_contract_address_nonce_0() {
+        // Standard CREATE address calculation for nonce 0
+        // Using a known sender address
+        let sender = "0x5B38Da6a701c568545dCfcB03FcB875f56beddC4";
+        let result = calculate_contract_address(sender, 0);
+
+        // Result should be a valid 42-char hex address
+        assert!(result.starts_with("0x"));
+        assert_eq!(result.len(), 42);
+
+        // Verify it's valid hex
+        assert!(hex::decode(&result[2..]).is_ok());
+    }
+
+    #[test]
+    fn test_calculate_contract_address_nonce_1() {
+        let sender = "0x5B38Da6a701c568545dCfcB03FcB875f56beddC4";
+        let result_0 = calculate_contract_address(sender, 0);
+        let result_1 = calculate_contract_address(sender, 1);
+
+        // Different nonces should produce different addresses
+        assert_ne!(result_0, result_1);
+    }
+
+    #[test]
+    fn test_calculate_contract_address_large_nonce() {
+        let sender = "0x5B38Da6a701c568545dCfcB03FcB875f56beddC4";
+        let result = calculate_contract_address(sender, 256);
+
+        // Should handle larger nonces
+        assert!(result.starts_with("0x"));
+        assert_eq!(result.len(), 42);
+    }
+
+    #[test]
+    fn test_encode_function_selector_transfer() {
+        // transfer(address,uint256) = 0xa9059cbb
+        let selector = encode_function_selector("transfer(address,uint256)");
+        assert_eq!(selector, vec![0xa9, 0x05, 0x9c, 0xbb]);
+    }
+
+    #[test]
+    fn test_encode_function_selector_balanceof() {
+        // balanceOf(address) = 0x70a08231
+        let selector = encode_function_selector("balanceOf(address)");
+        assert_eq!(selector, vec![0x70, 0xa0, 0x82, 0x31]);
+    }
+
+    #[test]
+    fn test_encode_function_selector_approve() {
+        // approve(address,uint256) = 0x095ea7b3
+        let selector = encode_function_selector("approve(address,uint256)");
+        assert_eq!(selector, vec![0x09, 0x5e, 0xa7, 0xb3]);
+    }
+
+    #[test]
+    fn test_encode_function_selector_hex_passthrough() {
+        // If already hex, pass through
+        let input = "0xa9059cbb";
+        let selector = encode_function_selector(input);
+        assert_eq!(selector, vec![0xa9, 0x05, 0x9c, 0xbb]);
+    }
+
+    #[test]
+    fn test_encode_function_selector_with_args() {
+        // More complex calldata with args should pass through
+        let input = "0xa9059cbb000000000000000000000000abcd";
+        let selector = encode_function_selector(input);
+        // Should decode the full hex
+        assert!(selector.len() > 4);
+        assert_eq!(selector[0..4], vec![0xa9, 0x05, 0x9c, 0xbb]);
+    }
+
+    #[test]
+    fn test_tool_names() {
+        use std::sync::Arc;
+        use crate::node::NodeManager;
+        use crate::wallet::WalletManager;
+
+        // Create minimal managers for testing tool metadata
+        // Note: We don't test execution here - that requires full integration
+        // WalletManager and NodeManager::new() return Result, so we unwrap
+        let wallet_manager = match WalletManager::new() {
+            Ok(wm) => Arc::new(wm),
+            Err(_) => return, // Skip test if manager creation fails (CI environment)
+        };
+        let node_manager = match NodeManager::new() {
+            Ok(nm) => Arc::new(nm),
+            Err(_) => return, // Skip test if manager creation fails (CI environment)
+        };
+
+        let deploy_tool = DeployContractTool::new(
+            wallet_manager.clone(),
+            node_manager.clone(),
+        );
+        let call_tool = CallContractTool::new(node_manager.clone());
+        let write_tool = WriteContractTool::new(
+            wallet_manager.clone(),
+            node_manager.clone(),
+        );
+
+        assert_eq!(deploy_tool.name(), "deploy_contract");
+        assert_eq!(call_tool.name(), "call_contract");
+        assert_eq!(write_tool.name(), "write_contract");
+    }
+
+    #[test]
+    fn test_tool_descriptions() {
+        use std::sync::Arc;
+        use crate::node::NodeManager;
+        use crate::wallet::WalletManager;
+
+        let wallet_manager = match WalletManager::new() {
+            Ok(wm) => Arc::new(wm),
+            Err(_) => return,
+        };
+        let node_manager = match NodeManager::new() {
+            Ok(nm) => Arc::new(nm),
+            Err(_) => return,
+        };
+
+        let deploy_tool = DeployContractTool::new(
+            wallet_manager.clone(),
+            node_manager.clone(),
+        );
+        let call_tool = CallContractTool::new(node_manager.clone());
+        let write_tool = WriteContractTool::new(
+            wallet_manager.clone(),
+            node_manager.clone(),
+        );
+
+        assert!(deploy_tool.description().contains("Deploy"));
+        assert!(call_tool.description().contains("Call"));
+        assert!(write_tool.description().contains("Execute"));
+    }
+
+    #[test]
+    fn test_tool_confirmation_requirements() {
+        use std::sync::Arc;
+        use crate::node::NodeManager;
+        use crate::wallet::WalletManager;
+
+        let wallet_manager = match WalletManager::new() {
+            Ok(wm) => Arc::new(wm),
+            Err(_) => return,
+        };
+        let node_manager = match NodeManager::new() {
+            Ok(nm) => Arc::new(nm),
+            Err(_) => return,
+        };
+
+        let deploy_tool = DeployContractTool::new(
+            wallet_manager.clone(),
+            node_manager.clone(),
+        );
+        let call_tool = CallContractTool::new(node_manager.clone());
+        let write_tool = WriteContractTool::new(
+            wallet_manager.clone(),
+            node_manager.clone(),
+        );
+
+        // Deploy and Write require confirmation (state changes)
+        assert!(deploy_tool.requires_confirmation());
+        assert!(write_tool.requires_confirmation());
+
+        // Call is read-only, no confirmation needed
+        assert!(!call_tool.requires_confirmation());
+    }
 }

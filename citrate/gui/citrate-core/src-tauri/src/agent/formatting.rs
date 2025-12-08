@@ -240,7 +240,7 @@ fn format_transaction_md(data: &serde_json::Value) -> String {
 
         // Value
         if let Some(value_ctr) = obj.get("value_ctr") {
-            md.push_str(&format!("**Value:** {} CTR\n", format_value(value_ctr)));
+            md.push_str(&format!("**Value:** {} SALT\n", format_value(value_ctr)));
         }
     }
 

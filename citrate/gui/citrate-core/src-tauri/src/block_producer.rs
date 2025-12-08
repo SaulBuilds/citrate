@@ -419,7 +419,7 @@ impl BlockProducer {
 
     async fn add_block_reward(&self, reward_address: &str, _height: u64) -> Result<()> {
         // Credit block reward directly to blockchain state via executor
-        // 10 LAT per block in 18-decimal units (wei)
+        // 10 SALT per block in 18-decimal units (wei)
         const DECIMALS: u128 = 1_000_000_000_000_000_000u128;
         const BLOCK_REWARD_TOKENS: u128 = 10;
         let amount_wei = primitive_types::U256::from(BLOCK_REWARD_TOKENS.saturating_mul(DECIMALS));
@@ -455,7 +455,7 @@ impl BlockProducer {
         self.executor.set_balance(&validator_address, new_balance);
 
         info!(
-            "Minted {} LAT ({} wei) to validator {} (new balance: {} wei)",
+            "Minted {} SALT ({} wei) to validator {} (new balance: {} wei)",
             BLOCK_REWARD_TOKENS,
             amount_wei,
             hex::encode(validator_address.0),

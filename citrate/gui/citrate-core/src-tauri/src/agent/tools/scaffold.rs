@@ -801,7 +801,7 @@ function App() {{
             marginBottom: '10px'
           }}}}>
             <h3>{{listing.title}}</h3>
-            <p>Price: {{listing.price}} CTR</p>
+            <p>Price: {{listing.price}} SALT</p>
             <button>Purchase</button>
           </div>
         ))}}
@@ -816,4 +816,215 @@ export default App
             ),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scaffold_dapp_tool_name() {
+        let tool = ScaffoldDappTool::new();
+        assert_eq!(tool.name(), "scaffold_dapp");
+    }
+
+    #[test]
+    fn test_scaffold_dapp_tool_description() {
+        let tool = ScaffoldDappTool::new();
+        assert!(tool.description().contains("Generate"));
+        assert!(tool.description().contains("dApp"));
+    }
+
+    #[test]
+    fn test_scaffold_dapp_default() {
+        let _tool = ScaffoldDappTool::default();
+        // Just verify default creation works
+    }
+
+    #[test]
+    fn test_list_templates_tool_name() {
+        let tool = ListTemplatesToolImpl::new();
+        assert_eq!(tool.name(), "list_templates");
+    }
+
+    #[test]
+    fn test_list_templates_tool_description() {
+        let tool = ListTemplatesToolImpl::new();
+        assert!(tool.description().contains("List"));
+        assert!(tool.description().contains("templates"));
+    }
+
+    #[test]
+    fn test_list_templates_default() {
+        let _tool = ListTemplatesToolImpl::default();
+        // Just verify default creation works
+    }
+
+    #[test]
+    fn test_dapp_template_from_str() {
+        assert_eq!(DappTemplate::from_str("basic"), Some(DappTemplate::Basic));
+        assert_eq!(DappTemplate::from_str("BASIC"), Some(DappTemplate::Basic));
+        assert_eq!(DappTemplate::from_str("simple"), Some(DappTemplate::Basic));
+        assert_eq!(DappTemplate::from_str("starter"), Some(DappTemplate::Basic));
+
+        assert_eq!(DappTemplate::from_str("defi"), Some(DappTemplate::Defi));
+        assert_eq!(DappTemplate::from_str("token"), Some(DappTemplate::Defi));
+        assert_eq!(DappTemplate::from_str("swap"), Some(DappTemplate::Defi));
+
+        assert_eq!(DappTemplate::from_str("nft"), Some(DappTemplate::Nft));
+        assert_eq!(DappTemplate::from_str("collection"), Some(DappTemplate::Nft));
+        assert_eq!(DappTemplate::from_str("mint"), Some(DappTemplate::Nft));
+
+        assert_eq!(DappTemplate::from_str("marketplace"), Some(DappTemplate::Marketplace));
+        assert_eq!(DappTemplate::from_str("market"), Some(DappTemplate::Marketplace));
+        assert_eq!(DappTemplate::from_str("shop"), Some(DappTemplate::Marketplace));
+
+        assert_eq!(DappTemplate::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_dapp_template_description() {
+        assert!(DappTemplate::Basic.description().contains("Basic"));
+        assert!(DappTemplate::Defi.description().contains("DeFi"));
+        assert!(DappTemplate::Nft.description().contains("NFT"));
+        assert!(DappTemplate::Marketplace.description().contains("Marketplace"));
+    }
+
+    #[test]
+    fn test_is_valid_project_name() {
+        // Valid names
+        assert!(is_valid_project_name("my-dapp"));
+        assert!(is_valid_project_name("my_dapp"));
+        assert!(is_valid_project_name("mydapp123"));
+        assert!(is_valid_project_name("test"));
+        assert!(is_valid_project_name("a"));
+
+        // Invalid names
+        assert!(!is_valid_project_name("")); // Empty
+        assert!(!is_valid_project_name("-mydapp")); // Starts with hyphen
+        assert!(!is_valid_project_name("mydapp-")); // Ends with hyphen
+        assert!(!is_valid_project_name("MyDapp")); // Uppercase
+        assert!(!is_valid_project_name("my dapp")); // Space
+        assert!(!is_valid_project_name("my.dapp")); // Dot
+        assert!(!is_valid_project_name(&"a".repeat(51))); // Too long (51 chars)
+    }
+
+    #[test]
+    fn test_get_common_files() {
+        let files = get_common_files("test-project");
+
+        // Check that essential files are included
+        let file_names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+        assert!(file_names.contains(&"README.md"));
+        assert!(file_names.contains(&"package.json"));
+        assert!(file_names.contains(&"contracts/foundry.toml"));
+        assert!(file_names.contains(&".gitignore"));
+
+        // Check project name is included in generated content
+        let readme = files.iter().find(|(name, _)| *name == "README.md").unwrap();
+        assert!(readme.1.contains("test-project"));
+    }
+
+    #[test]
+    fn test_get_basic_template_files() {
+        let files = get_basic_template_files("my-basic-dapp");
+
+        let file_names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+        assert!(file_names.contains(&"contracts/src/Storage.sol"));
+        assert!(file_names.contains(&"contracts/test/Storage.t.sol"));
+        assert!(file_names.contains(&"frontend/src/App.tsx"));
+    }
+
+    #[test]
+    fn test_get_defi_template_files() {
+        let files = get_defi_template_files("my-defi-dapp");
+
+        let file_names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+        assert!(file_names.contains(&"contracts/src/Token.sol"));
+        assert!(file_names.contains(&"contracts/src/Pool.sol"));
+        assert!(file_names.contains(&"frontend/src/App.tsx"));
+
+        // Check DeFi-specific content
+        let pool = files.iter().find(|(name, _)| *name == "contracts/src/Pool.sol").unwrap();
+        assert!(pool.1.contains("swap"));
+        assert!(pool.1.contains("addLiquidity"));
+    }
+
+    #[test]
+    fn test_get_nft_template_files() {
+        let files = get_nft_template_files("my-nft-dapp");
+
+        let file_names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+        assert!(file_names.contains(&"contracts/src/Collection.sol"));
+        assert!(file_names.contains(&"frontend/src/App.tsx"));
+
+        // Check NFT-specific content
+        let collection = files.iter().find(|(name, _)| *name == "contracts/src/Collection.sol").unwrap();
+        assert!(collection.1.contains("ERC721"));
+        assert!(collection.1.contains("mint"));
+    }
+
+    #[test]
+    fn test_get_marketplace_template_files() {
+        let files = get_marketplace_template_files("my-market");
+
+        let file_names: Vec<&str> = files.iter().map(|(name, _)| *name).collect();
+        assert!(file_names.contains(&"contracts/src/Marketplace.sol"));
+        assert!(file_names.contains(&"frontend/src/App.tsx"));
+
+        // Check marketplace-specific content
+        let marketplace = files.iter().find(|(name, _)| *name == "contracts/src/Marketplace.sol").unwrap();
+        assert!(marketplace.1.contains("Listing"));
+        assert!(marketplace.1.contains("purchase"));
+    }
+
+    #[tokio::test]
+    async fn test_list_templates_execution() {
+        let tool = ListTemplatesToolImpl::new();
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        let templates = data.get("templates").and_then(|t| t.as_array()).unwrap();
+        assert_eq!(templates.len(), 4); // basic, defi, nft, marketplace
+    }
+
+    #[tokio::test]
+    async fn test_scaffold_dapp_invalid_name() {
+        let tool = ScaffoldDappTool::new();
+        let mut params = IntentParams::default();
+        params.prompt = Some("-invalid".to_string()); // Invalid: starts with hyphen
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(!output.success);
+        assert!(output.message.contains("Invalid project name"));
+    }
+
+    #[tokio::test]
+    async fn test_scaffold_dapp_default_template() {
+        let tool = ScaffoldDappTool::new();
+        let mut params = IntentParams::default();
+        params.prompt = Some("test-scaffold-default".to_string());
+
+        // This will try to create the directory - we're testing the logic path
+        // Clean up after test
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        // Either succeeds or fails due to directory issues - both are valid
+        if output.success {
+            // Clean up
+            let _ = tokio::fs::remove_dir_all("test-scaffold-default").await;
+        }
+    }
 }

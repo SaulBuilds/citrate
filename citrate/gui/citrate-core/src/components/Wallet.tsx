@@ -140,15 +140,15 @@ export const Wallet: React.FC = () => {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const formatLat = (valueStr: string): string => {
+  const formatSalt = (valueStr: string): string => {
     try {
       const wei = BigInt(valueStr || '0');
       const whole = wei / (10n ** 18n);
       const frac = wei % (10n ** 18n);
       const fracStr = (frac + (10n ** 18n)).toString().slice(1, 5);
-      return `${whole.toString()}.${fracStr} LAT`;
+      return `${whole.toString()}.${fracStr} SALT`;
     } catch {
-      return '0.0000 LAT';
+      return '0.0000 SALT';
     }
   };
 
@@ -245,7 +245,7 @@ export const Wallet: React.FC = () => {
                 <div className="account-balance">
                   <span className="balance-label">Balance</span>
                   <span className="balance-value">
-                    {formatBalance(account.balance)} LAT
+                    {formatBalance(account.balance)} SALT
                   </span>
                 </div>
 
@@ -350,7 +350,7 @@ export const Wallet: React.FC = () => {
                   </div>
                 </div>
                 <div className="right">
-                  <div className="amount">{formatLat(tx.value)}</div>
+                  <div className="amount">{formatSalt(tx.value)}</div>
                   <div className="addr mono">→ {(tx.to || '').slice(0, 10)}…</div>
                   <button className="btn btn-secondary btn-sm" onClick={() => copyToClipboard(tx.hash, 'txhash')}>Copy</button>
                   <button className="btn btn-secondary btn-sm" onClick={() => setExpanded(prev => ({ ...prev, [tx.hash]: !prev[tx.hash] }))}>Details</button>
@@ -399,7 +399,7 @@ export const Wallet: React.FC = () => {
                 <div className="hash mono">{addr.slice(0, 12)}…</div>
                 <div className="meta">
                   <span className="badge">Observed</span>
-                  <span className="muted">{formatLat(trackedData[addr]?.balance || '0')}</span>
+                  <span className="muted">{formatSalt(trackedData[addr]?.balance || '0')}</span>
                 </div>
               </div>
               <div className="right" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -411,7 +411,7 @@ export const Wallet: React.FC = () => {
                 <div style={{ marginTop: '0.5rem' }}>
                   {trackedData[addr].activity.slice(0,5).map(tx => (
                     <div key={tx.hash} className="tx-item mono" style={{ fontSize: '0.8rem' }}>
-                      <span className="muted">{tx.status}</span> • {tx.hash.slice(0,10)}… • {formatLat(tx.value)}
+                      <span className="muted">{tx.status}</span> • {tx.hash.slice(0,10)}… • {formatSalt(tx.value)}
                     </div>
                   ))}
                 </div>
@@ -1424,7 +1424,7 @@ const SendTransactionModal: React.FC<{
         </div>
 
         <div className="form-group">
-          <label>Amount (LAT)</label>
+          <label>Amount (SALT)</label>
           <input
             type="number"
             value={amount}

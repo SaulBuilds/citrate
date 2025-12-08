@@ -331,3 +331,145 @@ impl ToolHandler for GetModelInfoTool {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_list_models_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = ListModelsTool::new(model_manager);
+        assert_eq!(tool.name(), "list_models");
+    }
+
+    #[test]
+    fn test_list_models_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = ListModelsTool::new(model_manager);
+        assert!(tool.description().contains("List"));
+    }
+
+    #[test]
+    fn test_run_inference_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = RunInferenceTool::new(model_manager);
+        assert_eq!(tool.name(), "run_inference");
+    }
+
+    #[test]
+    fn test_run_inference_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = RunInferenceTool::new(model_manager);
+        assert!(tool.description().contains("inference"));
+    }
+
+    #[test]
+    fn test_deploy_model_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let wallet_manager = match crate::wallet::WalletManager::new() {
+            Ok(wm) => Arc::new(wm),
+            Err(_) => return, // Skip test in CI
+        };
+        let tool = DeployModelTool::new(model_manager, wallet_manager);
+        assert_eq!(tool.name(), "deploy_model");
+    }
+
+    #[test]
+    fn test_deploy_model_requires_confirmation() {
+        let model_manager = Arc::new(ModelManager::new());
+        let wallet_manager = match crate::wallet::WalletManager::new() {
+            Ok(wm) => Arc::new(wm),
+            Err(_) => return,
+        };
+        let tool = DeployModelTool::new(model_manager, wallet_manager);
+        assert!(tool.requires_confirmation());
+    }
+
+    #[test]
+    fn test_get_model_info_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetModelInfoTool::new(model_manager);
+        assert_eq!(tool.name(), "get_model_info");
+    }
+
+    #[test]
+    fn test_get_model_info_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetModelInfoTool::new(model_manager);
+        assert!(tool.description().contains("detailed"));
+    }
+
+    #[tokio::test]
+    async fn test_list_models_execution() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = ListModelsTool::new(model_manager);
+
+        let params = IntentParams::default();
+        let result = tool.execute(&params).await;
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        // Should have at least sample models
+        let data = output.data.unwrap();
+        let count = data.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+        assert!(count >= 2); // gpt-citrate and stable-citrate
+    }
+
+    #[tokio::test]
+    async fn test_get_model_info_for_sample_model() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetModelInfoTool::new(model_manager);
+
+        let mut params = IntentParams::default();
+        params.model_name = Some("gpt-citrate".to_string());
+
+        let result = tool.execute(&params).await;
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        assert_eq!(data.get("id").and_then(|v| v.as_str()), Some("gpt-citrate"));
+    }
+
+    #[tokio::test]
+    async fn test_get_model_info_not_found() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetModelInfoTool::new(model_manager);
+
+        let mut params = IntentParams::default();
+        params.model_name = Some("nonexistent-model".to_string());
+
+        let result = tool.execute(&params).await;
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(!output.success);
+        assert!(output.message.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_get_model_info_missing_param() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetModelInfoTool::new(model_manager);
+
+        let params = IntentParams::default(); // No model name
+
+        let result = tool.execute(&params).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            DispatchError::InvalidParams(msg) => {
+                assert!(msg.contains("required"));
+            }
+            _ => panic!("Expected InvalidParams error"),
+        }
+    }
+}

@@ -64,39 +64,39 @@ impl ToolHandler for BalanceTool {
             match node_manager.get_observed_balance(&target_address, 100).await {
                 Ok(balance_str) => {
                     let balance_wei: u128 = balance_str.parse().unwrap_or(0);
-                    let balance_ctr = balance_wei as f64 / 1e18;
+                    let balance_salt = balance_wei as f64 / 1e18;
 
                     Ok(ToolOutput {
                         tool: "query_balance".to_string(),
                         success: true,
                         message: format!(
-                            "Balance for {}: {:.6} CTR",
+                            "Balance for {}: {:.6} SALT",
                             if target_address.len() > 10 { &target_address[..10] } else { &target_address },
-                            balance_ctr
+                            balance_salt
                         ),
                         data: Some(serde_json::json!({
                             "address": target_address,
                             "balance_wei": balance_str,
-                            "balance_ctr": balance_ctr,
+                            "balance_salt": balance_salt,
                         })),
                     })
                 }
                 Err(_) => {
                     // Fall back to wallet manager's cached balance
                     if let Some(account) = wallet_manager.get_account(&target_address).await {
-                        let balance_ctr = account.balance as f64 / 1e18;
+                        let balance_salt = account.balance as f64 / 1e18;
                         return Ok(ToolOutput {
                             tool: "query_balance".to_string(),
                             success: true,
                             message: format!(
-                                "Balance for {}: {:.6} CTR (cached, node may not be running)",
+                                "Balance for {}: {:.6} SALT (cached, node may not be running)",
                                 if target_address.len() > 10 { &target_address[..10] } else { &target_address },
-                                balance_ctr
+                                balance_salt
                             ),
                             data: Some(serde_json::json!({
                                 "address": target_address,
                                 "balance_wei": account.balance.to_string(),
-                                "balance_ctr": balance_ctr,
+                                "balance_salt": balance_salt,
                                 "cached": true
                             })),
                         });
@@ -143,7 +143,7 @@ impl ToolHandler for SendTransactionTool {
     }
 
     fn description(&self) -> &str {
-        "Send CTR tokens to another address. Requires confirmation."
+        "Send SALT tokens to another address. Requires confirmation."
     }
 
     fn execute(
@@ -164,7 +164,7 @@ impl ToolHandler for SendTransactionTool {
                 DispatchError::InvalidParams("Amount required".to_string())
             })?;
 
-            // Parse amount (supports "1.5 CTR", "1000000000000000000 wei", or just numbers)
+            // Parse amount (supports "1.5 SALT", "1000000000000000000 wei", or just numbers)
             let amount_wei = parse_amount(&amount_str)?;
 
             // Get sender address (first account)
@@ -187,7 +187,7 @@ impl ToolHandler for SendTransactionTool {
                     tool: "send_transaction".to_string(),
                     success: true,
                     message: format!(
-                        "Transaction prepared: Send {} wei ({:.6} CTR) from {} to {}. Awaiting confirmation.",
+                        "Transaction prepared: Send {} wei ({:.6} SALT) from {} to {}. Awaiting confirmation.",
                         amount_wei,
                         amount_wei as f64 / 1e18,
                         if from_addr.len() > 10 { &from_addr[..10] } else { &from_addr },
@@ -198,7 +198,7 @@ impl ToolHandler for SendTransactionTool {
                         "from": from_addr,
                         "to": to_addr,
                         "value_wei": amount_wei.to_string(),
-                        "value_ctr": amount_wei as f64 / 1e18,
+                        "value_salt": amount_wei as f64 / 1e18,
                         "requires_password": true
                     })),
                 });
@@ -239,7 +239,7 @@ impl ToolHandler for SendTransactionTool {
                         tool: "send_transaction".to_string(),
                         success: true,
                         message: format!(
-                            "Transaction sent! Hash: {}. Sent {:.6} CTR from {} to {}",
+                            "Transaction sent! Hash: {}. Sent {:.6} SALT from {} to {}",
                             &tx_hash,
                             amount_wei as f64 / 1e18,
                             if from_addr.len() > 10 { &from_addr[..10] } else { &from_addr },
@@ -250,7 +250,7 @@ impl ToolHandler for SendTransactionTool {
                             "from": from_addr,
                             "to": to_addr,
                             "value_wei": amount_wei.to_string(),
-                            "value_ctr": amount_wei as f64 / 1e18,
+                            "value_salt": amount_wei as f64 / 1e18,
                             "status": "pending"
                         })),
                     })
@@ -368,34 +368,34 @@ impl ToolHandler for TransactionHistoryTool {
 }
 
 /// Parse amount string to wei
-/// Supports: "1.5 CTR", "1.5", "1500000000000000000 wei", "1500000000000000000"
+/// Supports: "1.5 SALT", "1.5", "1500000000000000000 wei", "1500000000000000000"
 fn parse_amount(amount_str: &str) -> Result<u128, DispatchError> {
     let lower = amount_str.to_lowercase().trim().to_string();
 
     // Check for unit suffix
-    if lower.ends_with("ctr") || lower.ends_with("citrate") {
-        // Parse as CTR (decimal)
+    if lower.ends_with("salt") || lower.ends_with("citrate") {
+        // Parse as SALT (decimal)
         let num_str = lower
-            .trim_end_matches("ctr")
+            .trim_end_matches("salt")
             .trim_end_matches("citrate")
             .trim();
         let num: f64 = num_str.parse().map_err(|_| {
             DispatchError::InvalidParams(format!("Invalid amount: {}", amount_str))
         })?;
         Ok((num * 1e18) as u128)
+    } else if lower.ends_with("gwei") {
+        // Parse as gwei (must check before "wei" since "gwei" ends with "wei")
+        let num_str = lower.trim_end_matches("gwei").trim();
+        let num: f64 = num_str.parse().map_err(|_| {
+            DispatchError::InvalidParams(format!("Invalid amount: {}", amount_str))
+        })?;
+        Ok((num * 1e9) as u128)
     } else if lower.ends_with("wei") {
         // Parse as wei (integer)
         let num_str = lower.trim_end_matches("wei").trim();
         num_str.parse().map_err(|_| {
             DispatchError::InvalidParams(format!("Invalid amount: {}", amount_str))
         })
-    } else if lower.ends_with("gwei") {
-        // Parse as gwei
-        let num_str = lower.trim_end_matches("gwei").trim();
-        let num: f64 = num_str.parse().map_err(|_| {
-            DispatchError::InvalidParams(format!("Invalid amount: {}", amount_str))
-        })?;
-        Ok((num * 1e9) as u128)
     } else if lower.ends_with("ether") || lower.ends_with("eth") {
         // Parse as ether (for compatibility)
         let num_str = lower
@@ -407,7 +407,7 @@ fn parse_amount(amount_str: &str) -> Result<u128, DispatchError> {
         })?;
         Ok((num * 1e18) as u128)
     } else {
-        // Try parsing as decimal CTR first, then as wei
+        // Try parsing as decimal SALT first, then as wei
         if lower.contains('.') {
             let num: f64 = lower.parse().map_err(|_| {
                 DispatchError::InvalidParams(format!("Invalid amount: {}", amount_str))
@@ -428,12 +428,12 @@ mod tests {
 
     #[test]
     fn test_parse_amount() {
-        assert_eq!(parse_amount("1 CTR").unwrap(), 1_000_000_000_000_000_000);
-        assert_eq!(parse_amount("1.5 CTR").unwrap(), 1_500_000_000_000_000_000);
-        assert_eq!(parse_amount("0.001 ctr").unwrap(), 1_000_000_000_000_000);
+        assert_eq!(parse_amount("1 SALT").unwrap(), 1_000_000_000_000_000_000);
+        assert_eq!(parse_amount("1.5 SALT").unwrap(), 1_500_000_000_000_000_000);
+        assert_eq!(parse_amount("0.001 salt").unwrap(), 1_000_000_000_000_000);
         assert_eq!(parse_amount("1000000000000000000 wei").unwrap(), 1_000_000_000_000_000_000);
         assert_eq!(parse_amount("1 gwei").unwrap(), 1_000_000_000);
-        assert_eq!(parse_amount("1.5").unwrap(), 1_500_000_000_000_000_000); // Decimal assumes CTR
+        assert_eq!(parse_amount("1.5").unwrap(), 1_500_000_000_000_000_000); // Decimal assumes SALT
         assert_eq!(parse_amount("1000000000000000000").unwrap(), 1_000_000_000_000_000_000); // Integer assumes wei
     }
 }

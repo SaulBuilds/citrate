@@ -8,14 +8,14 @@ import "./lib/ReentrancyGuard.sol";
 
 /**
  * @title IPFSIncentives
- * @notice Tracks storage providers pinning model artifacts and rewards them in native LATT.
+ * @notice Tracks storage providers pinning model artifacts and rewards them in native SALT.
  * @dev Rewards are denominated in wei. Contract must be pre-funded by an admin to pay out claims.
  */
 contract IPFSIncentives is AccessControl, ReentrancyGuard {
     bytes32 public constant REPORTER_ROLE = keccak256("REPORTER_ROLE");
     uint256 public constant BYTES_PER_GB = 1_000_000_000;
 
-    /// Reward paid per gigabyte pinned (before multipliers), defaults to 1 LATT.
+    /// Reward paid per gigabyte pinned (before multipliers), defaults to 1 SALT.
     uint256 public baseRewardPerGb = 1 ether;
     uint256 public totalPendingRewards;
 

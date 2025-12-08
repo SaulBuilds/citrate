@@ -967,13 +967,53 @@ export interface DownloadProgress {
   completed_at?: number;
 }
 
+// Enhanced GGUF-specific types from backend
+export interface GGUFModelInfo {
+  model_id: string;
+  name: string;
+  author: string;
+  files: GGUFFileInfo[];
+  downloads: number;
+  likes: number;
+  last_modified?: string;
+  description?: string;
+  tags: string[];
+  gated: boolean;
+}
+
+export interface GGUFFileInfo {
+  filename: string;
+  size: number;
+  quantization?: string;
+  recommended: boolean;
+  download_url: string;
+}
+
+export interface LocalModelInfo {
+  model_id: string;
+  path: string;
+  size: number;
+  quantization?: string;
+  loaded: boolean;
+}
+
+export interface RecommendedModel {
+  model_id: string;
+  name: string;
+  description: string;
+}
+
 // HuggingFace Management
 export const huggingFaceService = {
-  // Authentication
+  // Authentication - Enhanced with PKCE support
+  startAuthFlow: () => safeInvoke<{ url: string; state: string }>('hf_start_auth_flow'),
   getAuthUrl: () => safeInvoke<string>('hf_get_auth_url'),
   exchangeCode: (code: string) =>
     safeInvoke<HFAuthState>('hf_exchange_code', { code }),
+  exchangeCodeWithPkce: (code: string, state: string) =>
+    safeInvoke<HFAuthState>('hf_exchange_code_with_pkce', { code, state }),
   setToken: (token: string) => safeInvoke<void>('hf_set_token', { token }),
+  setApiToken: (token: string) => safeInvoke<void>('hf_set_api_token', { token }),
   getAuthState: () => safeInvoke<HFAuthState>('hf_get_auth_state'),
   logout: () => safeInvoke<void>('hf_logout'),
 
@@ -981,7 +1021,7 @@ export const huggingFaceService = {
   getConfig: () => safeInvoke<HFConfig>('hf_get_config'),
   updateConfig: (config: HFConfig) => safeInvoke<void>('hf_update_config', { config }),
 
-  // Model Discovery
+  // Model Discovery - Legacy API
   searchModels: (params: ModelSearchParams) =>
     safeInvoke<HFModelInfo[]>('hf_search_models', { params }),
   getModelInfo: (modelId: string) =>
@@ -989,16 +1029,37 @@ export const huggingFaceService = {
   getModelFiles: (modelId: string) =>
     safeInvoke<HFModelFile[]>('hf_get_model_files', { modelId }),
 
-  // Downloads
+  // GGUF-specific Model Discovery (Enhanced)
+  searchGGUFModels: (query: string, limit: number = 20) =>
+    safeInvoke<GGUFModelInfo[]>('hf_search_gguf_models', { query, limit }),
+  getGGUFModel: (modelId: string) =>
+    safeInvoke<GGUFModelInfo>('hf_get_gguf_model', { modelId }),
+  getRecommendedModels: () =>
+    safeInvoke<RecommendedModel[]>('hf_get_recommended_models'),
+
+  // Downloads - Legacy
   downloadFile: (modelId: string, filename: string) =>
     safeInvoke<string>('hf_download_file', { modelId, filename }),
   getDownloads: () => safeInvoke<DownloadProgress[]>('hf_get_downloads'),
   cancelDownload: (modelId: string, filename: string) =>
     safeInvoke<void>('hf_cancel_download', { modelId, filename }),
 
-  // Local Models
+  // Downloads - Enhanced with resume support
+  downloadFileResumable: (modelId: string, filename: string) =>
+    safeInvoke<string>('hf_download_file_resumable', { modelId, filename }),
+  cancelDownloadResumable: (modelId: string, filename: string) =>
+    safeInvoke<void>('hf_cancel_download_resumable', { modelId, filename }),
+  getDownloadStats: () =>
+    safeInvoke<{ active: number; completed: number; totalBytes: number }>('hf_get_download_stats'),
+
+  // Local Models - Legacy
   getLocalModels: () => safeInvoke<string[]>('hf_get_local_models'),
   getModelsDir: () => safeInvoke<string>('hf_get_models_dir'),
+
+  // Local Models - Enhanced
+  scanLocalModels: () => safeInvoke<LocalModelInfo[]>('hf_scan_local_models'),
+  autoSelectModel: () => safeInvoke<LocalModelInfo | null>('hf_auto_select_model'),
+  deleteLocalModel: (path: string) => safeInvoke<void>('hf_delete_local_model', { path }),
 
   // Listen to download progress events
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
@@ -1009,6 +1070,235 @@ export const huggingFaceService = {
       callback(event.payload as DownloadProgress);
     });
   },
+};
+
+// ==========================================
+// LoRA Training Types and Service
+// ==========================================
+
+// Dataset formats for LoRA training
+export type DatasetFormat = 'Jsonl' | 'Csv' | 'Parquet' | 'Alpaca' | 'ShareGPT' | 'Custom';
+
+// LoRA bias types
+export type LoRaBias = 'None' | 'All' | 'LoraOnly';
+
+// Task types for LoRA training
+export type LoRaTaskType =
+  | 'CausalLM'
+  | 'SequenceClassification'
+  | 'TokenClassification'
+  | 'QuestionAnswering'
+  | 'FeatureExtraction';
+
+// Learning rate scheduler types
+export type LRSchedulerType = 'Cosine' | 'Linear' | 'Constant' | 'ConstantWithWarmup' | 'Polynomial';
+
+// Evaluation strategy
+export type EvalStrategy = 'No' | 'Steps' | 'Epoch';
+
+// Job status enum
+export type JobStatus = 'Queued' | 'Running' | 'Completed' | 'Failed' | 'Cancelled';
+
+// LoRA-specific configuration
+export interface LoraConfig {
+  rank: number;
+  alpha: number;
+  dropout: number;
+  target_modules: string[];
+  bias: LoRaBias;
+  task_type: LoRaTaskType;
+}
+
+// Training hyperparameters configuration
+export interface LoraTrainingConfig {
+  epochs: number;
+  batch_size: number;
+  gradient_accumulation_steps: number;
+  learning_rate: number;
+  lr_scheduler: LRSchedulerType;
+  warmup_ratio: number;
+  weight_decay: number;
+  max_seq_length: number;
+  gradient_checkpointing: boolean;
+  eval_strategy: EvalStrategy;
+  eval_steps?: number;
+  save_steps: number;
+  logging_steps: number;
+  max_grad_norm: number;
+  seed: number;
+  fp16: boolean;
+  bf16: boolean;
+  num_threads: number;
+  use_gpu: boolean;
+  n_gpu_layers: number;
+}
+
+// Training metrics point for progress tracking
+export interface TrainingMetricsPoint {
+  step: number;
+  epoch: number;
+  train_loss: number;
+  val_loss?: number;
+  learning_rate: number;
+  timestamp: number;
+}
+
+// LoRA training job
+export interface LoraTrainingJob {
+  id: string;
+  base_model_path: string;
+  base_model_name: string;
+  dataset_path: string;
+  dataset_format: DatasetFormat;
+  output_dir: string;
+  lora_config: LoraConfig;
+  training_config: LoraTrainingConfig;
+  status: JobStatus;
+  progress: number;
+  current_epoch: number;
+  current_step: number;
+  total_steps: number;
+  train_loss: number;
+  val_loss?: number;
+  metrics_history: TrainingMetricsPoint[];
+  error_message?: string;
+  created_at: number;
+  started_at?: number;
+  completed_at?: number;
+}
+
+// LoRA adapter info for saved adapters
+export interface LoraAdapterInfo {
+  id: string;
+  name: string;
+  base_model: string;
+  path: string;
+  size_bytes: number;
+  rank: number;
+  alpha: number;
+  target_modules: string[];
+  created_at: number;
+  training_job_id?: string;
+  description?: string;
+  tags: string[];
+}
+
+// Dataset validation result
+export interface DatasetValidation {
+  valid: boolean;
+  total_samples: number;
+  valid_samples: number;
+  errors: string[];
+  estimated_tokens: number;
+}
+
+// LoRA training preset
+export interface LoraPreset {
+  name: string;
+  description: string;
+  lora_config: LoraConfig;
+  training_config: LoraTrainingConfig;
+  recommended_vram_gb: number;
+}
+
+// LoRA Training Service
+export const loraTrainingService = {
+  // Job Management
+  createJob: (
+    base_model_path: string,
+    base_model_name: string,
+    dataset_path: string,
+    dataset_format: DatasetFormat,
+    output_dir: string,
+    lora_config?: LoraConfig,
+    training_config?: LoraTrainingConfig
+  ) =>
+    safeInvoke<LoraTrainingJob>('create_lora_job', {
+      base_model_path,
+      base_model_name,
+      dataset_path,
+      dataset_format,
+      output_dir,
+      lora_config,
+      training_config,
+    }),
+
+  startTraining: (job_id: string) =>
+    safeInvoke<void>('start_lora_training', { job_id }),
+
+  getJob: (job_id: string) =>
+    safeInvoke<LoraTrainingJob | null>('get_lora_job', { job_id }),
+
+  getJobs: () => safeInvoke<LoraTrainingJob[]>('get_lora_jobs'),
+
+  cancelJob: (job_id: string) =>
+    safeInvoke<void>('cancel_lora_job', { job_id }),
+
+  deleteJob: (job_id: string) =>
+    safeInvoke<void>('delete_lora_job', { job_id }),
+
+  // Adapter Management
+  getAdapters: () => safeInvoke<LoraAdapterInfo[]>('get_lora_adapters'),
+
+  deleteAdapter: (adapter_id: string) =>
+    safeInvoke<void>('delete_lora_adapter', { adapter_id }),
+
+  // Inference with LoRA
+  runInferenceWithLora: (
+    model_path: string,
+    adapter_path: string,
+    prompt: string,
+    max_tokens?: number,
+    temperature?: number
+  ) =>
+    safeInvoke<string>('run_inference_with_lora', {
+      model_path,
+      adapter_path,
+      prompt,
+      max_tokens,
+      temperature,
+    }),
+
+  // Dataset Validation
+  validateDataset: (path: string, format: DatasetFormat) =>
+    safeInvoke<DatasetValidation>('validate_dataset', { path, format }),
+
+  // Presets
+  getPresets: () => safeInvoke<LoraPreset[]>('get_lora_presets'),
+
+  // Helper: Default LoRA config
+  getDefaultLoraConfig: (): LoraConfig => ({
+    rank: 8,
+    alpha: 16.0,
+    dropout: 0.05,
+    target_modules: ['q_proj', 'v_proj', 'k_proj', 'o_proj'],
+    bias: 'None',
+    task_type: 'CausalLM',
+  }),
+
+  // Helper: Default training config
+  getDefaultTrainingConfig: (): LoraTrainingConfig => ({
+    epochs: 3,
+    batch_size: 4,
+    gradient_accumulation_steps: 4,
+    learning_rate: 2e-4,
+    lr_scheduler: 'Cosine',
+    warmup_ratio: 0.03,
+    weight_decay: 0.001,
+    max_seq_length: 2048,
+    gradient_checkpointing: true,
+    eval_strategy: 'Epoch',
+    eval_steps: undefined,
+    save_steps: 100,
+    logging_steps: 10,
+    max_grad_norm: 1.0,
+    seed: 42,
+    fp16: false,
+    bf16: false,
+    num_threads: navigator.hardwareConcurrency || 4,
+    use_gpu: false,
+    n_gpu_layers: 0,
+  }),
 };
 
 // Agent Types
@@ -1066,7 +1356,8 @@ export interface ActiveModelInfo {
   has_api_key: boolean;
 }
 
-export interface LocalModelInfo {
+// Agent-specific local model info (different from HuggingFace LocalModelInfo above)
+export interface AgentLocalModelInfo {
   name: string;
   size: string;
   quantization: string;
@@ -1118,7 +1409,7 @@ export const agentService = {
 
   // Local models
   scanLocalModels: (directory?: string) =>
-    safeInvoke<LocalModelInfo[]>('agent_scan_local_models', { directory }),
+    safeInvoke<AgentLocalModelInfo[]>('agent_scan_local_models', { directory }),
   getModelsDir: () => safeInvoke<string | null>('agent_get_models_dir'),
   loadLocalModel: (modelPath: string) =>
     safeInvoke<string>('agent_load_local_model', { modelPath }),

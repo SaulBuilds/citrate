@@ -339,7 +339,7 @@ impl ToolHandler for AccountInfoTool {
                         tool: "account_info".to_string(),
                         success: true,
                         message: format!(
-                            "Account {}: Balance {:.6} CTR",
+                            "Account {}: Balance {:.6} SALT",
                             if addr.len() > 10 { &addr[..10] } else { &addr },
                             balance_ctr,
                         ),
@@ -364,5 +364,119 @@ impl ToolHandler for AccountInfoTool {
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_node_manager() -> Option<Arc<NodeManager>> {
+        match NodeManager::new() {
+            Ok(nm) => Some(Arc::new(nm)),
+            Err(_) => None,
+        }
+    }
+
+    #[test]
+    fn test_node_status_tool_name() {
+        if let Some(nm) = create_node_manager() {
+            let tool = NodeStatusTool::new(nm);
+            assert_eq!(tool.name(), "node_status");
+        }
+    }
+
+    #[test]
+    fn test_node_status_tool_description() {
+        if let Some(nm) = create_node_manager() {
+            let tool = NodeStatusTool::new(nm);
+            assert!(tool.description().contains("status"));
+        }
+    }
+
+    #[test]
+    fn test_block_info_tool_name() {
+        if let Some(nm) = create_node_manager() {
+            let tool = BlockInfoTool::new(nm);
+            assert_eq!(tool.name(), "block_info");
+        }
+    }
+
+    #[test]
+    fn test_block_info_tool_description() {
+        if let Some(nm) = create_node_manager() {
+            let tool = BlockInfoTool::new(nm);
+            assert!(tool.description().contains("block"));
+        }
+    }
+
+    #[test]
+    fn test_dag_status_tool_name() {
+        if let Some(nm) = create_node_manager() {
+            let tool = DAGStatusTool::new(nm);
+            assert_eq!(tool.name(), "dag_status");
+        }
+    }
+
+    #[test]
+    fn test_dag_status_tool_description() {
+        if let Some(nm) = create_node_manager() {
+            let tool = DAGStatusTool::new(nm);
+            assert!(tool.description().contains("DAG"));
+        }
+    }
+
+    #[test]
+    fn test_transaction_info_tool_name() {
+        if let Some(nm) = create_node_manager() {
+            let tool = TransactionInfoTool::new(nm);
+            assert_eq!(tool.name(), "transaction_info");
+        }
+    }
+
+    #[test]
+    fn test_transaction_info_tool_description() {
+        if let Some(nm) = create_node_manager() {
+            let tool = TransactionInfoTool::new(nm);
+            assert!(tool.description().contains("transaction"));
+        }
+    }
+
+    #[test]
+    fn test_account_info_tool_name() {
+        if let Some(nm) = create_node_manager() {
+            let tool = AccountInfoTool::new(nm);
+            assert_eq!(tool.name(), "account_info");
+        }
+    }
+
+    #[test]
+    fn test_account_info_tool_description() {
+        if let Some(nm) = create_node_manager() {
+            let tool = AccountInfoTool::new(nm);
+            assert!(tool.description().contains("account"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_transaction_info_missing_hash() {
+        if let Some(nm) = create_node_manager() {
+            let tool = TransactionInfoTool::new(nm);
+            let params = IntentParams::default();
+
+            let result = tool.execute(&params).await;
+            assert!(result.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_account_info_missing_address() {
+        if let Some(nm) = create_node_manager() {
+            let tool = AccountInfoTool::new(nm);
+            let params = IntentParams::default();
+
+            let result = tool.execute(&params).await;
+            assert!(result.is_err());
+        }
     }
 }

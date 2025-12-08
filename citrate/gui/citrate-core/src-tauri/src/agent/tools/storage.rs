@@ -410,3 +410,188 @@ fn sha256_hash(data: &[u8]) -> [u8; 32] {
     hasher.update(data);
     hasher.finalize().into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_upload_ipfs_tool_name() {
+        let tool = UploadIPFSTool::new();
+        assert_eq!(tool.name(), "upload_ipfs");
+    }
+
+    #[test]
+    fn test_upload_ipfs_tool_description() {
+        let tool = UploadIPFSTool::new();
+        assert!(tool.description().contains("Upload"));
+        assert!(tool.description().contains("IPFS"));
+    }
+
+    #[test]
+    fn test_upload_ipfs_default() {
+        let tool = UploadIPFSTool::default();
+        assert_eq!(tool.api_endpoint, "http://localhost:5001/api/v0");
+    }
+
+    #[test]
+    fn test_upload_ipfs_with_endpoint() {
+        let tool = UploadIPFSTool::with_endpoint("http://custom:5001/api/v0");
+        assert_eq!(tool.api_endpoint, "http://custom:5001/api/v0");
+    }
+
+    #[test]
+    fn test_get_ipfs_tool_name() {
+        let tool = GetIPFSTool::new();
+        assert_eq!(tool.name(), "get_ipfs");
+    }
+
+    #[test]
+    fn test_get_ipfs_tool_description() {
+        let tool = GetIPFSTool::new();
+        assert!(tool.description().contains("Retrieve"));
+        assert!(tool.description().contains("CID"));
+    }
+
+    #[test]
+    fn test_get_ipfs_default() {
+        let _tool = GetIPFSTool::default();
+        // Just verify default creation works
+    }
+
+    #[test]
+    fn test_pin_ipfs_tool_name() {
+        let tool = PinIPFSTool::new();
+        assert_eq!(tool.name(), "pin_ipfs");
+    }
+
+    #[test]
+    fn test_pin_ipfs_tool_description() {
+        let tool = PinIPFSTool::new();
+        assert!(tool.description().contains("Pin"));
+    }
+
+    #[test]
+    fn test_pin_ipfs_default() {
+        let tool = PinIPFSTool::default();
+        assert_eq!(tool.api_endpoint, "http://localhost:5001/api/v0");
+    }
+
+    #[test]
+    fn test_default_gateway_constant() {
+        assert!(DEFAULT_GATEWAY.starts_with("https://"));
+        assert!(DEFAULT_GATEWAY.contains("ipfs"));
+    }
+
+    #[test]
+    fn test_fallback_gateways_constant() {
+        assert!(FALLBACK_GATEWAYS.len() >= 3);
+        for gateway in FALLBACK_GATEWAYS {
+            assert!(gateway.starts_with("https://"));
+            assert!(gateway.contains("ipfs"));
+        }
+    }
+
+    #[test]
+    fn test_sha256_hash() {
+        let data = b"test data";
+        let hash = sha256_hash(data);
+        assert_eq!(hash.len(), 32);
+
+        // Same input should produce same hash
+        let hash2 = sha256_hash(data);
+        assert_eq!(hash, hash2);
+
+        // Different input should produce different hash
+        let hash3 = sha256_hash(b"different data");
+        assert_ne!(hash, hash3);
+    }
+
+    #[tokio::test]
+    async fn test_upload_ipfs_missing_params() {
+        let tool = UploadIPFSTool::new();
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_err());
+
+        if let Err(DispatchError::InvalidParams(msg)) = result {
+            assert!(msg.contains("required"));
+        } else {
+            panic!("Expected InvalidParams error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_ipfs_file_not_found() {
+        let tool = UploadIPFSTool::new();
+        let mut params = IntentParams::default();
+        params.prompt = Some("/nonexistent/path/to/file.txt".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(!output.success);
+        assert!(output.message.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_get_ipfs_missing_cid() {
+        let tool = GetIPFSTool::new();
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_err());
+
+        if let Err(DispatchError::InvalidParams(msg)) = result {
+            assert!(msg.contains("CID required"));
+        } else {
+            panic!("Expected InvalidParams error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_ipfs_invalid_cid_format() {
+        let tool = GetIPFSTool::new();
+        let mut params = IntentParams::default();
+        params.prompt = Some("invalid_cid".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(!output.success);
+        assert!(output.message.contains("Invalid CID format"));
+    }
+
+    #[tokio::test]
+    async fn test_pin_ipfs_missing_cid() {
+        let tool = PinIPFSTool::new();
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_err());
+
+        if let Err(DispatchError::InvalidParams(msg)) = result {
+            assert!(msg.contains("CID required"));
+        } else {
+            panic!("Expected InvalidParams error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pin_ipfs_no_node_available() {
+        let tool = PinIPFSTool::new();
+        let mut params = IntentParams::default();
+        params.prompt = Some("QmTestCidHash123456789".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        // Should fail gracefully when IPFS node is not available
+        assert!(!output.success);
+        assert!(output.message.contains("not available") || output.message.contains("Could not pin"));
+    }
+}

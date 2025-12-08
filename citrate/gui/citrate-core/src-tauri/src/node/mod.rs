@@ -1320,6 +1320,96 @@ impl NodeManager {
         self.reward_address.read().await.clone()
     }
 
+    /// Execute an eth_call against the current state
+    /// This is a read-only call that doesn't modify state
+    pub async fn eth_call(&self, to: &str, data: &str) -> Result<String, String> {
+        use citrate_consensus::types::{Block, BlockHeader, PublicKey, Signature, VrfProof, Hash};
+
+        let node_guard = self.node.read().await;
+        let node = node_guard.as_ref().ok_or("Node is not running")?;
+
+        // Parse the 'to' address (20 bytes)
+        let to_bytes = hex::decode(to.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid to address: {}", e))?;
+        if to_bytes.len() != 20 {
+            return Err("Invalid to address length".to_string());
+        }
+
+        // Convert 20-byte address to 32-byte PublicKey format (padded with zeros)
+        let mut to_pk_bytes = [0u8; 32];
+        to_pk_bytes[..20].copy_from_slice(&to_bytes);
+        let to_pk = PublicKey::new(to_pk_bytes);
+
+        // Parse the data
+        let data_bytes = hex::decode(data.trim_start_matches("0x"))
+            .map_err(|e| format!("Invalid calldata: {}", e))?;
+
+        // Zero-address sender for read-only calls
+        let from_pk = PublicKey::new([0u8; 32]);
+
+        // Build a lightweight block context
+        let blk = Block {
+            header: BlockHeader {
+                version: 1,
+                block_hash: Hash::default(),
+                selected_parent_hash: Hash::default(),
+                merge_parent_hashes: vec![],
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                height: 0,
+                blue_score: 0,
+                blue_work: 0,
+                pruning_point: Hash::default(),
+                proposer_pubkey: PublicKey::new([0u8; 32]),
+                vrf_reveal: VrfProof {
+                    proof: vec![],
+                    output: Hash::default(),
+                },
+                base_fee_per_gas: 1_000_000_000, // 1 gwei
+                gas_used: 0,
+                gas_limit: 30_000_000,
+            },
+            state_root: Hash::default(),
+            tx_root: Hash::default(),
+            receipt_root: Hash::default(),
+            artifact_root: Hash::default(),
+            ghostdag_params: Default::default(),
+            transactions: vec![],
+            signature: Signature::new([0u8; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
+        };
+
+        // Create a pseudo-transaction for the call
+        let mut tx = citrate_consensus::types::Transaction {
+            hash: Hash::default(),
+            nonce: 0,
+            from: from_pk,
+            to: Some(to_pk),
+            value: 0u128,
+            gas_limit: 30_000_000,
+            gas_price: 1,
+            data: data_bytes,
+            signature: Signature::new([0u8; 64]),
+            tx_type: None,
+        };
+
+        // Determine transaction type from data
+        tx.determine_type();
+
+        // Snapshot state, execute, then restore (read-only)
+        let snapshot = node.executor.state_db().snapshot();
+        let result = node.executor.execute_transaction(&blk, &tx).await;
+        node.executor.state_db().restore(snapshot);
+
+        match result {
+            Ok(receipt) => Ok(format!("0x{}", hex::encode(receipt.output))),
+            Err(e) => Err(format!("eth_call failed: {}", e)),
+        }
+    }
+
     /// Broadcast a network message if the node is running
     pub async fn broadcast_network(&self, msg: NetworkMessage) -> Result<(), String> {
         if let Some(node) = self.node.read().await.as_ref() {

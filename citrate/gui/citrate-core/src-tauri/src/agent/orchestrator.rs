@@ -380,16 +380,42 @@ impl AgentOrchestrator {
         let accounts = self.wallet_manager.get_accounts().await;
         let first_account = accounts.first();
         let wallet_address = first_account.map(|a| a.address.clone());
-        let wallet_balance = first_account.map(|a| format!("{} CTR", a.balance));
+        let wallet_balance = first_account.map(|a| {
+            // Format balance nicely with proper units
+            let balance_salt = a.balance as f64 / 1e18;
+            if balance_salt >= 1.0 {
+                format!("{:.4} SALT", balance_salt)
+            } else if balance_salt > 0.0 {
+                format!("{:.8} SALT", balance_salt)
+            } else {
+                "0 SALT".to_string()
+            }
+        });
 
         // Get node status
         let node_status = self.node_manager.get_status().await.ok();
         let node_connected = node_status.as_ref().map(|s| s.running).unwrap_or(false);
         let block_height = node_status.as_ref().map(|s| s.block_height);
+        let dag_tips = node_status.as_ref().map(|s| s.dag_tips);
+        let blue_score = node_status.as_ref().map(|s| s.blue_score);
+        let is_syncing = node_status.as_ref().map(|s| s.syncing);
 
-        // Get network from config
+        // Get peer count
+        let peers = self.node_manager.get_peers_summary().await;
+        let peer_count = Some(peers.len());
+
+        // Get network and chain info from config
         let config = self.node_manager.get_config().await;
         let network = config.network.clone();
+        let chain_id = Some(config.mempool.chain_id);
+
+        // Get pending transaction count from mempool
+        let pending_transactions = if let Some(mempool) = self.node_manager.get_mempool().await {
+            let stats = mempool.stats().await;
+            Some(stats.total_transactions)
+        } else {
+            None
+        };
 
         // Get available models
         let models = self.model_manager.get_models().await.unwrap_or_default();
@@ -402,6 +428,12 @@ impl AgentOrchestrator {
             block_height,
             network,
             available_models,
+            dag_tips: dag_tips.map(|t| t as u64),
+            blue_score,
+            peer_count,
+            is_syncing,
+            chain_id,
+            pending_transactions,
         }
     }
 

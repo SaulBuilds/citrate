@@ -320,3 +320,248 @@ impl ToolHandler for ApplyStyleTool {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_image_size_from_str() {
+        assert!(matches!(ImageSize::from_str("small"), ImageSize::Small));
+        assert!(matches!(ImageSize::from_str("256"), ImageSize::Small));
+        assert!(matches!(ImageSize::from_str("medium"), ImageSize::Medium));
+        assert!(matches!(ImageSize::from_str("512"), ImageSize::Medium));
+        assert!(matches!(ImageSize::from_str("large"), ImageSize::Large));
+        assert!(matches!(ImageSize::from_str("1024"), ImageSize::Large));
+        assert!(matches!(ImageSize::from_str("wide"), ImageSize::Wide));
+        assert!(matches!(ImageSize::from_str("landscape"), ImageSize::Wide));
+        assert!(matches!(ImageSize::from_str("tall"), ImageSize::Tall));
+        assert!(matches!(ImageSize::from_str("portrait"), ImageSize::Tall));
+        assert!(matches!(ImageSize::from_str("unknown"), ImageSize::Medium)); // Default
+    }
+
+    #[test]
+    fn test_image_size_dimensions() {
+        assert_eq!(ImageSize::Small.dimensions(), (256, 256));
+        assert_eq!(ImageSize::Medium.dimensions(), (512, 512));
+        assert_eq!(ImageSize::Large.dimensions(), (1024, 1024));
+        assert_eq!(ImageSize::Wide.dimensions(), (1024, 768));
+        assert_eq!(ImageSize::Tall.dimensions(), (768, 1024));
+    }
+
+    #[test]
+    fn test_generate_image_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GenerateImageTool::new(model_manager);
+        assert_eq!(tool.name(), "generate_image");
+    }
+
+    #[test]
+    fn test_generate_image_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GenerateImageTool::new(model_manager);
+        assert!(tool.description().contains("Generate"));
+        assert!(tool.description().contains("image"));
+    }
+
+    #[test]
+    fn test_list_image_models_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = ListImageModelsTool::new(model_manager);
+        assert_eq!(tool.name(), "list_image_models");
+    }
+
+    #[test]
+    fn test_list_image_models_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = ListImageModelsTool::new(model_manager);
+        assert!(tool.description().contains("List"));
+        assert!(tool.description().contains("image"));
+    }
+
+    #[test]
+    fn test_apply_style_tool_name() {
+        let tool = ApplyStyleTool::new();
+        assert_eq!(tool.name(), "apply_style");
+    }
+
+    #[test]
+    fn test_apply_style_tool_description() {
+        let tool = ApplyStyleTool::new();
+        assert!(tool.description().contains("style"));
+        assert!(tool.description().contains("presets"));
+    }
+
+    #[test]
+    fn test_apply_style_default() {
+        let _tool = ApplyStyleTool::default();
+        // Just verify default creation works
+    }
+
+    #[tokio::test]
+    async fn test_generate_image_missing_prompt() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GenerateImageTool::new(model_manager);
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_err());
+
+        if let Err(DispatchError::InvalidParams(msg)) = result {
+            assert!(msg.contains("Prompt required"));
+        } else {
+            panic!("Expected InvalidParams error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_generate_image_with_prompt() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GenerateImageTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.prompt = Some("a beautiful sunset".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        // The result depends on whether the model is available
+        // Either success or graceful failure is acceptable
+        assert!(output.data.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_generate_image_with_size() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GenerateImageTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.prompt = Some("a mountain landscape".to_string());
+        params.search_query = Some("large".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        if let Some(data) = output.data {
+            let width = data.get("width").and_then(|w| w.as_u64()).unwrap_or(0);
+            let height = data.get("height").and_then(|h| h.as_u64()).unwrap_or(0);
+            assert_eq!(width, 1024);
+            assert_eq!(height, 1024);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_image_models_execution() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = ListImageModelsTool::new(model_manager);
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        assert!(data.get("count").is_some());
+        assert!(data.get("models").is_some());
+        assert!(data.get("supported_sizes").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_apply_style_list_all() {
+        let tool = ApplyStyleTool::new();
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        let styles = data.get("styles").and_then(|s| s.as_array()).unwrap();
+        assert!(styles.len() >= 10); // At least 10 styles available
+    }
+
+    #[tokio::test]
+    async fn test_apply_style_specific() {
+        let tool = ApplyStyleTool::new();
+        let mut params = IntentParams::default();
+        params.search_query = Some("realistic".to_string());
+        params.prompt = Some("a cat".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.message.contains("Applied"));
+
+        let data = output.data.unwrap();
+        assert!(data.get("style").is_some());
+        assert!(data.get("modifiers").is_some());
+        assert!(data.get("enhanced_prompt").is_some());
+
+        let enhanced = data.get("enhanced_prompt").and_then(|p| p.as_str()).unwrap();
+        assert!(enhanced.contains("a cat"));
+        assert!(enhanced.contains("realistic") || enhanced.contains("photorealistic"));
+    }
+
+    #[tokio::test]
+    async fn test_apply_style_anime() {
+        let tool = ApplyStyleTool::new();
+        let mut params = IntentParams::default();
+        params.search_query = Some("anime".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+
+        let data = output.data.unwrap();
+        let modifiers = data.get("modifiers").and_then(|m| m.as_str()).unwrap();
+        assert!(modifiers.contains("anime"));
+    }
+
+    #[tokio::test]
+    async fn test_apply_style_cyberpunk() {
+        let tool = ApplyStyleTool::new();
+        let mut params = IntentParams::default();
+        params.search_query = Some("cyberpunk".to_string());
+        params.prompt = Some("a city".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+
+        let data = output.data.unwrap();
+        let enhanced = data.get("enhanced_prompt").and_then(|p| p.as_str()).unwrap();
+        assert!(enhanced.contains("a city"));
+        assert!(enhanced.contains("cyberpunk") || enhanced.contains("neon"));
+    }
+
+    #[tokio::test]
+    async fn test_apply_style_without_base_prompt() {
+        let tool = ApplyStyleTool::new();
+        let mut params = IntentParams::default();
+        params.search_query = Some("pixel-art".to_string());
+        // No base prompt
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+
+        let data = output.data.unwrap();
+        let enhanced = data.get("enhanced_prompt").and_then(|p| p.as_str()).unwrap();
+        // Should just have the modifiers
+        assert!(enhanced.contains("pixel art"));
+    }
+}

@@ -39,6 +39,43 @@ pub struct SystemContext {
     pub network: String,
     /// Available models
     pub available_models: Vec<String>,
+    /// DAG tips count
+    #[serde(default)]
+    pub dag_tips: Option<u64>,
+    /// Blue score
+    #[serde(default)]
+    pub blue_score: Option<u64>,
+    /// Connected peer count
+    #[serde(default)]
+    pub peer_count: Option<usize>,
+    /// Whether node is syncing
+    #[serde(default)]
+    pub is_syncing: Option<bool>,
+    /// Chain ID
+    #[serde(default)]
+    pub chain_id: Option<u64>,
+    /// Number of pending transactions in mempool
+    #[serde(default)]
+    pub pending_transactions: Option<usize>,
+}
+
+impl Default for SystemContext {
+    fn default() -> Self {
+        Self {
+            wallet_address: None,
+            wallet_balance: None,
+            node_connected: false,
+            block_height: None,
+            network: "unknown".to_string(),
+            available_models: Vec::new(),
+            dag_tips: None,
+            blue_score: None,
+            peer_count: None,
+            is_syncing: None,
+            chain_id: None,
+            pending_transactions: None,
+        }
+    }
 }
 
 impl SystemContext {
@@ -46,33 +83,97 @@ impl SystemContext {
     pub fn to_context_string(&self) -> String {
         let mut parts = Vec::new();
 
-        parts.push(format!("Network: {}", self.network));
-        parts.push(format!(
-            "Node Status: {}",
-            if self.node_connected {
-                "Connected"
-            } else {
-                "Disconnected"
+        // Header
+        parts.push("## Current Context".to_string());
+
+        // Network section
+        parts.push(format!("**Network:** {}", self.network));
+        if let Some(chain_id) = self.chain_id {
+            parts.push(format!("**Chain ID:** {}", chain_id));
+        }
+
+        // Node status section
+        if self.node_connected {
+            parts.push("**Node Status:** Connected".to_string());
+            if let Some(syncing) = self.is_syncing {
+                if syncing {
+                    parts.push("**Sync Status:** Syncing...".to_string());
+                } else {
+                    parts.push("**Sync Status:** Fully synced".to_string());
+                }
             }
-        ));
+            if let Some(peers) = self.peer_count {
+                parts.push(format!("**Connected Peers:** {}", peers));
+            }
+        } else {
+            parts.push("**Node Status:** Disconnected".to_string());
+        }
+
+        // Block/DAG info
+        if let Some(height) = self.block_height {
+            parts.push(format!("**Block Height:** {}", height));
+        }
+        if let Some(tips) = self.dag_tips {
+            parts.push(format!("**DAG Tips:** {}", tips));
+        }
+        if let Some(score) = self.blue_score {
+            parts.push(format!("**Blue Score:** {}", score));
+        }
+
+        // Mempool info
+        if let Some(pending) = self.pending_transactions {
+            parts.push(format!("**Pending Transactions:** {}", pending));
+        }
+
+        // Wallet section
+        if let Some(addr) = &self.wallet_address {
+            parts.push(format!("**Wallet Address:** `{}`", addr));
+        }
+        if let Some(balance) = &self.wallet_balance {
+            parts.push(format!("**Wallet Balance:** {}", balance));
+        }
+
+        // Models section
+        if !self.available_models.is_empty() {
+            let model_count = self.available_models.len();
+            let preview: Vec<_> = self.available_models.iter().take(5).collect();
+            let model_list = preview.iter().map(|m| format!("`{}`", m)).collect::<Vec<_>>().join(", ");
+            if model_count > 5 {
+                parts.push(format!("**Available Models:** {} (+{} more)", model_list, model_count - 5));
+            } else {
+                parts.push(format!("**Available Models:** {}", model_list));
+            }
+        }
+
+        parts.join("\n")
+    }
+
+    /// Create a minimal context string for constrained scenarios
+    pub fn to_compact_string(&self) -> String {
+        let mut parts = Vec::new();
+
+        parts.push(format!("Network: {}", self.network));
+        parts.push(format!("Node: {}", if self.node_connected { "Connected" } else { "Disconnected" }));
 
         if let Some(height) = self.block_height {
-            parts.push(format!("Block Height: {}", height));
+            parts.push(format!("Block: {}", height));
         }
 
         if let Some(addr) = &self.wallet_address {
-            parts.push(format!("Wallet: {}", addr));
+            // Shorten address for compact view
+            let short_addr = if addr.len() > 14 {
+                format!("{}...{}", &addr[..8], &addr[addr.len()-6..])
+            } else {
+                addr.clone()
+            };
+            parts.push(format!("Wallet: {}", short_addr));
         }
 
         if let Some(balance) = &self.wallet_balance {
             parts.push(format!("Balance: {}", balance));
         }
 
-        if !self.available_models.is_empty() {
-            parts.push(format!("Available Models: {}", self.available_models.join(", ")));
-        }
-
-        parts.join("\n")
+        parts.join(" | ")
     }
 }
 
@@ -311,16 +412,52 @@ mod tests {
     fn test_system_context_formatting() {
         let ctx = SystemContext {
             wallet_address: Some("0x1234...5678".to_string()),
-            wallet_balance: Some("100 CTR".to_string()),
+            wallet_balance: Some("100 SALT".to_string()),
             node_connected: true,
             block_height: Some(12345),
             network: "devnet".to_string(),
             available_models: vec!["llama-7b".to_string()],
+            dag_tips: Some(5),
+            blue_score: Some(9876),
+            peer_count: Some(8),
+            is_syncing: Some(false),
+            chain_id: Some(1337),
+            pending_transactions: Some(3),
         };
 
         let formatted = ctx.to_context_string();
         assert!(formatted.contains("devnet"));
         assert!(formatted.contains("Connected"));
         assert!(formatted.contains("12345"));
+        assert!(formatted.contains("1337")); // chain_id
+        assert!(formatted.contains("DAG Tips"));
+        assert!(formatted.contains("Blue Score"));
+    }
+
+    #[test]
+    fn test_system_context_compact() {
+        let ctx = SystemContext {
+            wallet_address: Some("0x1234567890abcdef1234567890abcdef12345678".to_string()),
+            wallet_balance: Some("100 SALT".to_string()),
+            node_connected: true,
+            block_height: Some(12345),
+            network: "devnet".to_string(),
+            ..Default::default()
+        };
+
+        let compact = ctx.to_compact_string();
+        assert!(compact.contains("devnet"));
+        assert!(compact.contains("Connected"));
+        assert!(compact.contains("12345"));
+        // Address should be shortened
+        assert!(compact.contains("0x123456...345678"));
+    }
+
+    #[test]
+    fn test_system_context_default() {
+        let ctx = SystemContext::default();
+        assert!(!ctx.node_connected);
+        assert_eq!(ctx.network, "unknown");
+        assert!(ctx.available_models.is_empty());
     }
 }

@@ -20,7 +20,7 @@ export interface MarketplaceModel {
   architecture: string;
   version: string;
   price: number; // in ETH
-  currency: 'LAT' | 'ETH';
+  currency: 'SALT' | 'ETH';
   rating: number;
   reviews: number;
   downloads: number;

@@ -49,6 +49,8 @@ aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.21"
 hex = "0.4"
+hmac = "0.12"
+sha2 = "0.10"
 
 # Database
 rocksdb = "0.22"
@@ -86,6 +88,9 @@ futures = "0.3"
 # Local LLM support using llama-cpp-2 bindings
 # llama-cpp-2 is a modern Rust wrapper around llama.cpp with Qwen2 support
 llama-cpp-2 = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10"
 
 [features]
 # Enable local-llm by default for bundled model inference

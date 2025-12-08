@@ -114,7 +114,7 @@ export default function MarketplacePage() {
             <p className="text-sm opacity-80">Developers</p>
           </div>
           <div className="bg-white/10 rounded-lg p-4">
-            <p className="text-2xl font-bold">{stats?.totalVolume || '0'} LAT</p>
+            <p className="text-2xl font-bold">{stats?.totalVolume || '0'} SALT</p>
             <p className="text-sm opacity-80">Total Volume</p>
           </div>
         </div>

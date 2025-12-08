@@ -132,11 +132,11 @@ Missing (design needed and/or implementation work)
 
 ## Gaps to Vision Mapping
 
-Target: Immutable knowledge DAG + native AI compute/storage network, paid in LAT, accessible via RPC, with governance and tokenomics.
+Target: Immutable knowledge DAG + native AI compute/storage network, paid in SALT, accessible via RPC, with governance and tokenomics.
 
 - Immutable knowledge DAG: DAG and state roots exist; artifact root computed, but no enforced artifact availability (IPFS pinning/replication and availability proofs missing).
 - Native AI network: MCP exists in modules, but not connected to RPC or block execution; provider staking, payments, and slashing are not implemented.
-- Pay by LAT: Fee flow for AI ops is partial; no automated settlement to providers/trainers or storage pinning providers.
+- Pay by SALT: Fee flow for AI ops is partial; no automated settlement to providers/trainers or storage pinning providers.
 - Governance: No on‑chain governance for protocol params/upgrades; no DAO factory for app‑level governance.
 
 ---
@@ -211,7 +211,7 @@ Prioritized milestones (incremental, testable):
 
 ### C. MCP Execution & Settlement
 
-- Flow: request → provider selection → execution → proof → verification → settlement (LAT transfer) → receipt finalization.
+- Flow: request → provider selection → execution → proof → verification → settlement (SALT transfer) → receipt finalization.
 - Proofs: use ZK backend abstraction to generate/verify per job type; store proof CID via Artifact Manager.
 - Slashing: if proof invalid or timeout exceeded, penalize provider stake and update reputation.
 

@@ -71,7 +71,7 @@ impl MCPRegistryBridge {
                 base_price: Default::default(),
                 per_token_price: Default::default(),
                 per_second_price: Default::default(),
-                currency: Currency::LAT,
+                currency: Currency::SALT,
             },
         }
     }

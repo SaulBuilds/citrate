@@ -197,8 +197,12 @@ pub struct OnboardingStep {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OnboardingAction {
-    /// Create a wallet
+    /// Setup wallet password (required before wallet creation)
+    SetupPassword,
+    /// Create a wallet (requires password to be set first)
     CreateWallet,
+    /// Verify mnemonic backup
+    VerifyMnemonic,
     /// Request test tokens from faucet
     RequestFaucet,
     /// Send a test transaction
@@ -211,6 +215,48 @@ pub enum OnboardingAction {
     OpenDocs { url: String },
     /// Navigate to a view
     Navigate { view: String },
+}
+
+/// Password setup state for onboarding
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PasswordSetupState {
+    /// Whether password has been set
+    pub password_set: bool,
+    /// Password strength score (0-100)
+    pub strength_score: u8,
+    /// Whether password confirmation matched
+    pub confirmed: bool,
+}
+
+/// Mnemonic verification state
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MnemonicVerificationState {
+    /// The mnemonic words (only stored temporarily during verification)
+    #[serde(skip_serializing)]
+    pub mnemonic_words: Vec<String>,
+    /// Indices of words to verify (randomly selected)
+    pub verification_indices: Vec<usize>,
+    /// Whether verification is complete
+    pub verified: bool,
+}
+
+/// Extended onboarding state that includes password setup
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OnboardingState {
+    /// Current step in onboarding
+    pub current_step: usize,
+    /// User's assessment
+    pub assessment: UserAssessment,
+    /// Password setup state
+    pub password_state: PasswordSetupState,
+    /// Mnemonic verification state
+    pub mnemonic_state: MnemonicVerificationState,
+    /// Whether wallet was created
+    pub wallet_created: bool,
+    /// Primary wallet address (after creation)
+    pub wallet_address: Option<String>,
+    /// Whether onboarding is complete
+    pub completed: bool,
 }
 
 impl Default for OnboardingManager {
@@ -440,10 +486,24 @@ What would you like to explore first? I can show you the API documentation, help
                         optional: true,
                     },
                     OnboardingStep {
+                        id: "b1.5".to_string(),
+                        title: "Secure Your Wallet".to_string(),
+                        content: "Before we create your wallet, you need to set up a secure password. This password will encrypt your wallet and protect your funds.\n\n**Password Requirements:**\n- At least 12 characters\n- Mix of uppercase and lowercase letters\n- At least one number\n- At least one special character (!@#$%^&*...)".to_string(),
+                        action: Some(OnboardingAction::SetupPassword),
+                        optional: false,
+                    },
+                    OnboardingStep {
                         id: "b2".to_string(),
                         title: "Create Your Wallet".to_string(),
                         content: "Your wallet is like a digital identity on the blockchain. It holds your tokens and lets you interact with the network. Let's create one now.".to_string(),
                         action: Some(OnboardingAction::CreateWallet),
+                        optional: false,
+                    },
+                    OnboardingStep {
+                        id: "b2.5".to_string(),
+                        title: "Backup Your Recovery Phrase".to_string(),
+                        content: "Your recovery phrase is the ONLY way to restore your wallet if you lose access. Write it down on paper and store it safely.\n\n**NEVER share this phrase with anyone!**\n**NEVER store it digitally or take screenshots!**".to_string(),
+                        action: Some(OnboardingAction::VerifyMnemonic),
                         optional: false,
                     },
                     OnboardingStep {
@@ -481,10 +541,24 @@ What would you like to explore first? I can show you the API documentation, help
                 description: "For developers ready to build on Citrate".to_string(),
                 steps: vec![
                     OnboardingStep {
+                        id: "i0.5".to_string(),
+                        title: "Secure Your Wallet".to_string(),
+                        content: "First, set up a secure password to protect your wallet.\n\n**Requirements:** 12+ characters, mixed case, numbers, and special characters.".to_string(),
+                        action: Some(OnboardingAction::SetupPassword),
+                        optional: false,
+                    },
+                    OnboardingStep {
                         id: "i1".to_string(),
                         title: "Connect Your Wallet".to_string(),
                         content: "Import an existing wallet or create a new one. We recommend securing it with a hardware wallet for production use.".to_string(),
                         action: Some(OnboardingAction::CreateWallet),
+                        optional: false,
+                    },
+                    OnboardingStep {
+                        id: "i1.5".to_string(),
+                        title: "Verify Backup".to_string(),
+                        content: "Please verify you've backed up your recovery phrase. This is critical for wallet recovery.".to_string(),
+                        action: Some(OnboardingAction::VerifyMnemonic),
                         optional: false,
                     },
                     OnboardingStep {
@@ -533,10 +607,24 @@ What would you like to explore first? I can show you the API documentation, help
                 description: "Quick setup for experienced developers".to_string(),
                 steps: vec![
                     OnboardingStep {
+                        id: "a0.5".to_string(),
+                        title: "Secure Wallet Password".to_string(),
+                        content: "Set a secure password for wallet encryption. Requirements: 12+ chars, mixed case, numbers, special characters.".to_string(),
+                        action: Some(OnboardingAction::SetupPassword),
+                        optional: false,
+                    },
+                    OnboardingStep {
                         id: "a1".to_string(),
                         title: "Quick Wallet Setup".to_string(),
                         content: "Import your existing keys or create a new wallet. Hardware wallet support available.".to_string(),
                         action: Some(OnboardingAction::CreateWallet),
+                        optional: false,
+                    },
+                    OnboardingStep {
+                        id: "a1.5".to_string(),
+                        title: "Verify Recovery Phrase".to_string(),
+                        content: "Confirm you've securely backed up your mnemonic phrase.".to_string(),
+                        action: Some(OnboardingAction::VerifyMnemonic),
                         optional: false,
                     },
                     OnboardingStep {
@@ -690,6 +778,78 @@ What would you like to explore first? I can show you the API documentation, help
     }
 }
 
+/// Mnemonic verification helper
+pub struct MnemonicVerifier;
+
+impl MnemonicVerifier {
+    /// Generate random indices for mnemonic verification
+    /// Returns 3 random word positions (0-11 for 12-word mnemonic)
+    pub fn generate_verification_indices(word_count: usize) -> Vec<usize> {
+        use rand::seq::SliceRandom;
+
+        let mut indices: Vec<usize> = (0..word_count).collect();
+        let mut rng = rand::thread_rng();
+        indices.shuffle(&mut rng);
+        indices.into_iter().take(3).collect()
+    }
+
+    /// Create a verification challenge from mnemonic
+    pub fn create_challenge(mnemonic: &str) -> MnemonicVerificationState {
+        let words: Vec<String> = mnemonic.split_whitespace().map(|s| s.to_string()).collect();
+        let indices = Self::generate_verification_indices(words.len());
+
+        MnemonicVerificationState {
+            mnemonic_words: words,
+            verification_indices: indices,
+            verified: false,
+        }
+    }
+
+    /// Format verification prompt
+    pub fn format_prompt(state: &MnemonicVerificationState) -> String {
+        let mut prompt = String::from("To verify you've backed up your recovery phrase, please enter the following words:\n\n");
+
+        for (i, &idx) in state.verification_indices.iter().enumerate() {
+            prompt.push_str(&format!("{}. Word #{} (position {})\n", i + 1, idx + 1, idx + 1));
+        }
+
+        prompt.push_str("\nEnter the words separated by spaces:");
+        prompt
+    }
+
+    /// Verify user's response against the mnemonic
+    pub fn verify_response(state: &MnemonicVerificationState, response: &str) -> Result<bool, String> {
+        let user_words: Vec<&str> = response.split_whitespace().collect();
+
+        if user_words.len() != state.verification_indices.len() {
+            return Err(format!(
+                "Expected {} words, got {}",
+                state.verification_indices.len(),
+                user_words.len()
+            ));
+        }
+
+        for (i, &idx) in state.verification_indices.iter().enumerate() {
+            if idx >= state.mnemonic_words.len() {
+                return Err("Invalid verification state".to_string());
+            }
+
+            let expected = &state.mnemonic_words[idx];
+            let provided = user_words[i].to_lowercase();
+
+            if expected.to_lowercase() != provided {
+                return Err(format!(
+                    "Word {} (position {}) is incorrect",
+                    i + 1,
+                    idx + 1
+                ));
+            }
+        }
+
+        Ok(true)
+    }
+}
+
 /// Response from processing an assessment input
 #[derive(Debug, Clone)]
 pub enum AssessmentResponse {
@@ -805,5 +965,350 @@ mod tests {
         assert!(OnboardingManager::wants_to_start("let's go"));
         assert!(OnboardingManager::wants_to_start("I'm ready"));
         assert!(!OnboardingManager::wants_to_start("skip"));
+    }
+
+    #[test]
+    fn test_mnemonic_verification_indices() {
+        let indices = MnemonicVerifier::generate_verification_indices(12);
+        assert_eq!(indices.len(), 3);
+        // All indices should be unique
+        assert!(indices[0] != indices[1] && indices[1] != indices[2] && indices[0] != indices[2]);
+        // All indices should be in valid range
+        for idx in &indices {
+            assert!(*idx < 12);
+        }
+    }
+
+    #[test]
+    fn test_mnemonic_verification_create_challenge() {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let state = MnemonicVerifier::create_challenge(mnemonic);
+        assert_eq!(state.mnemonic_words.len(), 12);
+        assert_eq!(state.verification_indices.len(), 3);
+        assert!(!state.verified);
+    }
+
+    #[test]
+    fn test_mnemonic_verification_verify_response() {
+        let mut state = MnemonicVerificationState {
+            mnemonic_words: vec![
+                "word1".to_string(), "word2".to_string(), "word3".to_string(),
+                "word4".to_string(), "word5".to_string(), "word6".to_string(),
+            ],
+            verification_indices: vec![0, 2, 4], // positions 1, 3, 5
+            verified: false,
+        };
+
+        // Correct response
+        let result = MnemonicVerifier::verify_response(&state, "word1 word3 word5");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+
+        // Case insensitive
+        let result = MnemonicVerifier::verify_response(&state, "WORD1 WORD3 WORD5");
+        assert!(result.is_ok());
+
+        // Wrong words
+        let result = MnemonicVerifier::verify_response(&state, "wrong wrong wrong");
+        assert!(result.is_err());
+
+        // Wrong count
+        let result = MnemonicVerifier::verify_response(&state, "word1 word3");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_onboarding_state_default() {
+        let state = OnboardingState::default();
+        assert_eq!(state.current_step, 0);
+        assert!(!state.password_state.password_set);
+        assert!(!state.mnemonic_state.verified);
+        assert!(!state.wallet_created);
+        assert!(state.wallet_address.is_none());
+        assert!(!state.completed);
+    }
+
+    #[test]
+    fn test_password_setup_steps_exist() {
+        let manager = OnboardingManager::new();
+
+        // All paths should have password setup as a mandatory step
+        for level in [SkillLevel::Beginner, SkillLevel::Intermediate, SkillLevel::Advanced] {
+            let path = manager.get_path(level).expect("Path should exist");
+            let has_password_step = path.steps.iter().any(|step| {
+                matches!(&step.action, Some(OnboardingAction::SetupPassword))
+            });
+            assert!(has_password_step, "Path {:?} should have password setup step", level);
+
+            let has_verify_step = path.steps.iter().any(|step| {
+                matches!(&step.action, Some(OnboardingAction::VerifyMnemonic))
+            });
+            assert!(has_verify_step, "Path {:?} should have mnemonic verification step", level);
+        }
+    }
+
+    // =========================================================================
+    // Additional tests for WP-10.4
+    // =========================================================================
+
+    #[test]
+    fn test_skill_level_serialization() {
+        assert_eq!(format!("{:?}", SkillLevel::Beginner), "Beginner");
+        assert_eq!(format!("{:?}", SkillLevel::Intermediate), "Intermediate");
+        assert_eq!(format!("{:?}", SkillLevel::Advanced), "Advanced");
+        assert_eq!(format!("{:?}", SkillLevel::Unknown), "Unknown");
+    }
+
+    #[test]
+    fn test_onboarding_paths_have_names() {
+        let manager = OnboardingManager::new();
+
+        if let Some(path) = manager.get_path(SkillLevel::Beginner) {
+            assert!(!path.name.is_empty());
+            assert!(!path.description.is_empty());
+        }
+
+        if let Some(path) = manager.get_path(SkillLevel::Intermediate) {
+            assert!(!path.name.is_empty());
+            assert!(!path.description.is_empty());
+        }
+
+        if let Some(path) = manager.get_path(SkillLevel::Advanced) {
+            assert!(!path.name.is_empty());
+            assert!(!path.description.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_password_state_default() {
+        let state = PasswordSetupState::default();
+        assert!(!state.password_set);
+        assert_eq!(state.strength_score, 0);
+        assert!(!state.confirmed);
+    }
+
+    #[test]
+    fn test_mnemonic_verification_state_default() {
+        let state = MnemonicVerificationState::default();
+        assert!(state.mnemonic_words.is_empty());
+        assert!(state.verification_indices.is_empty());
+        assert!(!state.verified);
+    }
+
+    #[test]
+    fn test_user_assessment_boundary_scores() {
+        // Test at different score levels and validate placement
+        let mut assessment = UserAssessment::new();
+        assessment.record_answer("q1", 1);
+        assessment.record_answer("q2", 1);
+        assessment.record_answer("q3", 1);
+        assessment.record_answer("q4", 0);
+        assessment.finalize();
+        // Score 3 - actual implementation decides level based on score
+        assert!(assessment.completed);
+        assert!(assessment.skill_level != SkillLevel::Unknown);
+
+        // Test higher score
+        let mut assessment2 = UserAssessment::new();
+        assessment2.record_answer("q1", 2);
+        assessment2.record_answer("q2", 2);
+        assessment2.record_answer("q3", 2);
+        assessment2.record_answer("q4", 0);
+        assessment2.finalize();
+        // Score 6 - should be at least intermediate
+        assert!(assessment2.completed);
+        assert!(assessment2.skill_level != SkillLevel::Unknown);
+    }
+
+    #[test]
+    fn test_mnemonic_verification_edge_cases() {
+        let state = MnemonicVerificationState {
+            mnemonic_words: vec![
+                "apple".to_string(), "banana".to_string(), "cherry".to_string(),
+            ],
+            verification_indices: vec![0, 1, 2],
+            verified: false,
+        };
+
+        // Extra whitespace should be handled
+        let result = MnemonicVerifier::verify_response(&state, "  apple   banana   cherry  ");
+        assert!(result.is_ok());
+
+        // Empty input
+        let result = MnemonicVerifier::verify_response(&state, "");
+        assert!(result.is_err());
+
+        // Mixed case
+        let result = MnemonicVerifier::verify_response(&state, "APPLE Banana ChErRy");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_wants_to_skip_various_phrases() {
+        // Should match skip
+        assert!(OnboardingManager::wants_to_skip("skip"));
+        assert!(OnboardingManager::wants_to_skip("Skip"));
+        assert!(OnboardingManager::wants_to_skip("SKIP"));
+        assert!(OnboardingManager::wants_to_skip("skip this"));
+        assert!(OnboardingManager::wants_to_skip("I want to skip"));
+        assert!(OnboardingManager::wants_to_skip("later"));
+        assert!(OnboardingManager::wants_to_skip("maybe later"));
+
+        // Should not match skip
+        assert!(!OnboardingManager::wants_to_skip(""));
+        assert!(!OnboardingManager::wants_to_skip("hello"));
+        assert!(!OnboardingManager::wants_to_skip("let's do this"));
+    }
+
+    #[test]
+    fn test_wants_to_start_various_phrases() {
+        // Should match start
+        assert!(OnboardingManager::wants_to_start("yes"));
+        assert!(OnboardingManager::wants_to_start("Yes"));
+        assert!(OnboardingManager::wants_to_start("YES"));
+        assert!(OnboardingManager::wants_to_start("ready"));
+        assert!(OnboardingManager::wants_to_start("I'm ready"));
+        assert!(OnboardingManager::wants_to_start("let's go"));
+        assert!(OnboardingManager::wants_to_start("Let's Go!"));
+        assert!(OnboardingManager::wants_to_start("start"));
+
+        // Should not match start
+        assert!(!OnboardingManager::wants_to_start(""));
+        assert!(!OnboardingManager::wants_to_start("skip"));
+        assert!(!OnboardingManager::wants_to_start("no"));
+    }
+
+    #[test]
+    fn test_assessment_response_variants() {
+        // Test NextQuestion variant
+        let response = AssessmentResponse::NextQuestion {
+            follow_up: Some("Good choice!".to_string()),
+            question: "What is your experience?".to_string(),
+            progress: (2, 4),
+        };
+        match response {
+            AssessmentResponse::NextQuestion { progress, .. } => {
+                assert_eq!(progress, (2, 4));
+            }
+            _ => panic!("Expected NextQuestion"),
+        }
+
+        // Test Complete variant
+        let complete = AssessmentResponse::Complete {
+            level: SkillLevel::Advanced,
+            message: "Welcome, expert!".to_string(),
+            path: None,
+        };
+        match complete {
+            AssessmentResponse::Complete { level, .. } => {
+                assert_eq!(level, SkillLevel::Advanced);
+            }
+            _ => panic!("Expected Complete"),
+        }
+
+        // Test InvalidResponse variant
+        let invalid = AssessmentResponse::InvalidResponse {
+            message: "Please select a valid option".to_string(),
+            question: "What is blockchain?".to_string(),
+        };
+        match invalid {
+            AssessmentResponse::InvalidResponse { message, .. } => {
+                assert!(!message.is_empty());
+            }
+            _ => panic!("Expected InvalidResponse"),
+        }
+
+        // Test AlreadyComplete variant
+        let already = AssessmentResponse::AlreadyComplete(SkillLevel::Beginner);
+        match already {
+            AssessmentResponse::AlreadyComplete(level) => {
+                assert_eq!(level, SkillLevel::Beginner);
+            }
+            _ => panic!("Expected AlreadyComplete"),
+        }
+    }
+
+    #[test]
+    fn test_onboarding_state_step_progression() {
+        let mut state = OnboardingState::default();
+        assert_eq!(state.current_step, 0);
+
+        state.current_step = 1;
+        assert_eq!(state.current_step, 1);
+
+        state.password_state.password_set = true;
+        assert!(state.password_state.password_set);
+
+        state.wallet_created = true;
+        state.wallet_address = Some("0x1234...".to_string());
+        assert!(state.wallet_created);
+        assert!(state.wallet_address.is_some());
+
+        state.completed = true;
+        assert!(state.completed);
+    }
+
+    #[test]
+    fn test_question_count() {
+        let manager = OnboardingManager::new();
+        let count = manager.question_count();
+        assert!(count > 0);
+        assert_eq!(count, 4); // Expected number of questions
+    }
+
+    #[test]
+    fn test_assessment_max_possible_score() {
+        let mut assessment = UserAssessment::new();
+        // Each question gives max 2 points, 4 questions = 8 max
+        for i in 0..4 {
+            assessment.record_answer(&format!("q{}", i + 1), 2);
+        }
+        assert_eq!(assessment.total_score, 8);
+
+        assessment.finalize();
+        assert_eq!(assessment.skill_level, SkillLevel::Advanced);
+    }
+
+    #[test]
+    fn test_assessment_min_possible_score() {
+        let mut assessment = UserAssessment::new();
+        // Each question gives 0 points minimum
+        for i in 0..4 {
+            assessment.record_answer(&format!("q{}", i + 1), 0);
+        }
+        assert_eq!(assessment.total_score, 0);
+
+        assessment.finalize();
+        assert_eq!(assessment.skill_level, SkillLevel::Beginner);
+    }
+
+    #[test]
+    fn test_mnemonic_12_words() {
+        let mnemonic = "abandon ability able about above absent absorb abstract absurd abuse access accident";
+        let state = MnemonicVerifier::create_challenge(mnemonic);
+        assert_eq!(state.mnemonic_words.len(), 12);
+    }
+
+    #[test]
+    fn test_mnemonic_24_words() {
+        let mnemonic = "abandon ability able about above absent absorb abstract absurd abuse access accident abandon ability able about above absent absorb abstract absurd abuse access accident";
+        let state = MnemonicVerifier::create_challenge(mnemonic);
+        assert_eq!(state.mnemonic_words.len(), 24);
+    }
+
+    #[test]
+    fn test_verification_indices_are_unique() {
+        for _ in 0..10 {
+            let indices = MnemonicVerifier::generate_verification_indices(12);
+            assert_eq!(indices.len(), 3);
+            // All indices should be unique
+            assert_ne!(indices[0], indices[1]);
+            assert_ne!(indices[1], indices[2]);
+            assert_ne!(indices[0], indices[2]);
+            // All indices should be in valid range
+            for idx in &indices {
+                assert!(*idx < 12);
+            }
+        }
     }
 }

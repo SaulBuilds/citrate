@@ -7,13 +7,21 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::RwLock;
 
-use super::config::AgentConfig;
+use super::config::{
+    AgentConfig, AIProvider, ApiKeyManager, ApiKeyValidationResult,
+    SecureApiKeyStore
+};
 use super::intent::{Intent, IntentMatch};
 use super::llm::local::{scan_for_models, GGUFModelInfo};
 use super::orchestrator::{AgentOrchestrator, OrchestratorError, ProcessingResult};
 use super::session::{AgentSession, Message, PendingToolCall, SessionId, SessionState};
 use super::streaming::StreamStatus;
 use super::AgentManager;
+
+use once_cell::sync::Lazy;
+
+// Global secure API key manager instance
+static API_KEY_MANAGER: Lazy<ApiKeyManager> = Lazy::new(ApiKeyManager::new);
 
 /// Agent state accessible from Tauri commands
 pub struct AgentState {
@@ -1676,4 +1684,191 @@ pub async fn skip_onboarding(
 
     tracing::info!("Onboarding skipped by user");
     Ok(())
+}
+
+// =============================================================================
+// Secure API Key Management Commands
+// =============================================================================
+
+/// Helper to convert string to AIProvider
+fn parse_provider(provider: &str) -> Result<AIProvider, String> {
+    match provider.to_lowercase().as_str() {
+        "openai" | "open_ai" => Ok(AIProvider::OpenAI),
+        "anthropic" => Ok(AIProvider::Anthropic),
+        "gemini" | "google" | "google_gemini" => Ok(AIProvider::Gemini),
+        "xai" | "x_ai" | "grok" => Ok(AIProvider::XAI),
+        "local" => Ok(AIProvider::Local),
+        _ => Err(format!("Unknown provider: {}. Valid options: openai, anthropic, gemini, xai, local", provider))
+    }
+}
+
+/// Store an API key securely with optional validation
+/// This uses OS keychain when available, with encrypted file fallback
+#[tauri::command]
+pub async fn secure_store_api_key(
+    state: State<'_, AgentState>,
+    provider: String,
+    api_key: String,
+    validate: bool,
+) -> Result<serde_json::Value, String> {
+    let ai_provider = parse_provider(&provider)?;
+
+    // Validate and store the key
+    let result = API_KEY_MANAGER
+        .set_key(ai_provider, &api_key, validate, None)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Also update the in-memory config if agent is initialized
+    if let Some(manager) = state.manager.read().await.as_ref() {
+        let config = manager.config();
+        let mut cfg = config.write().await;
+        cfg.providers.set_api_key(ai_provider, api_key);
+        if let Some(settings) = cfg.providers.get_provider_settings_mut(ai_provider) {
+            settings.verified = result.valid;
+        }
+    }
+
+    tracing::info!("Securely stored {} API key (validated: {})", provider, validate);
+
+    Ok(serde_json::json!({
+        "success": true,
+        "provider": provider,
+        "validated": result.valid,
+        "model_access": result.model_access,
+        "rate_limit_remaining": result.rate_limit_remaining
+    }))
+}
+
+/// Validate an API key format without storing it
+#[tauri::command]
+pub async fn validate_api_key_format(
+    provider: String,
+    api_key: String,
+) -> Result<serde_json::Value, String> {
+    let ai_provider = parse_provider(&provider)?;
+
+    match SecureApiKeyStore::validate_key_format(ai_provider, &api_key) {
+        Ok(()) => Ok(serde_json::json!({
+            "valid": true,
+            "provider": provider
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "valid": false,
+            "provider": provider,
+            "error": e.to_string()
+        }))
+    }
+}
+
+/// Validate a stored API key by making a test API call
+#[tauri::command]
+pub async fn validate_stored_api_key(
+    provider: String,
+) -> Result<serde_json::Value, String> {
+    let ai_provider = parse_provider(&provider)?;
+
+    let result = API_KEY_MANAGER
+        .validate_stored_key(ai_provider, None)
+        .await;
+
+    Ok(serde_json::json!({
+        "valid": result.valid,
+        "provider": provider,
+        "error_message": result.error_message,
+        "model_access": result.model_access,
+        "rate_limit_remaining": result.rate_limit_remaining
+    }))
+}
+
+/// Check if a secure API key exists for a provider
+#[tauri::command]
+pub async fn has_secure_api_key(
+    provider: String,
+) -> Result<bool, String> {
+    let ai_provider = parse_provider(&provider)?;
+    Ok(API_KEY_MANAGER.has_key(ai_provider))
+}
+
+/// Delete a securely stored API key
+#[tauri::command]
+pub async fn delete_secure_api_key(
+    state: State<'_, AgentState>,
+    provider: String,
+) -> Result<(), String> {
+    let ai_provider = parse_provider(&provider)?;
+
+    API_KEY_MANAGER
+        .delete_key(ai_provider)
+        .map_err(|e| e.to_string())?;
+
+    // Also clear from in-memory config
+    if let Some(manager) = state.manager.read().await.as_ref() {
+        let config = manager.config();
+        let mut cfg = config.write().await;
+        if let Some(settings) = cfg.providers.get_provider_settings_mut(ai_provider) {
+            settings.api_key = None;
+            settings.enabled = false;
+            settings.verified = false;
+        }
+    }
+
+    tracing::info!("Deleted {} API key from secure storage", provider);
+    Ok(())
+}
+
+/// Load all stored API keys into the agent config
+/// Call this during agent initialization
+#[tauri::command]
+pub async fn load_secure_api_keys(
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    // Load keys from secure storage
+    cfg.load_api_keys(API_KEY_MANAGER.store());
+
+    // Count loaded keys
+    let mut loaded = Vec::new();
+    for provider in [AIProvider::OpenAI, AIProvider::Anthropic, AIProvider::Gemini, AIProvider::XAI] {
+        if API_KEY_MANAGER.has_key(provider) {
+            loaded.push(format!("{:?}", provider).to_lowercase());
+        }
+    }
+
+    tracing::info!("Loaded {} API keys from secure storage", loaded.len());
+
+    Ok(serde_json::json!({
+        "loaded_count": loaded.len(),
+        "providers": loaded
+    }))
+}
+
+/// Get status of all securely stored API keys
+#[tauri::command]
+pub async fn get_secure_api_key_status() -> Result<serde_json::Value, String> {
+    let providers = [
+        ("openai", AIProvider::OpenAI),
+        ("anthropic", AIProvider::Anthropic),
+        ("gemini", AIProvider::Gemini),
+        ("xai", AIProvider::XAI),
+    ];
+
+    let mut status = serde_json::Map::new();
+
+    for (name, provider) in providers {
+        let has_key = API_KEY_MANAGER.has_key(provider);
+        status.insert(name.to_string(), serde_json::json!({
+            "has_key": has_key,
+            "provider": name
+        }));
+    }
+
+    Ok(serde_json::Value::Object(status))
 }

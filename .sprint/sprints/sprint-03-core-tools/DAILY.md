@@ -33,7 +33,7 @@ None
   - BalanceTool - queries wallet balance with fallback to cache
   - SendTransactionTool - sends transactions with confirmation flow
   - TransactionHistoryTool - queries tx history via get_account_activity
-  - Amount parsing (CTR, wei, gwei, ether)
+  - Amount parsing (SALT, wei, gwei, ether)
 - [x] WP-3.3: DEPLOY_CONTRACT tool (contracts.rs)
   - DeployContractTool - deploys bytecode with CREATE address derivation
   - Confirmation flow with gas estimation

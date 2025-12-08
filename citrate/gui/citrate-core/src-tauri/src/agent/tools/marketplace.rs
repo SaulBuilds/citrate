@@ -184,7 +184,7 @@ impl ToolHandler for GetListingTool {
                         "hash": model.hash,
                         "pricing": {
                             "base_price": "Free",
-                            "per_inference": "0.0001 CTR"
+                            "per_inference": "0.0001 SALT"
                         },
                         "stats": {
                             "downloads": 0,
@@ -218,6 +218,206 @@ pub struct BrowseCategoryTool {
 impl BrowseCategoryTool {
     pub fn new(model_manager: Arc<ModelManager>) -> Self {
         Self { model_manager }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_marketplace_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = SearchMarketplaceTool::new(model_manager);
+        assert_eq!(tool.name(), "search_marketplace");
+    }
+
+    #[test]
+    fn test_search_marketplace_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = SearchMarketplaceTool::new(model_manager);
+        assert!(tool.description().contains("Search"));
+        assert!(tool.description().contains("marketplace"));
+    }
+
+    #[test]
+    fn test_get_listing_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetListingTool::new(model_manager);
+        assert_eq!(tool.name(), "get_listing");
+    }
+
+    #[test]
+    fn test_get_listing_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetListingTool::new(model_manager);
+        assert!(tool.description().contains("listing"));
+    }
+
+    #[test]
+    fn test_browse_category_tool_name() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = BrowseCategoryTool::new(model_manager);
+        assert_eq!(tool.name(), "browse_category");
+    }
+
+    #[test]
+    fn test_browse_category_tool_description() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = BrowseCategoryTool::new(model_manager);
+        assert!(tool.description().contains("Browse"));
+        assert!(tool.description().contains("category"));
+    }
+
+    #[tokio::test]
+    async fn test_search_marketplace_no_query() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = SearchMarketplaceTool::new(model_manager);
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_search_marketplace_with_query() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = SearchMarketplaceTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.search_query = Some("citrate".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_search_marketplace_with_type_filter() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = SearchMarketplaceTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.model_name = Some("language".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+
+        let data = output.data.unwrap();
+        assert!(data.get("filter_type").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_listing_missing_id() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetListingTool::new(model_manager);
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_err());
+
+        if let Err(DispatchError::InvalidParams(msg)) = result {
+            assert!(msg.contains("required"));
+        } else {
+            panic!("Expected InvalidParams error");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_listing_found() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetListingTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.model_name = Some("gpt-citrate".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        assert!(data.get("id").is_some());
+        assert!(data.get("pricing").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_listing_not_found() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = GetListingTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.model_name = Some("nonexistent-model".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(!output.success);
+        assert!(output.message.contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_browse_category_all() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = BrowseCategoryTool::new(model_manager);
+        let params = IntentParams::default();
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        assert!(data.get("categories").is_some());
+        assert!(data.get("total").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_browse_category_specific() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = BrowseCategoryTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.search_query = Some("language".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+        assert!(output.data.is_some());
+
+        let data = output.data.unwrap();
+        assert!(data.get("category").is_some());
+        assert!(data.get("count").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_browse_category_image() {
+        let model_manager = Arc::new(ModelManager::new());
+        let tool = BrowseCategoryTool::new(model_manager);
+        let mut params = IntentParams::default();
+        params.search_query = Some("image".to_string());
+
+        let result = tool.execute(&params).await;
+        assert!(result.is_ok());
+
+        let output = result.unwrap();
+        assert!(output.success);
+
+        let data = output.data.unwrap();
+        let category = data.get("category").and_then(|c| c.as_str()).unwrap_or("");
+        assert_eq!(category, "Image");
     }
 }
 

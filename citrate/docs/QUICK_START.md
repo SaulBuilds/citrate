@@ -80,7 +80,7 @@ Models are stored in `~/.citrate/models/` by default.
 - Create new wallets with secure key generation
 - Import existing wallets (private key or mnemonic)
 - View balances and transaction history
-- Send CTR tokens
+- Send SALT tokens
 
 ### AI Chat
 

@@ -4,8 +4,8 @@
 //! is never executed in production builds.
 //!
 //! # Usage
-//! ```rust
-//! use crate::dev_mode::{is_dev_mode, dev_only, dev_log};
+//! ```ignore
+//! use citrate_core::dev_mode::{is_dev_mode, dev_only};
 //!
 //! // Check dev mode
 //! if is_dev_mode() {
@@ -14,15 +14,15 @@
 //!
 //! // Execute only in dev mode
 //! dev_only(|| {
-//!     enable_mock_data();
+//!     println!("In dev mode only");
 //! });
-//!
-//! // Log only in dev mode
-//! dev_log!("Debug message: {}", value);
 //! ```
 
 /// Build timestamp from compile time
-const BUILD_TIMESTAMP: &str = env!("BUILD_TIMESTAMP");
+const BUILD_TIMESTAMP: &str = match option_env!("BUILD_TIMESTAMP") {
+    Some(ts) => ts,
+    None => "0",
+};
 
 /// Check if the app is running in development mode.
 /// This is determined at compile time via cfg flag.

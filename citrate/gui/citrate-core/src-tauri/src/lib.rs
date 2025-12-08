@@ -11,7 +11,9 @@ mod agent;
 mod block_producer;
 mod dag;
 mod dev_mode;
+mod gpu;
 mod huggingface;
+mod image_models;
 mod ipfs;
 mod models;
 mod node;
@@ -28,7 +30,8 @@ use citrate_network::NetworkMessage;
 use citrate_sequencer::mempool::TxClass;
 use models::{
     InferenceRequest, InferenceResponse, JobStatus, ModelDeployment, ModelInfo, ModelManager,
-    TrainingJob,
+    TrainingJob, LoraConfig, LoraTrainingConfig, LoraTrainingJob, LoraAdapterInfo,
+    DatasetFormat, DatasetValidation, LoraPreset,
 };
 use node::TxActivity;
 use node::TxOverview;
@@ -40,7 +43,17 @@ use terminal::{TerminalManager, TerminalConfig, TerminalInfo};
 use ipfs::{IpfsManager, IpfsStatus, IpfsConfig, IpfsAddResult, IpfsContent};
 use huggingface::{
     HuggingFaceManager, HFConfig, HFModelInfo, HFModelFile,
-    ModelSearchParams, DownloadProgress, AuthState as HFAuthState, OAuthToken
+    ModelSearchParams, DownloadProgress, AuthState as HFAuthState, OAuthToken,
+    GGUFModelInfo, GGUFFileInfo, LocalModelInfo,
+};
+use gpu::{
+    GPUResourceManager, GPUDevice, GPUAllocationSettings, GPUStats,
+    ProviderStatus, ComputeJob, ComputeJobType, ComputeJobStatus,
+};
+use image_models::{
+    ImageModelManager, ImageModel, ImageGenerationRequest, GenerationJob,
+    ImageTrainingConfig, ImageTrainingJob, GeneratedImage, ImageResolution,
+    Scheduler as ImageScheduler,
 };
 
 // Re-export agent commands
@@ -58,6 +71,9 @@ use agent::commands::{
     // First-run and onboarding commands
     check_first_run, setup_bundled_model, get_onboarding_questions,
     process_onboarding_answer, skip_onboarding,
+    // Secure API key management commands
+    secure_store_api_key, validate_api_key_format, validate_stored_api_key,
+    has_secure_api_key, delete_secure_api_key, load_secure_api_keys, get_secure_api_key_status,
 };
 
 // Application state
@@ -71,6 +87,8 @@ struct AppState {
     terminal_manager: Arc<RwLock<TerminalManager>>,
     ipfs_manager: Arc<IpfsManager>,
     hf_manager: Arc<HuggingFaceManager>,
+    gpu_manager: Arc<GPUResourceManager>,
+    image_model_manager: Arc<ImageModelManager>,
 }
 
 // ===== Node Commands =====
@@ -518,40 +536,26 @@ async fn ensure_connectivity(state: State<'_, AppState>) -> Result<String, Strin
     }
 }
 
+/// Check if first-time setup is needed (returns true if no wallet exists)
+/// SECURITY: Does NOT auto-create wallet - requires user to provide password through onboarding
 #[tauri::command]
 async fn check_first_time_and_setup_if_needed(
     state: State<'_, AppState>,
 ) -> Result<Option<FirstTimeSetupResult>, String> {
     // Check if this is first time setup
     if state.wallet_manager.is_first_time_setup().await {
-        info!("First-time user detected. Performing automatic setup...");
+        info!("First-time user detected. Wallet setup required via onboarding.");
 
-        // Use a default password for automatic setup - in production, this should be user-provided
-        let default_password = "secure_default_password_2024";
-        let setup_result = state
-            .wallet_manager
-            .perform_first_time_setup(default_password)
-            .await
-            .map_err(|e| e.to_string())?;
+        // SECURITY FIX: Do NOT auto-create wallet with hardcoded password
+        // Return None to indicate setup is needed, but actual wallet creation
+        // must happen through the proper onboarding flow with user-provided password
+        //
+        // The frontend should:
+        // 1. Detect this is first-time setup
+        // 2. Show password setup screen in onboarding
+        // 3. Call perform_first_time_setup with user-provided password
 
-        // Automatically set the generated address as the reward address
-        let reward_address = setup_result.primary_address.clone();
-        state
-            .node_manager
-            .set_reward_address(reward_address.clone())
-            .await;
-
-        // Update the node config to persist the reward address
-        let mut config = state.node_manager.get_config().await;
-        config.reward_address = Some(reward_address);
-        let _ = config.save();
-
-        info!(
-            "Automatic first-time setup completed. Reward address: {}",
-            setup_result.primary_address
-        );
-
-        Ok(Some(setup_result))
+        Ok(None)
     } else {
         // Not first time - check if we have a reward address set
         if let Some(primary_address) = state.wallet_manager.get_primary_reward_address().await {
@@ -568,6 +572,15 @@ async fn check_first_time_and_setup_if_needed(
 
         Ok(None)
     }
+}
+
+/// Validate password strength before wallet creation
+/// Returns password strength information including score and any issues
+#[tauri::command]
+async fn validate_password_strength(
+    password: String,
+) -> Result<wallet::PasswordStrength, String> {
+    Ok(wallet::WalletManager::check_password_strength(&password))
 }
 
 fn detect_local_ipv4() -> Option<String> {
@@ -698,14 +711,17 @@ async fn get_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, String
     Ok(state.wallet_manager.get_accounts().await)
 }
 
+/// Delete an account (requires password for re-authentication)
+/// This is an irreversible operation
 #[tauri::command]
 async fn delete_account(
     state: State<'_, AppState>,
     address: String,
+    password: String,
 ) -> Result<(), String> {
     state
         .wallet_manager
-        .delete_account(&address)
+        .delete_account(&address, &password)
         .await
         .map_err(|e| e.to_string())
 }
@@ -1140,6 +1156,151 @@ async fn get_deployments(state: State<'_, AppState>) -> Result<Vec<ModelDeployme
         .map_err(|e| e.to_string())
 }
 
+// ===== LoRA Training Commands =====
+
+/// Create a new LoRA training job
+#[tauri::command]
+async fn create_lora_job(
+    state: State<'_, AppState>,
+    base_model_path: String,
+    base_model_name: String,
+    dataset_path: String,
+    dataset_format: DatasetFormat,
+    output_dir: String,
+    lora_config: Option<LoraConfig>,
+    training_config: Option<LoraTrainingConfig>,
+) -> Result<LoraTrainingJob, String> {
+    state
+        .model_manager
+        .create_lora_job(
+            base_model_path,
+            base_model_name,
+            dataset_path,
+            dataset_format,
+            output_dir,
+            lora_config,
+            training_config,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Start a queued LoRA training job
+#[tauri::command]
+async fn start_lora_training(state: State<'_, AppState>, job_id: String) -> Result<(), String> {
+    state
+        .model_manager
+        .start_lora_training(&job_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get a specific LoRA training job by ID
+#[tauri::command]
+async fn get_lora_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<Option<LoraTrainingJob>, String> {
+    state
+        .model_manager
+        .get_lora_job(&job_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get all LoRA training jobs
+#[tauri::command]
+async fn get_lora_jobs(state: State<'_, AppState>) -> Result<Vec<LoraTrainingJob>, String> {
+    state
+        .model_manager
+        .get_lora_jobs()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Cancel a running LoRA training job
+#[tauri::command]
+async fn cancel_lora_job(state: State<'_, AppState>, job_id: String) -> Result<(), String> {
+    state
+        .model_manager
+        .cancel_lora_job(&job_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a LoRA training job
+#[tauri::command]
+async fn delete_lora_job(state: State<'_, AppState>, job_id: String) -> Result<(), String> {
+    state
+        .model_manager
+        .delete_lora_job(&job_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get all saved LoRA adapters
+#[tauri::command]
+async fn get_lora_adapters(state: State<'_, AppState>) -> Result<Vec<LoraAdapterInfo>, String> {
+    state
+        .model_manager
+        .get_lora_adapters()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Delete a LoRA adapter
+#[tauri::command]
+async fn delete_lora_adapter(state: State<'_, AppState>, adapter_id: String) -> Result<(), String> {
+    state
+        .model_manager
+        .delete_lora_adapter(&adapter_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Run inference with a LoRA adapter
+#[tauri::command]
+async fn run_inference_with_lora(
+    state: State<'_, AppState>,
+    model_path: String,
+    adapter_path: String,
+    prompt: String,
+    max_tokens: Option<usize>,
+    temperature: Option<f32>,
+) -> Result<String, String> {
+    state
+        .model_manager
+        .run_inference_with_lora(
+            &model_path,
+            &adapter_path,
+            &prompt,
+            max_tokens.unwrap_or(512),
+            temperature.unwrap_or(0.7),
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Validate a dataset for LoRA training
+#[tauri::command]
+async fn validate_dataset(
+    state: State<'_, AppState>,
+    path: String,
+    format: DatasetFormat,
+) -> Result<DatasetValidation, String> {
+    state
+        .model_manager
+        .validate_dataset(&path, &format)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get LoRA training presets
+#[tauri::command]
+fn get_lora_presets() -> Vec<LoraPreset> {
+    ModelManager::get_lora_presets()
+}
+
 // ===== Window Commands =====
 
 #[tauri::command]
@@ -1509,6 +1670,132 @@ async fn hf_get_models_dir(state: State<'_, AppState>) -> Result<String, String>
     Ok(state.hf_manager.get_models_dir().await.to_string_lossy().to_string())
 }
 
+// ===== Enhanced HuggingFace Commands (OAuth PKCE, GGUF, Local Models) =====
+
+/// Start OAuth PKCE auth flow - returns authorization URL and state for verification
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct AuthFlowResponse {
+    url: String,
+    state: String,
+}
+
+#[tauri::command]
+async fn hf_start_auth_flow(state: State<'_, AppState>) -> Result<AuthFlowResponse, String> {
+    let (url, auth_state) = state.hf_manager.start_auth_flow().await?;
+    Ok(AuthFlowResponse { url, state: auth_state })
+}
+
+/// Exchange authorization code for token using PKCE verifier
+#[tauri::command]
+async fn hf_exchange_code_with_pkce(
+    app_state: State<'_, AppState>,
+    code: String,
+    state: String,
+) -> Result<HFAuthState, String> {
+    let token = app_state.hf_manager.exchange_code_with_pkce(&code, &state).await?;
+    app_state.hf_manager.set_token(token).await?;
+    Ok(app_state.hf_manager.get_auth_state().await)
+}
+
+/// Search for GGUF-compatible models on HuggingFace
+#[tauri::command]
+async fn hf_search_gguf_models(
+    state: State<'_, AppState>,
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<GGUFModelInfo>, String> {
+    state.hf_manager.search_gguf_models(&query, limit.unwrap_or(20)).await
+}
+
+/// Get detailed GGUF model information
+#[tauri::command]
+async fn hf_get_gguf_model(
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<GGUFModelInfo, String> {
+    state.hf_manager.get_gguf_model(&model_id).await
+}
+
+/// Scan local models directory and return detailed info
+#[tauri::command]
+async fn hf_scan_local_models(state: State<'_, AppState>) -> Result<Vec<LocalModelInfo>, String> {
+    state.hf_manager.scan_local_models().await
+}
+
+/// Auto-detect and return the best available local model for inference
+#[tauri::command]
+async fn hf_auto_select_model(state: State<'_, AppState>) -> Result<Option<LocalModelInfo>, String> {
+    Ok(state.hf_manager.auto_select_model().await)
+}
+
+/// Download model file with resume support
+#[tauri::command]
+async fn hf_download_file_resumable(
+    state: State<'_, AppState>,
+    model_id: String,
+    filename: String,
+) -> Result<String, String> {
+    state.hf_manager
+        .download_file_resumable(&model_id, &filename)
+        .await
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+/// Cancel an active download
+#[tauri::command]
+async fn hf_cancel_download_resumable(
+    state: State<'_, AppState>,
+    model_id: String,
+    filename: String,
+) -> Result<(), String> {
+    state.hf_manager.cancel_download_resumable(&model_id, &filename).await;
+    Ok(())
+}
+
+/// Delete a local model file
+#[tauri::command]
+async fn hf_delete_local_model(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    let path = std::path::PathBuf::from(path);
+    state.hf_manager.delete_local_model(&path).await
+}
+
+/// Recommended model info for frontend display
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct RecommendedModel {
+    model_id: String,
+    name: String,
+    description: String,
+}
+
+/// Get recommended models for first-time users
+#[tauri::command]
+async fn hf_get_recommended_models(state: State<'_, AppState>) -> Result<Vec<RecommendedModel>, String> {
+    let models = state.hf_manager.get_recommended_models().await;
+    Ok(models.into_iter().map(|(id, name, desc)| RecommendedModel {
+        model_id: id.to_string(),
+        name: name.to_string(),
+        description: desc.to_string(),
+    }).collect())
+}
+
+/// Download statistics
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct DownloadStats {
+    active: usize,
+    completed: usize,
+    total_downloaded: u64,
+}
+
+/// Get download statistics
+#[tauri::command]
+async fn hf_get_download_stats(state: State<'_, AppState>) -> Result<DownloadStats, String> {
+    let (active, completed, total_downloaded) = state.hf_manager.get_download_stats().await;
+    Ok(DownloadStats { active, completed, total_downloaded })
+}
+
 // ===== Contract Compilation Commands (Foundry CLI) =====
 
 /// Check if Foundry/forge is installed
@@ -1838,6 +2125,250 @@ struct ForgeTestResult {
     errors: Vec<String>,
 }
 
+// ===== GPU Resource Commands =====
+
+/// Get all detected GPU devices
+#[tauri::command]
+async fn gpu_get_devices(state: State<'_, AppState>) -> Result<Vec<GPUDevice>, String> {
+    Ok(state.gpu_manager.get_devices().await)
+}
+
+/// Refresh GPU device detection
+#[tauri::command]
+async fn gpu_refresh_devices(state: State<'_, AppState>) -> Result<Vec<GPUDevice>, String> {
+    Ok(state.gpu_manager.refresh_devices().await)
+}
+
+/// Get GPU allocation settings
+#[tauri::command]
+async fn gpu_get_settings(state: State<'_, AppState>) -> Result<GPUAllocationSettings, String> {
+    Ok(state.gpu_manager.get_settings().await)
+}
+
+/// Update GPU allocation settings
+#[tauri::command]
+async fn gpu_update_settings(
+    state: State<'_, AppState>,
+    settings: GPUAllocationSettings,
+) -> Result<(), String> {
+    state.gpu_manager.update_settings(settings).await
+}
+
+/// Get GPU usage statistics
+#[tauri::command]
+async fn gpu_get_stats(state: State<'_, AppState>) -> Result<GPUStats, String> {
+    Ok(state.gpu_manager.get_stats().await)
+}
+
+/// Get provider registration status
+#[tauri::command]
+async fn gpu_get_provider_status(state: State<'_, AppState>) -> Result<ProviderStatus, String> {
+    Ok(state.gpu_manager.get_provider_status().await)
+}
+
+/// Submit a compute job to the queue
+#[tauri::command]
+async fn gpu_submit_job(
+    state: State<'_, AppState>,
+    job_type: ComputeJobType,
+    model_id: String,
+    input_hash: String,
+    requester: String,
+    max_payment: u64,
+    memory_required: u64,
+    estimated_time: u64,
+    priority: u32,
+) -> Result<String, String> {
+    let job = ComputeJob {
+        id: uuid::Uuid::new_v4().to_string(),
+        job_type,
+        model_id,
+        input_hash,
+        requester,
+        max_payment,
+        status: ComputeJobStatus::Queued,
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        memory_required,
+        estimated_time,
+        priority,
+    };
+    state.gpu_manager.submit_job(job).await
+}
+
+/// Get a specific compute job by ID
+#[tauri::command]
+async fn gpu_get_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<Option<ComputeJob>, String> {
+    Ok(state.gpu_manager.get_job(&job_id).await)
+}
+
+/// Get all compute jobs (active + queued)
+#[tauri::command]
+async fn gpu_get_all_jobs(state: State<'_, AppState>) -> Result<Vec<ComputeJob>, String> {
+    Ok(state.gpu_manager.get_all_jobs().await)
+}
+
+/// Cancel a compute job
+#[tauri::command]
+async fn gpu_cancel_job(state: State<'_, AppState>, job_id: String) -> Result<(), String> {
+    state.gpu_manager.cancel_job(&job_id).await
+}
+
+/// Get available GPU memory for compute
+#[tauri::command]
+async fn gpu_get_available_memory(state: State<'_, AppState>) -> Result<u64, String> {
+    Ok(state.gpu_manager.get_available_compute_memory().await)
+}
+
+/// Check if GPU compute is within scheduled hours
+#[tauri::command]
+async fn gpu_is_within_schedule(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.gpu_manager.is_within_schedule().await)
+}
+
+// ===== Image Model Commands =====
+
+/// Get all image models
+#[tauri::command]
+async fn image_get_models(state: State<'_, AppState>) -> Result<Vec<ImageModel>, String> {
+    Ok(state.image_model_manager.get_models().await)
+}
+
+/// Get a specific image model by ID
+#[tauri::command]
+async fn image_get_model(
+    state: State<'_, AppState>,
+    model_id: String,
+) -> Result<Option<ImageModel>, String> {
+    Ok(state.image_model_manager.get_model(&model_id).await)
+}
+
+/// Scan for local image models
+#[tauri::command]
+async fn image_scan_local_models(state: State<'_, AppState>) -> Result<Vec<ImageModel>, String> {
+    Ok(state.image_model_manager.scan_local_models().await)
+}
+
+/// Create an image generation job
+#[tauri::command]
+async fn image_create_generation_job(
+    state: State<'_, AppState>,
+    model_id: String,
+    prompt: String,
+    negative_prompt: Option<String>,
+    width: u32,
+    height: u32,
+    num_images: u32,
+    seed: Option<u64>,
+    guidance_scale: f32,
+    num_steps: u32,
+) -> Result<String, String> {
+    let request = ImageGenerationRequest {
+        model_id,
+        prompt,
+        negative_prompt,
+        resolution: ImageResolution::new(width, height),
+        num_images,
+        seed,
+        guidance_scale,
+        num_steps,
+        scheduler: ImageScheduler::EulerAncestral,
+        input_image: None,
+        strength: None,
+        lora_weights: vec![],
+    };
+    state.image_model_manager.create_generation_job(request).await
+}
+
+/// Get generation job by ID
+#[tauri::command]
+async fn image_get_generation_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<Option<GenerationJob>, String> {
+    Ok(state.image_model_manager.get_generation_job(&job_id).await)
+}
+
+/// Get all generation jobs
+#[tauri::command]
+async fn image_get_generation_jobs(state: State<'_, AppState>) -> Result<Vec<GenerationJob>, String> {
+    Ok(state.image_model_manager.get_generation_jobs().await)
+}
+
+/// Cancel a generation job
+#[tauri::command]
+async fn image_cancel_generation_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<(), String> {
+    state.image_model_manager.cancel_generation_job(&job_id).await
+}
+
+/// Create an image training job
+#[tauri::command]
+async fn image_create_training_job(
+    state: State<'_, AppState>,
+    config: ImageTrainingConfig,
+) -> Result<String, String> {
+    state.image_model_manager.create_training_job(config).await
+}
+
+/// Get training job by ID
+#[tauri::command]
+async fn image_get_training_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<Option<ImageTrainingJob>, String> {
+    Ok(state.image_model_manager.get_training_job(&job_id).await)
+}
+
+/// Get all training jobs
+#[tauri::command]
+async fn image_get_training_jobs(state: State<'_, AppState>) -> Result<Vec<ImageTrainingJob>, String> {
+    Ok(state.image_model_manager.get_training_jobs().await)
+}
+
+/// Cancel a training job
+#[tauri::command]
+async fn image_cancel_training_job(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<(), String> {
+    state.image_model_manager.cancel_training_job(&job_id).await
+}
+
+/// Get generated images gallery
+#[tauri::command]
+async fn image_get_gallery(state: State<'_, AppState>) -> Result<Vec<GeneratedImage>, String> {
+    Ok(state.image_model_manager.get_gallery().await)
+}
+
+/// Delete image from gallery
+#[tauri::command]
+async fn image_delete_from_gallery(
+    state: State<'_, AppState>,
+    image_id: String,
+) -> Result<(), String> {
+    state.image_model_manager.delete_from_gallery(&image_id).await
+}
+
+/// Get image models directory
+#[tauri::command]
+async fn image_get_models_dir(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.image_model_manager.get_models_dir().to_string_lossy().to_string())
+}
+
+/// Get image output directory
+#[tauri::command]
+async fn image_get_output_dir(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.image_model_manager.get_output_dir().to_string_lossy().to_string())
+}
+
 // Setup function to initialize node components after startup
 async fn setup_node_components(app_handle: tauri::AppHandle) {
     info!("Setting up node components");
@@ -1904,6 +2435,8 @@ pub fn run() {
     let terminal_manager = Arc::new(RwLock::new(TerminalManager::new()));
     let ipfs_manager = Arc::new(IpfsManager::new());
     let hf_manager = Arc::new(HuggingFaceManager::new());
+    let gpu_manager = Arc::new(GPUResourceManager::new());
+    let image_model_manager = Arc::new(ImageModelManager::new());
 
     // Create agent state (initialized lazily when node starts)
     let agent_state = AgentState::new();
@@ -1920,6 +2453,8 @@ pub fn run() {
             terminal_manager,
             ipfs_manager: ipfs_manager.clone(),
             hf_manager,
+            gpu_manager,
+            image_model_manager,
         })
         .manage(agent_state)
         // Expose IPFS manager separately for agent commands
@@ -1962,6 +2497,7 @@ pub fn run() {
             delete_account,
             is_first_time_setup,
             perform_first_time_setup,
+            validate_password_strength,
             get_account,
             send_transaction,
             eth_call,
@@ -1985,6 +2521,18 @@ pub fn run() {
             get_training_jobs,
             get_job_status,
             get_deployments,
+            // LoRA Training commands
+            create_lora_job,
+            start_lora_training,
+            get_lora_job,
+            get_lora_jobs,
+            cancel_lora_job,
+            delete_lora_job,
+            get_lora_adapters,
+            delete_lora_adapter,
+            run_inference_with_lora,
+            validate_dataset,
+            get_lora_presets,
             // Agent commands
             agent_create_session,
             agent_get_session,
@@ -2019,6 +2567,20 @@ pub fn run() {
             set_local_fallback,
             check_onboarding_status,
             complete_onboarding,
+            // First-run and onboarding commands
+            check_first_run,
+            setup_bundled_model,
+            get_onboarding_questions,
+            process_onboarding_answer,
+            skip_onboarding,
+            // Secure API key management commands
+            secure_store_api_key,
+            validate_api_key_format,
+            validate_stored_api_key,
+            has_secure_api_key,
+            delete_secure_api_key,
+            load_secure_api_keys,
+            get_secure_api_key_status,
             // Window commands
             create_window,
             close_window,
@@ -2066,11 +2628,52 @@ pub fn run() {
             hf_cancel_download,
             hf_get_local_models,
             hf_get_models_dir,
+            // Enhanced HuggingFace commands (OAuth PKCE, GGUF, Local Models)
+            hf_start_auth_flow,
+            hf_exchange_code_with_pkce,
+            hf_search_gguf_models,
+            hf_get_gguf_model,
+            hf_scan_local_models,
+            hf_auto_select_model,
+            hf_download_file_resumable,
+            hf_cancel_download_resumable,
+            hf_delete_local_model,
+            hf_get_recommended_models,
+            hf_get_download_stats,
             // Foundry/Contract compilation commands
             forge_check_installed,
             forge_build,
             forge_init,
             forge_test,
+            // GPU Resource commands
+            gpu_get_devices,
+            gpu_refresh_devices,
+            gpu_get_settings,
+            gpu_update_settings,
+            gpu_get_stats,
+            gpu_get_provider_status,
+            gpu_submit_job,
+            gpu_get_job,
+            gpu_get_all_jobs,
+            gpu_cancel_job,
+            gpu_get_available_memory,
+            gpu_is_within_schedule,
+            // Image Model commands
+            image_get_models,
+            image_get_model,
+            image_scan_local_models,
+            image_create_generation_job,
+            image_get_generation_job,
+            image_get_generation_jobs,
+            image_cancel_generation_job,
+            image_create_training_job,
+            image_get_training_job,
+            image_get_training_jobs,
+            image_cancel_training_job,
+            image_get_gallery,
+            image_delete_from_gallery,
+            image_get_models_dir,
+            image_get_output_dir,
         ])
         .setup(|app| {
             // Initialize window manager with app handle

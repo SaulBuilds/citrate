@@ -509,7 +509,7 @@ export const DAGVisualization: React.FC = () => {
                     <div className="tx-row"><span className="tx-label">Hash:</span><span className="tx-mono">{tx.hash.slice(0, 16)}…</span></div>
                     <div className="tx-row"><span className="tx-label">From:</span><span className="tx-mono">{tx.from_addr || tx.fromAddr || tx.from?.slice(0,16) + '…'}</span></div>
                     <div className="tx-row"><span className="tx-label">To:</span><span className="tx-mono">{tx.to_addr || tx.toAddr || (tx.to ? tx.to.slice(0,16) + '…' : '—')}</span></div>
-                    <div className="tx-row"><span className="tx-label">Value:</span><span>{(Number(tx.value)/1e18).toFixed(4)} LAT</span></div>
+                    <div className="tx-row"><span className="tx-label">Value:</span><span>{(Number(tx.value)/1e18).toFixed(4)} SALT</span></div>
                   </div>
                 ))}
               </div>

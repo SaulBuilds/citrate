@@ -112,11 +112,17 @@ impl IntentClassifier {
     /// Calculate match confidence
     fn calculate_confidence(&self, message: &str, pattern: &str) -> f32 {
         let pattern_words: Vec<&str> = pattern.split_whitespace().collect();
-        let message_words: Vec<&str> = message.split_whitespace().collect();
+        // Normalize message words by stripping common punctuation for comparison
+        let message_words: Vec<String> = message
+            .split_whitespace()
+            .map(|w| w.trim_matches(|c: char| c.is_ascii_punctuation()))
+            .filter(|w| !w.is_empty())
+            .map(|w| w.to_string())
+            .collect();
 
         let matched = pattern_words
             .iter()
-            .filter(|w| message_words.contains(w))
+            .filter(|&pw| message_words.iter().any(|mw| mw == pw))
             .count();
 
         matched as f32 / pattern_words.len().max(1) as f32
@@ -159,7 +165,7 @@ impl IntentClassifier {
     /// Extract amount from message
     fn extract_amount(message: &str) -> Option<String> {
         // Look for numbers possibly followed by units
-        let re = regex::Regex::new(r"(\d+(?:\.\d+)?)\s*(?:CTR|ctr|eth|ETH)?").ok()?;
+        let re = regex::Regex::new(r"(\d+(?:\.\d+)?)\s*(?:SALT|salt|eth|ETH)?").ok()?;
         re.captures(message)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
@@ -375,7 +381,7 @@ mod tests {
         let classifier = IntentClassifier::new(ClassifierConfig::default());
 
         let result = classifier
-            .classify("send 10 CTR to 0x1234567890123456789012345678901234567890")
+            .classify("send 10 SALT to 0x1234567890123456789012345678901234567890")
             .await
             .unwrap();
         assert_eq!(result.intent, Intent::SendTransaction);
@@ -396,7 +402,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_amount_extraction() {
-        let amount = IntentClassifier::extract_amount("send 100 CTR");
+        let amount = IntentClassifier::extract_amount("send 100 SALT");
         assert_eq!(amount, Some("100".to_string()));
 
         let amount = IntentClassifier::extract_amount("transfer 50.5 eth");

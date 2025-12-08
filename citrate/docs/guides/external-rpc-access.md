@@ -195,15 +195,18 @@ To connect the Citrate GUI to a remote node:
 2. Under "RPC Endpoint", enter your ngrok or production URL
 3. Click "Test Connection" to verify
 
-Or modify `gui/citrate-core/config/custom.json`:
+Or modify `gui/citrate-core/config/testnet.json`:
 
 ```json
 {
-  "rpcUrl": "https://your-ngrok-url.ngrok-free.app",
-  "wsUrl": "wss://your-ngrok-url.ngrok-free.app",
-  "chainId": 42069
+  "externalRpc": "https://your-ngrok-url.ngrok-free.app",
+  "mempool": {
+    "chainId": 7331
+  }
 }
 ```
+
+**Current Testnet ChainId**: 7331
 
 ## Troubleshooting
 

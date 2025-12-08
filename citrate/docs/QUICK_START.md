@@ -129,8 +129,21 @@ citrate-wallet --rpc-url http://localhost:8545
 | Network | RPC URL | Chain ID |
 |---------|---------|----------|
 | Devnet | `http://localhost:8545` | 1337 |
-| Testnet | `https://testnet.citrate.ai` | 42069 |
+| Testnet | Current ngrok URL (see config) | 7331 |
 | Mainnet | `https://api.citrate.ai` | 1 |
+
+### Light Client vs Full Node Mode
+
+**Light Client (Default)**: Connects to an external RPC - no local blockchain storage required.
+- Great for beginners
+- Lower resource usage
+- Instant sync
+
+**Full Node Mode**: Run your own node with local blockchain storage.
+- For advanced users who want to validate everything themselves
+- Enable by setting `enableNetwork: true` in config
+- Requires more disk space and bandwidth
+- Can expose your own RPC via ngrok for others to connect
 
 ### Config Files
 

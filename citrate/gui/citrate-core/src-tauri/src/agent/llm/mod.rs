@@ -166,12 +166,11 @@ impl LLMBackend for UnconfiguredLLMBackend {
 
     async fn complete(&self, _context: &ContextWindow) -> Result<String, LLMError> {
         Err(LLMError(
-            "No LLM backend configured. Please configure one of the following:\n\
-             1. Set OPENAI_API_KEY environment variable for OpenAI\n\
-             2. Set ANTHROPIC_API_KEY environment variable for Anthropic\n\
-             3. Provide a local_model_path for GGUF models\n\
-             \n\
-             Configure the LLM in Settings > AI Configuration.".to_string()
+            "No AI provider configured. To use the AI assistant:\n\n\
+             1. Go to Settings > AI Configuration\n\
+             2. Add your OpenAI or Anthropic API key\n\
+             3. Enable the provider\n\n\
+             Note: Local GGUF model support is coming soon. For now, please use a cloud provider.".to_string()
         ))
     }
 

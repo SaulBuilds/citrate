@@ -12,30 +12,144 @@ use tokio::sync::RwLock;
 use super::{LLMBackend, LLMConfig, LLMError};
 use crate::agent::context::ContextWindow;
 
+#[cfg(feature = "local-llm")]
+use llama_cpp_2::{
+    context::params::LlamaContextParams,
+    llama_backend::LlamaBackend,
+    llama_batch::LlamaBatch,
+    model::{params::LlamaModelParams, AddBos, LlamaModel},
+    sampling::LlamaSampler,
+};
+
+#[cfg(feature = "local-llm")]
+use std::num::NonZeroU32;
+
+#[cfg(feature = "local-llm")]
+use std::sync::OnceLock;
+
+/// Global llama backend singleton - can only be initialized once per process
+#[cfg(feature = "local-llm")]
+static LLAMA_BACKEND: OnceLock<LlamaBackend> = OnceLock::new();
+
+/// Holds the loaded model for inference
+#[cfg(feature = "local-llm")]
+struct LoadedModel {
+    model: LlamaModel,
+}
+
 /// GGUF model backend for local inference
 pub struct GGUFBackend {
     config: LLMConfig,
     model_path: Option<PathBuf>,
     loaded: Arc<RwLock<bool>>,
-    // When local-llm feature is enabled, this would hold the actual model
     #[cfg(feature = "local-llm")]
-    model: Option<Arc<RwLock<LlamaModel>>>,
+    model: Arc<RwLock<Option<LoadedModel>>>,
 }
 
 impl GGUFBackend {
     pub fn new(config: LLMConfig) -> Self {
         let model_path = config.local_model_path.as_ref().map(PathBuf::from);
+
+        // Check if model exists and auto-mark as loaded if file is valid
+        let model_exists = if let Some(ref path) = model_path {
+            if path.exists() && path.extension().map_or(false, |ext| ext == "gguf") {
+                tracing::info!("GGUF model file found: {}", path.display());
+                true
+            } else {
+                tracing::warn!("GGUF model path provided but file not found or invalid: {}", path.display());
+                false
+            }
+        } else {
+            false
+        };
+
+        #[cfg(feature = "local-llm")]
+        let (model, loaded) = if model_exists {
+            if let Some(ref path) = model_path {
+                tracing::info!("Attempting to load GGUF model from: {}", path.display());
+
+                match Self::load_llama_model_sync(path) {
+                    Ok(m) => {
+                        tracing::info!("Successfully loaded GGUF model: {}", path.display());
+                        (Arc::new(RwLock::new(Some(m))), Arc::new(RwLock::new(true)))
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to load GGUF model: {}", e);
+                        (Arc::new(RwLock::new(None)), Arc::new(RwLock::new(false)))
+                    }
+                }
+            } else {
+                tracing::warn!("No model path provided");
+                (Arc::new(RwLock::new(None)), Arc::new(RwLock::new(false)))
+            }
+        } else {
+            tracing::warn!("Model file does not exist or is not a .gguf file");
+            (Arc::new(RwLock::new(None)), Arc::new(RwLock::new(false)))
+        };
+
+        #[cfg(not(feature = "local-llm"))]
+        let loaded = Arc::new(RwLock::new(model_exists));
+
         Self {
             config,
             model_path,
-            loaded: Arc::new(RwLock::new(false)),
+            loaded,
             #[cfg(feature = "local-llm")]
-            model: None,
+            model,
         }
     }
 
+    #[cfg(feature = "local-llm")]
+    fn load_llama_model_sync(path: &Path) -> Result<LoadedModel, String> {
+        // Ensure path is valid UTF-8 for llama.cpp
+        let path_str = path.to_str()
+            .ok_or_else(|| format!("Model path is not valid UTF-8: {:?}", path))?;
+
+        if path_str.is_empty() {
+            return Err("Model path is empty".to_string());
+        }
+
+        // Verify file exists and is readable
+        if !path.exists() {
+            return Err(format!("Model file does not exist: {}", path_str));
+        }
+
+        let file_size = std::fs::metadata(path)
+            .map(|m| m.len())
+            .map_err(|e| format!("Cannot read model file metadata: {}", e))?;
+
+        if file_size == 0 {
+            return Err("Model file is empty".to_string());
+        }
+
+        tracing::info!(
+            "Loading GGUF model: path={}, size={} bytes",
+            path_str, file_size
+        );
+
+        // Get or initialize the global llama.cpp backend (singleton)
+        let backend = LLAMA_BACKEND.get_or_init(|| {
+            tracing::info!("Initializing LlamaBackend (singleton)");
+            LlamaBackend::init().expect("Failed to initialize llama backend")
+        });
+
+        // Create model parameters - CPU inference by default
+        // On macOS with Apple Silicon, Metal acceleration is used automatically
+        let model_params = LlamaModelParams::default();
+
+        // Attempt to load the model - this may take a few seconds for large models
+        tracing::info!("Loading model file...");
+
+        let model = LlamaModel::load_from_file(backend, path_str, &model_params)
+            .map_err(|e| format!("Failed to load GGUF model: {:?}", e))?;
+
+        tracing::info!("GGUF model loaded successfully!");
+
+        Ok(LoadedModel { model })
+    }
+
     /// Load the model from path
-    pub async fn load_model(&mut self) -> Result<(), LLMError> {
+    pub async fn load_model(&self) -> Result<(), LLMError> {
         let model_path = self
             .model_path
             .as_ref()
@@ -56,50 +170,45 @@ impl GGUFBackend {
 
         #[cfg(feature = "local-llm")]
         {
-            // Load actual model using llama-cpp-2
-            // This would be implemented when the feature is enabled
-            self.load_model_impl(model_path).await?;
+            // Check if already loaded
+            if self.model.read().await.is_some() {
+                tracing::info!("Model already loaded");
+                return Ok(());
+            }
+
+            // Load the model in a blocking task to avoid blocking async runtime
+            let path = model_path.clone();
+            let loaded_model = tokio::task::spawn_blocking(move || {
+                Self::load_llama_model_sync(&path)
+            })
+            .await
+            .map_err(|e| LLMError(format!("Task join error: {}", e)))?
+            .map_err(|e| LLMError(e))?;
+
+            *self.model.write().await = Some(loaded_model);
+            *self.loaded.write().await = true;
+            tracing::info!("Model loaded: {}", model_path.display());
         }
 
         #[cfg(not(feature = "local-llm"))]
         {
             // Mark as "loaded" for testing purposes
-            // In production, this would fail without the feature
             tracing::warn!(
                 "Local LLM feature not enabled. Model loading is simulated. \
                  Enable 'local-llm' feature for actual inference."
             );
+            *self.loaded.write().await = true;
         }
-
-        *self.loaded.write().await = true;
-        tracing::info!("Model loaded: {}", model_path.display());
-
-        Ok(())
-    }
-
-    #[cfg(feature = "local-llm")]
-    async fn load_model_impl(&mut self, model_path: &Path) -> Result<(), LLMError> {
-        // When llama-cpp-2 is available, this would:
-        // 1. Initialize llama context
-        // 2. Load the model file
-        // 3. Configure sampling parameters
-        // 4. Store in self.model
-
-        // Placeholder for actual implementation:
-        // use llama_cpp_2::model::LlamaModel;
-        // let model = LlamaModel::load_from_file(model_path, Default::default())
-        //     .map_err(|e| LLMError(format!("Failed to load model: {}", e)))?;
-        // self.model = Some(Arc::new(RwLock::new(model)));
 
         Ok(())
     }
 
     /// Unload the model
-    pub async fn unload_model(&mut self) {
+    pub async fn unload_model(&self) {
         *self.loaded.write().await = false;
         #[cfg(feature = "local-llm")]
         {
-            self.model = None;
+            *self.model.write().await = None;
         }
         tracing::info!("Model unloaded");
     }
@@ -109,7 +218,7 @@ impl GGUFBackend {
         *self.loaded.read().await
     }
 
-    /// Format prompt for the model (ChatML format)
+    /// Format prompt for the model (ChatML format for Qwen2)
     fn format_prompt(&self, context: &ContextWindow) -> String {
         let mut prompt = String::new();
 
@@ -164,6 +273,125 @@ impl GGUFBackend {
             }
         })
     }
+
+    #[cfg(feature = "local-llm")]
+    async fn run_inference(&self, prompt: &str) -> Result<String, LLMError> {
+        tracing::debug!("Starting inference, prompt length: {} chars", prompt.len());
+
+        // Clone values needed for the blocking task
+        let model_arc = self.model.clone();
+        let max_tokens = self.config.max_tokens;
+        let context_size = self.config.context_size.unwrap_or(4096) as u32;
+        let prompt_owned = prompt.to_string();
+
+        // Run inference in a blocking task since llama.cpp is synchronous
+        let result = tokio::task::spawn_blocking(move || {
+            // Get the model
+            let model_guard = model_arc.blocking_read();
+            let loaded = model_guard.as_ref()
+                .ok_or_else(|| "Model not loaded".to_string())?;
+
+            // Get the global backend
+            let backend = LLAMA_BACKEND.get()
+                .ok_or_else(|| "Llama backend not initialized".to_string())?;
+
+            // Create context parameters
+            let ctx_params = LlamaContextParams::default()
+                .with_n_ctx(NonZeroU32::new(context_size));
+
+            // Create inference context
+            let mut ctx = loaded.model.new_context(backend, ctx_params)
+                .map_err(|e| format!("Failed to create context: {:?}", e))?;
+
+            // Tokenize the prompt
+            let tokens = loaded.model.str_to_token(&prompt_owned, AddBos::Always)
+                .map_err(|e| format!("Failed to tokenize prompt: {:?}", e))?;
+
+            if tokens.is_empty() {
+                return Err("Empty prompt after tokenization".to_string());
+            }
+
+            // Create batch and add tokens - use larger batch for the prompt
+            let batch_size = std::cmp::max(tokens.len() + 256, 512);
+            let mut batch = LlamaBatch::new(batch_size, 1);
+            let last_idx = tokens.len() as i32 - 1;
+            for (i, token) in tokens.iter().enumerate() {
+                batch.add(*token, i as i32, &[0], i as i32 == last_idx)
+                    .map_err(|e| format!("Failed to add token to batch: {:?}", e))?;
+            }
+
+            // Process the prompt (prefill)
+            ctx.decode(&mut batch)
+                .map_err(|e| format!("Failed to decode prompt: {:?}", e))?;
+
+            // Create sampler chain - use temperature for variety, then greedy selection
+            let mut sampler = LlamaSampler::chain_simple([
+                LlamaSampler::dist(1234),  // seed for reproducibility
+                LlamaSampler::greedy(),    // final selection
+            ]);
+
+            // Generate tokens
+            let mut output = String::new();
+            let mut n_cur = batch.n_tokens();
+            let n_len = n_cur + max_tokens as i32;
+
+            while n_cur <= n_len {
+                // Sample next token from the last position in the batch
+                let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+                sampler.accept(token);
+
+                // Check for end-of-generation
+                if loaded.model.is_eog_token(token) {
+                    break;
+                }
+
+                // Decode token to bytes and then to string
+                match loaded.model.token_to_bytes(token, llama_cpp_2::model::Special::Tokenize) {
+                    Ok(bytes) => {
+                        let output_string = String::from_utf8_lossy(&bytes);
+
+                        // Check for ChatML end tokens
+                        if output_string.contains("<|im_end|>") || output_string.contains("<|endoftext|>") {
+                            if let Some(pos) = output_string.find("<|im_end|>") {
+                                output.push_str(&output_string[..pos]);
+                            } else if let Some(pos) = output_string.find("<|endoftext|>") {
+                                output.push_str(&output_string[..pos]);
+                            }
+                            break;
+                        }
+                        output.push_str(&output_string);
+                    }
+                    Err(_) => {
+                        // Skip tokens that can't be decoded
+                    }
+                }
+
+                // Prepare batch for next token
+                batch.clear();
+                batch.add(token, n_cur, &[0], true)
+                    .map_err(|e| format!("Failed to add generated token: {:?}", e))?;
+
+                n_cur += 1;
+
+                // Decode the new token to get logits for next sample
+                ctx.decode(&mut batch)
+                    .map_err(|e| format!("Failed to decode token: {:?}", e))?;
+            }
+
+            // Clean up any partial ChatML tags at the end
+            if let Some(pos) = output.rfind("<|im_") {
+                output.truncate(pos);
+            }
+
+            Ok::<String, String>(output.trim().to_string())
+        })
+        .await
+        .map_err(|e| LLMError(format!("Task join error: {}", e)))?
+        .map_err(|e| LLMError(e))?;
+
+        tracing::debug!("Generated {} chars", result.len());
+        Ok(result)
+    }
 }
 
 #[async_trait]
@@ -179,15 +407,17 @@ impl LLMBackend for GGUFBackend {
             ));
         }
 
+        let prompt = self.format_prompt(context);
+        tracing::debug!("Generated prompt ({} chars)", prompt.len());
+
         #[cfg(feature = "local-llm")]
         {
-            return self.complete_impl(context).await;
+            return self.run_inference(&prompt).await;
         }
 
         #[cfg(not(feature = "local-llm"))]
         {
             // Without the feature, return a helpful message
-            let prompt = self.format_prompt(context);
             Err(LLMError(format!(
                 "Local LLM inference not available. Enable 'local-llm' feature to use GGUF models.\n\
                  Formatted prompt ({} chars) would be:\n{}...",
@@ -195,33 +425,6 @@ impl LLMBackend for GGUFBackend {
                 &prompt[..prompt.len().min(200)]
             )))
         }
-    }
-
-    #[cfg(feature = "local-llm")]
-    async fn complete_impl(&self, context: &ContextWindow) -> Result<String, LLMError> {
-        let prompt = self.format_prompt(context);
-
-        // When llama-cpp-2 is available:
-        // let model = self.model.as_ref()
-        //     .ok_or_else(|| LLMError("Model not initialized".to_string()))?;
-        //
-        // let model_guard = model.read().await;
-        // let mut ctx = model_guard.create_context(Default::default())
-        //     .map_err(|e| LLMError(format!("Context creation failed: {}", e)))?;
-        //
-        // let tokens = ctx.tokenize(&prompt, true)
-        //     .map_err(|e| LLMError(format!("Tokenization failed: {}", e)))?;
-        //
-        // let mut output = String::new();
-        // for token in ctx.generate(tokens, self.config.max_tokens as usize) {
-        //     let text = ctx.decode(&[token])
-        //         .map_err(|e| LLMError(format!("Decode failed: {}", e)))?;
-        //     output.push_str(&text);
-        // }
-        //
-        // Ok(output)
-
-        Err(LLMError("Local LLM implementation pending".to_string()))
     }
 
     fn is_available(&self) -> bool {

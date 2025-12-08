@@ -621,3 +621,1059 @@ pub async fn agent_get_status(
         }))
     }
 }
+
+// =============================================================================
+// Multi-Provider AI Configuration Commands
+// =============================================================================
+
+/// Response type for AI providers configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIProvidersConfigResponse {
+    pub openai: ProviderSettingsResponse,
+    pub anthropic: ProviderSettingsResponse,
+    pub gemini: ProviderSettingsResponse,
+    pub xai: ProviderSettingsResponse,
+    pub preferred_order: Vec<String>,
+    pub local_fallback: bool,
+    pub local_model_path: Option<String>,
+    pub local_model_cid: Option<String>,
+    pub active_provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderSettingsResponse {
+    pub enabled: bool,
+    pub model_id: String,
+    pub base_url: Option<String>,
+    pub has_api_key: bool,
+    pub verified: bool,
+}
+
+/// Get the current AI providers configuration
+#[tauri::command]
+pub async fn get_ai_providers_config(
+    state: State<'_, AgentState>,
+) -> Result<AIProvidersConfigResponse, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let cfg = config.read().await;
+    let providers = &cfg.providers;
+
+    let active = providers.get_active_provider();
+
+    Ok(AIProvidersConfigResponse {
+        openai: ProviderSettingsResponse {
+            enabled: providers.openai.enabled,
+            model_id: providers.openai.model_id.clone(),
+            base_url: providers.openai.base_url.clone(),
+            has_api_key: providers.openai.api_key.is_some(),
+            verified: providers.openai.verified,
+        },
+        anthropic: ProviderSettingsResponse {
+            enabled: providers.anthropic.enabled,
+            model_id: providers.anthropic.model_id.clone(),
+            base_url: providers.anthropic.base_url.clone(),
+            has_api_key: providers.anthropic.api_key.is_some(),
+            verified: providers.anthropic.verified,
+        },
+        gemini: ProviderSettingsResponse {
+            enabled: providers.gemini.enabled,
+            model_id: providers.gemini.model_id.clone(),
+            base_url: providers.gemini.base_url.clone(),
+            has_api_key: providers.gemini.api_key.is_some(),
+            verified: providers.gemini.verified,
+        },
+        xai: ProviderSettingsResponse {
+            enabled: providers.xai.enabled,
+            model_id: providers.xai.model_id.clone(),
+            base_url: providers.xai.base_url.clone(),
+            has_api_key: providers.xai.api_key.is_some(),
+            verified: providers.xai.verified,
+        },
+        preferred_order: providers.preferred_order.iter().map(|p| format!("{:?}", p).to_lowercase()).collect(),
+        local_fallback: providers.local_fallback,
+        local_model_path: providers.local_model_path.clone(),
+        local_model_cid: providers.local_model_cid.clone(),
+        active_provider: active.map(|p| format!("{:?}", p).to_lowercase()),
+    })
+}
+
+/// Get API keys for all providers (returns masked keys for security)
+#[tauri::command]
+pub async fn get_ai_provider_keys(
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let cfg = config.read().await;
+    let providers = &cfg.providers;
+
+    // Return masked keys (only show last 4 characters)
+    let mask_key = |key: &Option<String>| -> Option<String> {
+        key.as_ref().map(|k| {
+            if k.len() > 8 {
+                format!("{}...{}", &k[..4], &k[k.len()-4..])
+            } else {
+                "****".to_string()
+            }
+        })
+    };
+
+    Ok(serde_json::json!({
+        "openai": mask_key(&providers.openai.api_key),
+        "anthropic": mask_key(&providers.anthropic.api_key),
+        "gemini": mask_key(&providers.gemini.api_key),
+        "xai": mask_key(&providers.xai.api_key),
+    }))
+}
+
+/// Update AI providers configuration for a single provider
+#[tauri::command]
+pub async fn update_ai_providers_config(
+    state: State<'_, AgentState>,
+    provider: String,
+    api_key: Option<String>,
+    enabled: Option<bool>,
+    model_id: Option<String>,
+    base_url: Option<String>,
+) -> Result<(), String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    match provider.to_lowercase().as_str() {
+        "openai" | "open_ai" => {
+            if let Some(key) = api_key {
+                cfg.providers.openai.api_key = Some(key);
+            }
+            if let Some(e) = enabled {
+                cfg.providers.openai.enabled = e;
+            }
+            if let Some(m) = model_id {
+                cfg.providers.openai.model_id = m;
+            }
+            if let Some(url) = base_url {
+                cfg.providers.openai.base_url = Some(url);
+            }
+        }
+        "anthropic" => {
+            if let Some(key) = api_key {
+                cfg.providers.anthropic.api_key = Some(key);
+            }
+            if let Some(e) = enabled {
+                cfg.providers.anthropic.enabled = e;
+            }
+            if let Some(m) = model_id {
+                cfg.providers.anthropic.model_id = m;
+            }
+            if let Some(url) = base_url {
+                cfg.providers.anthropic.base_url = Some(url);
+            }
+        }
+        "gemini" => {
+            if let Some(key) = api_key {
+                cfg.providers.gemini.api_key = Some(key);
+            }
+            if let Some(e) = enabled {
+                cfg.providers.gemini.enabled = e;
+            }
+            if let Some(m) = model_id {
+                cfg.providers.gemini.model_id = m;
+            }
+            if let Some(url) = base_url {
+                cfg.providers.gemini.base_url = Some(url);
+            }
+        }
+        "xai" | "x_ai" => {
+            if let Some(key) = api_key {
+                cfg.providers.xai.api_key = Some(key);
+            }
+            if let Some(e) = enabled {
+                cfg.providers.xai.enabled = e;
+            }
+            if let Some(m) = model_id {
+                cfg.providers.xai.model_id = m;
+            }
+            if let Some(url) = base_url {
+                cfg.providers.xai.base_url = Some(url);
+            }
+        }
+        "local" => {
+            if let Some(path) = model_id {
+                cfg.providers.local_model_path = Some(path);
+            }
+        }
+        _ => {
+            return Err(format!("Unknown provider: {}", provider));
+        }
+    }
+
+    // Drop the config lock before updating orchestrator
+    let updated_config = cfg.clone();
+    drop(cfg);
+
+    // Update the orchestrator to recreate LLM backend with new config
+    manager.orchestrator().write().await.update_config(updated_config);
+
+    tracing::info!("Updated AI provider configuration for: {} and recreated LLM backend", provider);
+    Ok(())
+}
+
+/// Input types for batch config update from frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchProviderSettingsInput {
+    pub enabled: bool,
+    pub model_id: String,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub verified: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchAIProvidersConfigInput {
+    pub openai: BatchProviderSettingsInput,
+    pub anthropic: BatchProviderSettingsInput,
+    pub gemini: BatchProviderSettingsInput,
+    pub xai: BatchProviderSettingsInput,
+    pub preferred_order: Vec<String>,
+    pub local_fallback: bool,
+    #[serde(default)]
+    pub local_model_path: Option<String>,
+    #[serde(default)]
+    pub local_model_cid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchApiKeysInput {
+    #[serde(default)]
+    pub open_ai: Option<String>,
+    #[serde(default)]
+    pub anthropic: Option<String>,
+    #[serde(default)]
+    pub gemini: Option<String>,
+    #[serde(default)]
+    pub x_ai: Option<String>,
+    #[serde(default)]
+    pub local: Option<String>,
+}
+
+/// Batch update AI providers configuration (matches frontend saveConfig call)
+/// This command accepts the full config and apiKeys objects from the frontend
+#[tauri::command]
+pub async fn save_ai_providers_config(
+    state: State<'_, AgentState>,
+    config: BatchAIProvidersConfigInput,
+    api_keys: BatchApiKeysInput,
+) -> Result<(), String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let agent_config = manager.config();
+    let mut cfg = agent_config.write().await;
+
+    // Update OpenAI settings
+    cfg.providers.openai.enabled = config.openai.enabled;
+    cfg.providers.openai.model_id = config.openai.model_id;
+    cfg.providers.openai.base_url = config.openai.base_url;
+    if let Some(key) = api_keys.open_ai {
+        if !key.is_empty() && !key.contains("...") {
+            cfg.providers.openai.api_key = Some(key);
+        }
+    }
+
+    // Update Anthropic settings
+    cfg.providers.anthropic.enabled = config.anthropic.enabled;
+    cfg.providers.anthropic.model_id = config.anthropic.model_id;
+    cfg.providers.anthropic.base_url = config.anthropic.base_url;
+    if let Some(key) = api_keys.anthropic {
+        if !key.is_empty() && !key.contains("...") {
+            cfg.providers.anthropic.api_key = Some(key);
+        }
+    }
+
+    // Update Gemini settings
+    cfg.providers.gemini.enabled = config.gemini.enabled;
+    cfg.providers.gemini.model_id = config.gemini.model_id;
+    cfg.providers.gemini.base_url = config.gemini.base_url;
+    if let Some(key) = api_keys.gemini {
+        if !key.is_empty() && !key.contains("...") {
+            cfg.providers.gemini.api_key = Some(key);
+        }
+    }
+
+    // Update xAI settings
+    cfg.providers.xai.enabled = config.xai.enabled;
+    cfg.providers.xai.model_id = config.xai.model_id;
+    cfg.providers.xai.base_url = config.xai.base_url;
+    if let Some(key) = api_keys.x_ai {
+        if !key.is_empty() && !key.contains("...") {
+            cfg.providers.xai.api_key = Some(key);
+        }
+    }
+
+    // Update local model settings
+    cfg.providers.local_fallback = config.local_fallback;
+    if let Some(path) = config.local_model_path {
+        cfg.providers.local_model_path = Some(path);
+    }
+    if let Some(cid) = config.local_model_cid {
+        cfg.providers.local_model_cid = Some(cid);
+    }
+
+    // Update preferred order
+    cfg.providers.preferred_order = config.preferred_order
+        .iter()
+        .filter_map(|s| match s.to_lowercase().as_str() {
+            "openai" | "open_ai" => Some(super::config::AIProvider::OpenAI),
+            "anthropic" => Some(super::config::AIProvider::Anthropic),
+            "gemini" => Some(super::config::AIProvider::Gemini),
+            "xai" | "x_ai" => Some(super::config::AIProvider::XAI),
+            "local" => Some(super::config::AIProvider::Local),
+            _ => None,
+        })
+        .collect();
+
+    // Clone config before dropping lock
+    let updated_config = cfg.clone();
+    drop(cfg);
+
+    // Update the orchestrator to recreate LLM backend with new config
+    manager.orchestrator().write().await.update_config(updated_config);
+
+    tracing::info!("Batch updated AI providers configuration and recreated LLM backend");
+    Ok(())
+}
+
+/// Test connection to an AI provider
+#[tauri::command]
+pub async fn test_ai_provider_connection(
+    state: State<'_, AgentState>,
+    provider: String,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    let result = match provider.to_lowercase().as_str() {
+        "openai" => {
+            if let Some(ref key) = cfg.providers.openai.api_key {
+                // Test OpenAI API connection
+                match test_openai_connection(key, &cfg.providers.openai.model_id, cfg.providers.openai.base_url.as_deref()).await {
+                    Ok(model_info) => {
+                        cfg.providers.openai.verified = true;
+                        serde_json::json!({
+                            "success": true,
+                            "provider": "openai",
+                            "model": model_info,
+                            "message": "Successfully connected to OpenAI API"
+                        })
+                    }
+                    Err(e) => {
+                        cfg.providers.openai.verified = false;
+                        serde_json::json!({
+                            "success": false,
+                            "provider": "openai",
+                            "error": e
+                        })
+                    }
+                }
+            } else {
+                serde_json::json!({
+                    "success": false,
+                    "provider": "openai",
+                    "error": "No API key configured"
+                })
+            }
+        }
+        "anthropic" => {
+            if let Some(ref key) = cfg.providers.anthropic.api_key {
+                match test_anthropic_connection(key, &cfg.providers.anthropic.model_id, cfg.providers.anthropic.base_url.as_deref()).await {
+                    Ok(model_info) => {
+                        cfg.providers.anthropic.verified = true;
+                        serde_json::json!({
+                            "success": true,
+                            "provider": "anthropic",
+                            "model": model_info,
+                            "message": "Successfully connected to Anthropic API"
+                        })
+                    }
+                    Err(e) => {
+                        cfg.providers.anthropic.verified = false;
+                        serde_json::json!({
+                            "success": false,
+                            "provider": "anthropic",
+                            "error": e
+                        })
+                    }
+                }
+            } else {
+                serde_json::json!({
+                    "success": false,
+                    "provider": "anthropic",
+                    "error": "No API key configured"
+                })
+            }
+        }
+        "gemini" => {
+            if let Some(ref key) = cfg.providers.gemini.api_key {
+                match test_gemini_connection(key, &cfg.providers.gemini.model_id, cfg.providers.gemini.base_url.as_deref()).await {
+                    Ok(model_info) => {
+                        cfg.providers.gemini.verified = true;
+                        serde_json::json!({
+                            "success": true,
+                            "provider": "gemini",
+                            "model": model_info,
+                            "message": "Successfully connected to Google Gemini API"
+                        })
+                    }
+                    Err(e) => {
+                        cfg.providers.gemini.verified = false;
+                        serde_json::json!({
+                            "success": false,
+                            "provider": "gemini",
+                            "error": e
+                        })
+                    }
+                }
+            } else {
+                serde_json::json!({
+                    "success": false,
+                    "provider": "gemini",
+                    "error": "No API key configured"
+                })
+            }
+        }
+        "xai" => {
+            if let Some(ref key) = cfg.providers.xai.api_key {
+                match test_xai_connection(key, &cfg.providers.xai.model_id, cfg.providers.xai.base_url.as_deref()).await {
+                    Ok(model_info) => {
+                        cfg.providers.xai.verified = true;
+                        serde_json::json!({
+                            "success": true,
+                            "provider": "xai",
+                            "model": model_info,
+                            "message": "Successfully connected to xAI API"
+                        })
+                    }
+                    Err(e) => {
+                        cfg.providers.xai.verified = false;
+                        serde_json::json!({
+                            "success": false,
+                            "provider": "xai",
+                            "error": e
+                        })
+                    }
+                }
+            } else {
+                serde_json::json!({
+                    "success": false,
+                    "provider": "xai",
+                    "error": "No API key configured"
+                })
+            }
+        }
+        "local" => {
+            if let Some(ref path) = cfg.providers.local_model_path {
+                if std::path::Path::new(path).exists() {
+                    serde_json::json!({
+                        "success": true,
+                        "provider": "local",
+                        "model": path,
+                        "message": "Local model file found"
+                    })
+                } else {
+                    serde_json::json!({
+                        "success": false,
+                        "provider": "local",
+                        "error": "Model file not found"
+                    })
+                }
+            } else {
+                serde_json::json!({
+                    "success": false,
+                    "provider": "local",
+                    "error": "No local model configured"
+                })
+            }
+        }
+        _ => {
+            return Err(format!("Unknown provider: {}", provider));
+        }
+    };
+
+    Ok(result)
+}
+
+// Helper functions for testing provider connections
+async fn test_openai_connection(api_key: &str, model: &str, base_url: Option<&str>) -> Result<String, String> {
+    let url = format!("{}/models", base_url.unwrap_or("https://api.openai.com/v1"));
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    if response.status().is_success() {
+        Ok(model.to_string())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("API error ({}): {}", status, body))
+    }
+}
+
+async fn test_anthropic_connection(api_key: &str, model: &str, base_url: Option<&str>) -> Result<String, String> {
+    let url = format!("{}/v1/messages", base_url.unwrap_or("https://api.anthropic.com"));
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .json(&serde_json::json!({
+            "model": model,
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "test"}]
+        }))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    if response.status().is_success() {
+        Ok(model.to_string())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        // Check if it's just a model error but connection worked
+        if status.as_u16() == 400 && body.contains("model") {
+            Ok(model.to_string()) // Connection works, model might need adjustment
+        } else {
+            Err(format!("API error ({}): {}", status, body))
+        }
+    }
+}
+
+async fn test_gemini_connection(api_key: &str, model: &str, base_url: Option<&str>) -> Result<String, String> {
+    let url = format!(
+        "{}/models/{}?key={}",
+        base_url.unwrap_or("https://generativelanguage.googleapis.com/v1beta"),
+        model,
+        api_key
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    if response.status().is_success() {
+        Ok(model.to_string())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("API error ({}): {}", status, body))
+    }
+}
+
+async fn test_xai_connection(api_key: &str, model: &str, base_url: Option<&str>) -> Result<String, String> {
+    let url = format!("{}/models", base_url.unwrap_or("https://api.x.ai/v1"));
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    if response.status().is_success() {
+        Ok(model.to_string())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("API error ({}): {}", status, body))
+    }
+}
+
+// =============================================================================
+// IPFS Model Management Commands
+// =============================================================================
+
+/// Pin the local model to IPFS
+#[tauri::command]
+pub async fn pin_local_model_to_ipfs(
+    state: State<'_, AgentState>,
+    ipfs_manager: State<'_, std::sync::Arc<crate::ipfs::IpfsManager>>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    let model_path = cfg.providers.local_model_path.clone()
+        .ok_or("No local model configured")?;
+
+    // Check if IPFS is running
+    if !ipfs_manager.is_running().await {
+        return Err("IPFS daemon is not running. Please start IPFS first.".to_string());
+    }
+
+    // Pin the model file
+    tracing::info!("Pinning model to IPFS: {}", model_path);
+    let result = ipfs_manager.add_file(&std::path::PathBuf::from(&model_path)).await
+        .map_err(|e| format!("Failed to pin to IPFS: {}", e))?;
+
+    // Store the CID in config
+    cfg.providers.local_model_cid = Some(result.cid.clone());
+
+    tracing::info!("Model pinned with CID: {}", result.cid);
+    Ok(serde_json::json!({
+        "success": true,
+        "cid": result.cid,
+        "model_path": model_path,
+        "size": result.size,
+        "gateway_url": result.gateway_url
+    }))
+}
+
+/// Delete the local model file (after confirming it's pinned to IPFS)
+#[tauri::command]
+pub async fn delete_local_model(
+    state: State<'_, AgentState>,
+    force: bool,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    let model_path = cfg.providers.local_model_path.clone()
+        .ok_or("No local model configured")?;
+
+    // Check if model is pinned to IPFS (unless force is true)
+    if !force && cfg.providers.local_model_cid.is_none() {
+        return Err("Model is not pinned to IPFS. Pin it first or use force=true to delete anyway.".to_string());
+    }
+
+    // Delete the file
+    let path = std::path::Path::new(&model_path);
+    if path.exists() {
+        std::fs::remove_file(path)
+            .map_err(|e| format!("Failed to delete model file: {}", e))?;
+
+        tracing::info!("Deleted local model: {}", model_path);
+
+        // Clear the local path but keep the CID
+        cfg.providers.local_model_path = None;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "deleted_path": model_path,
+            "cid": cfg.providers.local_model_cid
+        }))
+    } else {
+        // File doesn't exist, just clear the path
+        cfg.providers.local_model_path = None;
+
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "Model file was already deleted",
+            "cid": cfg.providers.local_model_cid
+        }))
+    }
+}
+
+/// Download model from IPFS
+#[tauri::command]
+pub async fn download_model_from_ipfs(
+    state: State<'_, AgentState>,
+    ipfs_manager: State<'_, std::sync::Arc<crate::ipfs::IpfsManager>>,
+    cid: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    // Use provided CID or the one stored in config
+    let model_cid = cid.or_else(|| cfg.providers.local_model_cid.clone())
+        .ok_or("No IPFS CID provided or stored")?;
+
+    // Get the models directory
+    let models_dir = super::llm::local::get_default_models_dir()
+        .ok_or("Could not determine models directory")?;
+
+    // Ensure directory exists
+    std::fs::create_dir_all(&models_dir)
+        .map_err(|e| format!("Failed to create models directory: {}", e))?;
+
+    // Destination path
+    let dest_path = models_dir.join(format!("{}.gguf", &model_cid[..8.min(model_cid.len())]));
+
+    // Check if IPFS is running
+    if !ipfs_manager.is_running().await {
+        return Err("IPFS daemon is not running. Please start IPFS first.".to_string());
+    }
+
+    // Download from IPFS using the get command
+    tracing::info!("Downloading model from IPFS: {}", model_cid);
+    let content = ipfs_manager.get(&model_cid).await
+        .map_err(|e| format!("Failed to download from IPFS: {}", e))?;
+
+    // Write content to file
+    if let Some(data) = content.data {
+        std::fs::write(&dest_path, &data)
+            .map_err(|e| format!("Failed to write model file: {}", e))?;
+    } else {
+        return Err("IPFS returned no data for the given CID".to_string());
+    }
+
+    // Update config with new path
+    let dest_str = dest_path.to_string_lossy().to_string();
+    cfg.providers.local_model_path = Some(dest_str.clone());
+    cfg.providers.local_model_cid = Some(model_cid.clone());
+
+    tracing::info!("Model downloaded to: {}", dest_str);
+    Ok(serde_json::json!({
+        "success": true,
+        "cid": model_cid,
+        "path": dest_str
+    }))
+}
+
+/// Set the preferred provider order
+#[tauri::command]
+pub async fn set_preferred_provider_order(
+    state: State<'_, AgentState>,
+    order: Vec<String>,
+) -> Result<(), String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    // Convert strings to AIProvider enum
+    let providers: Vec<super::config::AIProvider> = order
+        .iter()
+        .filter_map(|s| match s.to_lowercase().as_str() {
+            "openai" => Some(super::config::AIProvider::OpenAI),
+            "anthropic" => Some(super::config::AIProvider::Anthropic),
+            "gemini" => Some(super::config::AIProvider::Gemini),
+            "xai" => Some(super::config::AIProvider::XAI),
+            "local" => Some(super::config::AIProvider::Local),
+            _ => None,
+        })
+        .collect();
+
+    cfg.providers.preferred_order = providers;
+    tracing::info!("Updated preferred provider order");
+    Ok(())
+}
+
+/// Set local fallback preference
+#[tauri::command]
+pub async fn set_local_fallback(
+    state: State<'_, AgentState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+    cfg.providers.local_fallback = enabled;
+
+    tracing::info!("Local fallback set to: {}", enabled);
+    Ok(())
+}
+
+/// Check if onboarding has been completed
+#[tauri::command]
+pub async fn check_onboarding_status(
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let cfg = config.read().await;
+
+    Ok(serde_json::json!({
+        "onboarding_completed": cfg.onboarding_completed,
+        "first_run": cfg.first_run,
+        "has_any_provider": cfg.providers.get_active_provider().is_some(),
+    }))
+}
+
+/// Mark onboarding as completed
+#[tauri::command]
+pub async fn complete_onboarding(
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+    cfg.onboarding_completed = true;
+    cfg.first_run = false;
+
+    tracing::info!("Onboarding marked as completed");
+    Ok(())
+}
+
+// =============================================================================
+// First-Run and Bundled Model Commands
+// =============================================================================
+
+/// Check if this is the first run of the application
+#[tauri::command]
+pub async fn check_first_run(
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let cfg = config.read().await;
+
+    // Check if we have any configured providers or if onboarding is complete
+    let has_any_provider = cfg.providers.get_active_provider().is_some();
+    let is_first_run = !cfg.onboarding_completed && !has_any_provider;
+
+    Ok(serde_json::json!({
+        "is_first_run": is_first_run,
+        "onboarding_completed": cfg.onboarding_completed,
+        "has_any_provider": has_any_provider,
+        "has_local_model": cfg.providers.local_model_path.is_some(),
+        "has_cloud_provider": cfg.providers.openai.is_ready() ||
+                              cfg.providers.anthropic.is_ready() ||
+                              cfg.providers.gemini.is_ready() ||
+                              cfg.providers.xai.is_ready()
+    }))
+}
+
+/// Check for bundled model in app resources and configure if found
+#[tauri::command]
+pub async fn setup_bundled_model(
+    state: State<'_, AgentState>,
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    // Try to find bundled model in app resources
+    let resource_path = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource directory: {}", e))?;
+
+    let bundled_model_path = resource_path.join("models").join("qwen2-0_5b-instruct-q4_k_m.gguf");
+
+    tracing::info!("Looking for bundled model at: {:?}", bundled_model_path);
+
+    if bundled_model_path.exists() {
+        // Get file size
+        let metadata = std::fs::metadata(&bundled_model_path)
+            .map_err(|e| format!("Failed to get model metadata: {}", e))?;
+        let size_mb = metadata.len() / (1024 * 1024);
+
+        // Copy to user models directory for persistent access
+        let models_dir = super::llm::local::get_default_models_dir()
+            .ok_or("Could not determine models directory")?;
+
+        std::fs::create_dir_all(&models_dir)
+            .map_err(|e| format!("Failed to create models directory: {}", e))?;
+
+        let dest_path = models_dir.join("qwen2-0_5b-instruct-q4_k_m.gguf");
+
+        // Only copy if not already exists
+        if !dest_path.exists() {
+            tracing::info!("Copying bundled model to: {:?}", dest_path);
+            std::fs::copy(&bundled_model_path, &dest_path)
+                .map_err(|e| format!("Failed to copy bundled model: {}", e))?;
+        }
+
+        // Configure the local model
+        let dest_str = dest_path.to_string_lossy().to_string();
+        cfg.providers.local_model_path = Some(dest_str.clone());
+
+        tracing::info!("Bundled model configured: {}", dest_str);
+
+        Ok(serde_json::json!({
+            "found": true,
+            "path": dest_str,
+            "size_mb": size_mb,
+            "model_name": "Qwen2 0.5B Instruct",
+            "quantization": "Q4_K_M"
+        }))
+    } else {
+        // No bundled model found - this is okay for dev builds
+        tracing::info!("No bundled model found at {:?}", bundled_model_path);
+
+        Ok(serde_json::json!({
+            "found": false,
+            "expected_path": bundled_model_path.to_string_lossy().to_string()
+        }))
+    }
+}
+
+/// Get onboarding questions for the frontend
+#[tauri::command]
+pub async fn get_onboarding_questions() -> Result<serde_json::Value, String> {
+    let manager = super::onboarding::OnboardingManager::new();
+    let questions = manager.get_questions();
+
+    let questions_json: Vec<serde_json::Value> = questions.iter().map(|q| {
+        serde_json::json!({
+            "id": q.id,
+            "question": q.question,
+            "category": format!("{:?}", q.category),
+            "options": q.options.iter().map(|o| {
+                serde_json::json!({
+                    "text": o.text,
+                    "skill_points": o.skill_points,
+                    "follow_up": o.follow_up
+                })
+            }).collect::<Vec<_>>()
+        })
+    }).collect();
+
+    Ok(serde_json::json!({
+        "questions": questions_json,
+        "total": questions.len(),
+        "welcome_message": super::onboarding::OnboardingManager::get_welcome_message(),
+        "assessment_intro": super::onboarding::OnboardingManager::get_assessment_intro()
+    }))
+}
+
+/// Process an onboarding assessment answer
+#[tauri::command]
+pub async fn process_onboarding_answer(
+    state: State<'_, AgentState>,
+    answers: Vec<u8>,
+) -> Result<serde_json::Value, String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    // Create assessment and process answers
+    let mut assessment = super::onboarding::UserAssessment::new();
+    let onboarding = super::onboarding::OnboardingManager::new();
+    let questions = onboarding.get_questions();
+
+    for (i, &points) in answers.iter().enumerate() {
+        if let Some(q) = questions.get(i) {
+            assessment.record_answer(&q.id, points);
+        }
+    }
+
+    assessment.finalize();
+
+    // Get the result message and path
+    let result_message = super::onboarding::OnboardingManager::get_result_message(assessment.skill_level);
+    let path = onboarding.get_path(assessment.skill_level);
+
+    // Mark onboarding as completed
+    cfg.onboarding_completed = true;
+    cfg.first_run = false;
+
+    tracing::info!("Onboarding completed with skill level: {:?}", assessment.skill_level);
+
+    Ok(serde_json::json!({
+        "skill_level": format!("{:?}", assessment.skill_level).to_lowercase(),
+        "total_score": assessment.total_score,
+        "result_message": result_message,
+        "path": path.map(|p| serde_json::json!({
+            "name": p.name,
+            "description": p.description,
+            "steps": p.steps.iter().map(|s| serde_json::json!({
+                "id": s.id,
+                "title": s.title,
+                "content": s.content,
+                "optional": s.optional
+            })).collect::<Vec<_>>()
+        }))
+    }))
+}
+
+/// Skip onboarding (user can set up later)
+#[tauri::command]
+pub async fn skip_onboarding(
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    let manager_guard = state.manager.read().await;
+    let manager = manager_guard
+        .as_ref()
+        .ok_or("Agent not initialized")?;
+
+    let config = manager.config();
+    let mut cfg = config.write().await;
+
+    // Mark as completed but with default skill level
+    cfg.onboarding_completed = true;
+    cfg.first_run = false;
+
+    tracing::info!("Onboarding skipped by user");
+    Ok(())
+}

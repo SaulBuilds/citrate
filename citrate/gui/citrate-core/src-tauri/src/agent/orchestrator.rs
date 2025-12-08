@@ -137,9 +137,9 @@ impl AgentOrchestrator {
             dag_manager.clone(),
         );
 
-        // Use factory to create LLM backend based on environment/config
-        // This will use UnconfiguredLLMBackend if no API key or local model is set
-        let llm: Box<dyn LLMBackend + Send + Sync> = LLMFactory::create(LLMConfig::default());
+        // Use the config to create the appropriate LLM backend
+        // This will check for local models, API keys, and fall back to UnconfiguredLLMBackend
+        let llm = Self::create_llm_from_config(&config);
 
         Self {
             config,
@@ -303,6 +303,8 @@ impl AgentOrchestrator {
         _intent: &IntentMatch,
         _user_message: &str,
     ) -> OrchestratorResult<(Message, bool, Option<ToolResult>)> {
+        tracing::debug!("handle_chat_intent starting");
+
         // Build context window
         let system_prompt = self
             .config
@@ -314,6 +316,8 @@ impl AgentOrchestrator {
 
         // Get recent messages for context
         let recent = session.recent_messages(10).await;
+        tracing::debug!("Got {} recent messages for context", recent.len());
+
         let mut history = ConversationHistory::new();
         for msg in recent {
             history.add_message(msg);
@@ -326,13 +330,19 @@ impl AgentOrchestrator {
             10,
         );
 
+        tracing::debug!("Calling LLM backend: {}", self.llm.name());
+
         // Call LLM
         let response = self
             .llm
             .complete(&context_window)
             .await
-            .map_err(|e| OrchestratorError::LLMError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("LLM error: {}", e);
+                OrchestratorError::LLMError(e.to_string())
+            })?;
 
+        tracing::debug!("Got response: {} chars", response.len());
         Ok((Message::assistant(response), false, None))
     }
 
@@ -400,9 +410,256 @@ impl AgentOrchestrator {
         self.stream_manager.clone()
     }
 
-    /// Update configuration
+    /// Update configuration and recreate LLM backend if needed
     pub fn update_config(&mut self, config: AgentConfig) {
-        self.config = config;
+        // Check if we need to recreate the LLM backend
+        let old_model_path = self.config.providers.local_model_path.clone();
+        let new_model_path = config.providers.local_model_path.clone();
+
+        let old_openai_ready = self.config.providers.openai.is_ready();
+        let new_openai_ready = config.providers.openai.is_ready();
+
+        let old_anthropic_ready = self.config.providers.anthropic.is_ready();
+        let new_anthropic_ready = config.providers.anthropic.is_ready();
+
+        self.config = config.clone();
+
+        // Recreate LLM backend if provider configuration changed
+        if old_model_path != new_model_path
+            || old_openai_ready != new_openai_ready
+            || old_anthropic_ready != new_anthropic_ready
+        {
+            tracing::info!("Provider configuration changed, recreating LLM backend");
+            self.llm = Self::create_llm_from_config(&config);
+        }
+    }
+
+    /// Create LLM backend from AgentConfig
+    fn create_llm_from_config(config: &AgentConfig) -> Box<dyn LLMBackend + Send + Sync> {
+        use super::llm::{LLMBackendType as LLMType, LLMConfig as LLMCfg};
+
+        // Priority order based on providers.preferred_order:
+        // 1. Local GGUF model (if available and configured) - preferred for privacy
+        // 2. Cloud APIs (OpenAI, Anthropic) as fallback
+
+        // First, try to find a local model if local is in preferred order
+        let local_model_path = Self::find_local_model(&config.providers.local_model_path);
+
+        // Use the active provider from the config (respects preferred_order)
+        if let Some(provider) = config.providers.get_active_provider() {
+            match provider {
+                super::config::AIProvider::Local => {
+                    if let Some(ref path) = local_model_path {
+                        tracing::info!("Creating Local GGUF backend with model: {}", path);
+                        let llm_config = LLMCfg {
+                            backend: LLMType::LocalGGUF,
+                            api_key: None,
+                            model: "local".to_string(),
+                            max_tokens: config.llm.max_tokens as usize,
+                            temperature: config.llm.temperature,
+                            top_p: config.llm.top_p,
+                            stream: config.streaming.enabled,
+                            format_tool_results: true,
+                            local_model_path: Some(path.clone()),
+                            api_base_url: None,
+                            context_size: Some(config.llm.context_size as usize),
+                        };
+                        return LLMFactory::create(llm_config);
+                    }
+                }
+                super::config::AIProvider::OpenAI => {
+                    if config.providers.openai.is_ready() {
+                        tracing::info!("Creating OpenAI backend");
+                        let llm_config = LLMCfg {
+                            backend: LLMType::OpenAI,
+                            api_key: config.providers.openai.api_key.clone(),
+                            model: config.providers.openai.model_id.clone(),
+                            max_tokens: config.llm.max_tokens as usize,
+                            temperature: config.llm.temperature,
+                            top_p: config.llm.top_p,
+                            stream: config.streaming.enabled,
+                            format_tool_results: true,
+                            local_model_path: None,
+                            api_base_url: config.providers.openai.base_url.clone(),
+                            context_size: Some(config.llm.context_size as usize),
+                        };
+                        return LLMFactory::create(llm_config);
+                    }
+                }
+                super::config::AIProvider::Anthropic => {
+                    if config.providers.anthropic.is_ready() {
+                        tracing::info!("Creating Anthropic backend");
+                        let llm_config = LLMCfg {
+                            backend: LLMType::Anthropic,
+                            api_key: config.providers.anthropic.api_key.clone(),
+                            model: config.providers.anthropic.model_id.clone(),
+                            max_tokens: config.llm.max_tokens as usize,
+                            temperature: config.llm.temperature,
+                            top_p: config.llm.top_p,
+                            stream: config.streaming.enabled,
+                            format_tool_results: true,
+                            local_model_path: None,
+                            api_base_url: config.providers.anthropic.base_url.clone(),
+                            context_size: Some(config.llm.context_size as usize),
+                        };
+                        return LLMFactory::create(llm_config);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Fallback: try local model even if not in preferred order
+        if let Some(ref path) = local_model_path {
+            tracing::info!("Using local GGUF model: {}", path);
+            let llm_config = LLMCfg {
+                backend: LLMType::LocalGGUF,
+                api_key: None,
+                model: "local".to_string(),
+                max_tokens: config.llm.max_tokens as usize,
+                temperature: config.llm.temperature,
+                top_p: config.llm.top_p,
+                stream: config.streaming.enabled,
+                format_tool_results: true,
+                local_model_path: Some(path.clone()),
+                api_base_url: None,
+                context_size: Some(config.llm.context_size as usize),
+            };
+            return LLMFactory::create(llm_config);
+        }
+
+        tracing::info!("No LLM provider configured, using UnconfiguredLLMBackend");
+        LLMFactory::create(LLMCfg::default())
+    }
+
+    /// Find a local model path, checking config first then default locations
+    fn find_local_model(config_path: &Option<String>) -> Option<String> {
+        tracing::info!("Searching for local GGUF model...");
+
+        // 1. Check if config has a path and it exists
+        if let Some(ref path) = config_path {
+            tracing::info!("Checking configured path: {}", path);
+            if std::path::Path::new(path).exists() {
+                tracing::info!("Using configured local model: {}", path);
+                return Some(path.clone());
+            } else {
+                tracing::warn!("Configured path does not exist: {}", path);
+            }
+        } else {
+            tracing::info!("No local model path configured, searching default locations...");
+        }
+
+        // 2. Check resources directory (bundled with app) - both relative and absolute
+        let mut resource_paths = vec![
+            "resources/models/qwen2-0_5b-instruct-q4_k_m.gguf".to_string(),
+            "../resources/models/qwen2-0_5b-instruct-q4_k_m.gguf".to_string(),
+            "src-tauri/resources/models/qwen2-0_5b-instruct-q4_k_m.gguf".to_string(),
+        ];
+
+        // Add absolute paths based on executable location
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                // For debug builds, go up to find resources
+                let debug_path = exe_dir
+                    .join("../../../gui/citrate-core/src-tauri/resources/models/qwen2-0_5b-instruct-q4_k_m.gguf");
+                resource_paths.push(debug_path.to_string_lossy().to_string());
+
+                // For release builds
+                let release_path = exe_dir.join("resources/models/qwen2-0_5b-instruct-q4_k_m.gguf");
+                resource_paths.push(release_path.to_string_lossy().to_string());
+
+                // macOS app bundle path
+                let bundle_path = exe_dir
+                    .join("../Resources/models/qwen2-0_5b-instruct-q4_k_m.gguf");
+                resource_paths.push(bundle_path.to_string_lossy().to_string());
+            }
+        }
+
+        // Also check project models directory (for development)
+        let project_model_paths = [
+            "/Users/soleilklosowski/Downloads/citrate/citrate/gui/citrate-core/src-tauri/resources/models/qwen2-0_5b-instruct-q4_k_m.gguf",
+            "/Users/soleilklosowski/Downloads/citrate/citrate/target/debug/models/qwen2-0_5b-instruct-q4_k_m.gguf",
+            "/Users/soleilklosowski/Downloads/citrate/citrate/target/release/models/qwen2-0_5b-instruct-q4_k_m.gguf",
+            "/Users/soleilklosowski/Downloads/citrate/citrate/models/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+        ];
+        resource_paths.extend(project_model_paths.iter().map(|s| s.to_string()));
+
+        for rel_path in &resource_paths {
+            let path = std::path::Path::new(rel_path);
+            if path.exists() {
+                // Canonicalize to get absolute path
+                if let Ok(abs_path) = path.canonicalize() {
+                    let path_str = abs_path.to_string_lossy().to_string();
+                    tracing::info!("Found bundled model at: {}", path_str);
+                    return Some(path_str);
+                } else {
+                    tracing::info!("Found bundled model at: {}", rel_path);
+                    return Some(rel_path.clone());
+                }
+            }
+        }
+
+        // 3. Check default data directory
+        if let Some(data_dir) = dirs::data_local_dir() {
+            let model_dir = data_dir.join("citrate").join("models");
+            if model_dir.exists() {
+                // Scan for any .gguf file, prefer instruction-tuned models
+                if let Ok(entries) = std::fs::read_dir(&model_dir) {
+                    let mut models: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().map_or(false, |ext| ext == "gguf"))
+                        .map(|e| e.path())
+                        .collect();
+
+                    // Sort by preference: instruct models first, then by size
+                    models.sort_by(|a, b| {
+                        let a_name = a.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                        let b_name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                        let a_instruct = a_name.contains("instruct");
+                        let b_instruct = b_name.contains("instruct");
+
+                        if a_instruct && !b_instruct {
+                            std::cmp::Ordering::Less
+                        } else if !a_instruct && b_instruct {
+                            std::cmp::Ordering::Greater
+                        } else {
+                            // Compare by file size (larger = better quality usually)
+                            let a_size = std::fs::metadata(a).map(|m| m.len()).unwrap_or(0);
+                            let b_size = std::fs::metadata(b).map(|m| m.len()).unwrap_or(0);
+                            b_size.cmp(&a_size)
+                        }
+                    });
+
+                    if let Some(model_path) = models.first() {
+                        let path_str = model_path.to_string_lossy().to_string();
+                        tracing::info!("Found local model in data dir: {}", path_str);
+                        return Some(path_str);
+                    }
+                }
+            }
+        }
+
+        // 4. Check executable directory
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let models_dir = exe_dir.join("models");
+                if models_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&models_dir) {
+                        for entry in entries.flatten() {
+                            let path = entry.path();
+                            if path.extension().map_or(false, |ext| ext == "gguf") {
+                                let path_str = path.to_string_lossy().to_string();
+                                tracing::info!("Found model near executable: {}", path_str);
+                                return Some(path_str);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        tracing::warn!("No local GGUF model found");
+        None
     }
 
     /// Get current configuration

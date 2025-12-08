@@ -1,10 +1,197 @@
 // citrate-core/src-tauri/src/agent/config.rs
 //
-// Agent configuration
+// Agent configuration with multi-provider API support
+//
+// Supports:
+// - OpenAI (GPT-4, GPT-3.5)
+// - Anthropic (Claude 3)
+// - Google Gemini
+// - xAI (Grok)
+// - Local GGUF models
 
 use serde::{Deserialize, Serialize};
 
-/// LLM backend type
+/// AI Provider enumeration
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum AIProvider {
+    /// OpenAI (GPT-4, GPT-3.5-turbo)
+    OpenAI,
+    /// Anthropic (Claude 3 Opus, Sonnet, Haiku)
+    Anthropic,
+    /// Google Gemini (Gemini Pro, Gemini Ultra)
+    Gemini,
+    /// xAI (Grok)
+    XAI,
+    /// Local GGUF model
+    Local,
+}
+
+impl Default for AIProvider {
+    fn default() -> Self {
+        Self::Local
+    }
+}
+
+impl std::fmt::Display for AIProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AIProvider::OpenAI => write!(f, "OpenAI"),
+            AIProvider::Anthropic => write!(f, "Anthropic"),
+            AIProvider::Gemini => write!(f, "Google Gemini"),
+            AIProvider::XAI => write!(f, "xAI"),
+            AIProvider::Local => write!(f, "Local Model"),
+        }
+    }
+}
+
+/// Provider-specific settings
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderSettings {
+    /// API key for this provider (stored securely, not serialized)
+    #[serde(skip_serializing)]
+    pub api_key: Option<String>,
+    /// Whether this provider is enabled
+    pub enabled: bool,
+    /// Default model ID for this provider
+    pub model_id: String,
+    /// Custom API base URL (for proxies or self-hosted)
+    pub base_url: Option<String>,
+    /// Whether connection has been verified
+    #[serde(skip)]
+    pub verified: bool,
+}
+
+impl ProviderSettings {
+    /// Create new provider settings
+    pub fn new(model_id: &str) -> Self {
+        Self {
+            api_key: None,
+            enabled: false,
+            model_id: model_id.to_string(),
+            base_url: None,
+            verified: false,
+        }
+    }
+
+    /// Check if this provider is configured and ready to use
+    pub fn is_ready(&self) -> bool {
+        self.enabled && self.api_key.is_some()
+    }
+}
+
+/// Multi-provider AI configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIProvidersConfig {
+    /// OpenAI settings
+    pub openai: ProviderSettings,
+    /// Anthropic settings
+    pub anthropic: ProviderSettings,
+    /// Google Gemini settings
+    pub gemini: ProviderSettings,
+    /// xAI settings
+    pub xai: ProviderSettings,
+    /// Preferred provider order (first available will be used)
+    pub preferred_order: Vec<AIProvider>,
+    /// Always fallback to local model if cloud providers fail
+    pub local_fallback: bool,
+    /// Local model path (GGUF file)
+    pub local_model_path: Option<String>,
+    /// Local model IPFS CID (for re-download)
+    pub local_model_cid: Option<String>,
+}
+
+impl Default for AIProvidersConfig {
+    fn default() -> Self {
+        Self {
+            openai: ProviderSettings::new("gpt-4o-mini"),
+            anthropic: ProviderSettings::new("claude-3-haiku-20240307"),
+            gemini: ProviderSettings::new("gemini-1.5-flash"),
+            xai: ProviderSettings::new("grok-beta"),
+            preferred_order: vec![AIProvider::Local, AIProvider::OpenAI, AIProvider::Anthropic],
+            local_fallback: true,
+            local_model_path: None,
+            local_model_cid: None,
+        }
+    }
+}
+
+impl AIProvidersConfig {
+    /// Get the first available provider based on preference order
+    pub fn get_active_provider(&self) -> Option<AIProvider> {
+        for provider in &self.preferred_order {
+            match provider {
+                AIProvider::OpenAI if self.openai.is_ready() => return Some(AIProvider::OpenAI),
+                AIProvider::Anthropic if self.anthropic.is_ready() => return Some(AIProvider::Anthropic),
+                AIProvider::Gemini if self.gemini.is_ready() => return Some(AIProvider::Gemini),
+                AIProvider::XAI if self.xai.is_ready() => return Some(AIProvider::XAI),
+                AIProvider::Local if self.local_model_path.is_some() => return Some(AIProvider::Local),
+                _ => continue,
+            }
+        }
+
+        // Fallback to local if enabled
+        if self.local_fallback && self.local_model_path.is_some() {
+            return Some(AIProvider::Local);
+        }
+
+        None
+    }
+
+    /// Get settings for a specific provider
+    pub fn get_provider_settings(&self, provider: AIProvider) -> Option<&ProviderSettings> {
+        match provider {
+            AIProvider::OpenAI => Some(&self.openai),
+            AIProvider::Anthropic => Some(&self.anthropic),
+            AIProvider::Gemini => Some(&self.gemini),
+            AIProvider::XAI => Some(&self.xai),
+            AIProvider::Local => None, // Local doesn't use ProviderSettings
+        }
+    }
+
+    /// Get mutable settings for a specific provider
+    pub fn get_provider_settings_mut(&mut self, provider: AIProvider) -> Option<&mut ProviderSettings> {
+        match provider {
+            AIProvider::OpenAI => Some(&mut self.openai),
+            AIProvider::Anthropic => Some(&mut self.anthropic),
+            AIProvider::Gemini => Some(&mut self.gemini),
+            AIProvider::XAI => Some(&mut self.xai),
+            AIProvider::Local => None,
+        }
+    }
+
+    /// Set API key for a provider
+    pub fn set_api_key(&mut self, provider: AIProvider, key: String) {
+        if let Some(settings) = self.get_provider_settings_mut(provider) {
+            settings.api_key = Some(key);
+            settings.enabled = true;
+        }
+    }
+
+    /// Get API base URL for a provider
+    pub fn get_base_url(&self, provider: AIProvider) -> &str {
+        match provider {
+            AIProvider::OpenAI => self.openai.base_url.as_deref().unwrap_or("https://api.openai.com/v1"),
+            AIProvider::Anthropic => self.anthropic.base_url.as_deref().unwrap_or("https://api.anthropic.com"),
+            AIProvider::Gemini => self.gemini.base_url.as_deref().unwrap_or("https://generativelanguage.googleapis.com/v1beta"),
+            AIProvider::XAI => self.xai.base_url.as_deref().unwrap_or("https://api.x.ai/v1"),
+            AIProvider::Local => "",
+        }
+    }
+
+    /// Get model ID for a provider
+    pub fn get_model_id(&self, provider: AIProvider) -> &str {
+        match provider {
+            AIProvider::OpenAI => &self.openai.model_id,
+            AIProvider::Anthropic => &self.anthropic.model_id,
+            AIProvider::Gemini => &self.gemini.model_id,
+            AIProvider::XAI => &self.xai.model_id,
+            AIProvider::Local => self.local_model_path.as_deref().unwrap_or(""),
+        }
+    }
+}
+
+/// LLM backend type (legacy, kept for compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LLMBackendType {
@@ -155,8 +342,11 @@ impl Default for ContextConfig {
 /// Main agent configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentConfig {
-    /// LLM configuration
+    /// LLM configuration (legacy, prefer using providers)
     pub llm: LLMConfig,
+    /// Multi-provider AI configuration
+    #[serde(default)]
+    pub providers: AIProvidersConfig,
     /// Intent classifier configuration
     pub classifier: ClassifierConfig,
     /// Tool execution configuration
@@ -169,6 +359,12 @@ pub struct AgentConfig {
     pub system_prompt: Option<String>,
     /// Whether agent is enabled
     pub enabled: bool,
+    /// Whether onboarding has been completed
+    #[serde(default)]
+    pub onboarding_completed: bool,
+    /// First run flag
+    #[serde(default)]
+    pub first_run: bool,
 }
 
 impl AgentConfig {

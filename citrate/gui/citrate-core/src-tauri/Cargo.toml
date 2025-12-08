@@ -83,13 +83,14 @@ num_cpus = "1.16"
 shellexpand = "3.1"
 futures = "0.3"
 
-# Local LLM support (optional - requires llama.cpp build dependencies)
-# Uncomment to enable local GGUF model inference
-# llama-cpp-2 = { version = "0.1", optional = true }
+# Local LLM support using llama-cpp-2 bindings
+# llama-cpp-2 is a modern Rust wrapper around llama.cpp with Qwen2 support
+llama-cpp-2 = { version = "0.1", optional = true }
 
 [features]
-default = []
-local-llm = []  # Enable when llama-cpp-2 is added
+# Enable local-llm by default for bundled model inference
+default = ["local-llm"]
+local-llm = ["llama-cpp-2"]  # Enable local GGUF model inference via llama.cpp
 # Development mode - enables mock data and verbose logging
 # Use: cargo build --features dev-mode
 dev-mode = []

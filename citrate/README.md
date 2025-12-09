@@ -128,14 +128,41 @@ graph TB
 
 #### Option A: Download Pre-built GUI (Recommended for Users)
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/citrate-ai/citrate/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/SaulBuilds/citrate/releases):
 
-| Platform | Download |
-|----------|----------|
-| macOS (Apple Silicon) | `Citrate_arm64.dmg` |
-| macOS (Intel) | `Citrate_x64.dmg` |
-| Windows | `Citrate_Setup.exe` |
-| Linux | `Citrate.AppImage` or `citrate.deb` |
+| Platform | Installer | Build Target | Size |
+|----------|-----------|--------------|------|
+| **macOS (Apple Silicon)** | `Citrate_1.0.0_aarch64.dmg` | `aarch64-apple-darwin` | ~400MB |
+| **macOS (Intel)** | `Citrate_1.0.0_x64.dmg` | `x86_64-apple-darwin` | ~400MB |
+| **Windows** | `Citrate_1.0.0_x64-setup.exe` | `x86_64-pc-windows-msvc` | ~350MB |
+| **Windows (MSI)** | `Citrate_1.0.0_x64_en-US.msi` | `x86_64-pc-windows-msvc` | ~350MB |
+| **Linux (Debian/Ubuntu)** | `citrate_1.0.0_amd64.deb` | `x86_64-unknown-linux-gnu` | ~350MB |
+| **Linux (AppImage)** | `Citrate_1.0.0_amd64.AppImage` | `x86_64-unknown-linux-gnu` | ~350MB |
+
+**Build Output Locations:**
+```
+# macOS builds
+citrate/target/release/bundle/macos/Citrate.app     # App bundle
+citrate/target/release/bundle/dmg/Citrate_*.dmg    # DMG installer
+
+# Windows builds
+citrate/target/release/bundle/nsis/Citrate_*-setup.exe  # NSIS installer
+citrate/target/release/bundle/msi/Citrate_*.msi         # MSI installer
+
+# Linux builds
+citrate/target/release/bundle/deb/citrate_*.deb    # Debian package
+citrate/target/release/bundle/appimage/Citrate_*.AppImage  # AppImage
+```
+
+#### First-Run Experience
+
+On first launch, Citrate will:
+1. Show an onboarding modal
+2. **Automatically download** the enhanced Qwen2.5-Coder-7B model (~4.4GB)
+3. Display download progress with percentage and speed
+4. Configure the app for immediate AI-powered blockchain interaction
+
+The bundled lightweight model (Qwen2-0.5B, ~400MB) works immediately while the larger model downloads in the background.
 
 #### Option B: Build from Source (For Developers)
 
@@ -212,22 +239,45 @@ npm run tauri dev
 - **Metal GPU Acceleration** - Optimized for Apple Silicon (M1/M2/M3/M4)
 - **Privacy-First** - Your data never leaves your device
 
-#### Alternative: Download Larger Models
+#### Manual Model Download (Optional)
 
-For more capable models, use the download script:
+Models are automatically downloaded on first run, but you can also manually download them:
 
+**macOS/Linux:**
 ```bash
-# Download additional models (~4.5GB total)
-./scripts/download-models.sh
+# Download the enhanced 7B model (~4.4GB) - recommended
+./scripts/download-models.sh --7b
 
-# This downloads:
-# - Mistral 7B Instruct v0.3 (~4.1GB) - General purpose LLM
-# - Qwen2 0.5B (~400MB) - Fast inference model (already bundled in GUI)
+# Download the lightweight 0.5B model (~379MB)
+./scripts/download-models.sh --0.5b
+
+# Download all models
+./scripts/download-models.sh --all
 ```
 
-Models are stored in:
-- **GUI Bundled:** `gui/citrate-core/src-tauri/resources/models/`
-- **User Downloads:** `~/.citrate/models/`
+**Windows (PowerShell):**
+```powershell
+# Download the enhanced 7B model (~4.4GB) - recommended
+.\scripts\download-models.ps1 -SevenB
+
+# Download the lightweight 0.5B model (~379MB)
+.\scripts\download-models.ps1 -HalfB
+
+# Download all models
+.\scripts\download-models.ps1 -All
+```
+
+**Available Models:**
+
+| Model | Size | Description | Recommended |
+|-------|------|-------------|-------------|
+| **Qwen2.5-Coder-7B** | 4.4GB | Enhanced coding & reasoning model | Yes |
+| **Qwen2-0.5B** | 379MB | Fast lightweight model (bundled) | Fallback |
+
+**Model Storage Locations:**
+- **macOS:** `~/Library/Application Support/citrate/models/`
+- **Windows:** `%APPDATA%\citrate\models\`
+- **Linux:** `~/.citrate/models/`
 
 #### API Provider Integration (Optional)
 

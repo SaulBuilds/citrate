@@ -13,11 +13,12 @@ use tokio::sync::RwLock;
 
 use super::classifier::IntentClassifier;
 use super::config::{AgentConfig, ClassifierConfig};
-use super::context::{ContextWindow, ConversationHistory, SystemContext};
+use super::context::{ContextMessage, ContextWindow, ConversationHistory, SystemContext};
 use super::dispatcher::ToolDispatcher;
 use super::intent::{Intent, IntentMatch};
 use super::llm::{LLMBackend, LLMConfig, LLMFactory};
-use super::session::{AgentSession, Message, SessionId};
+use super::react::ReActExecutor;
+use super::session::{AgentSession, Message, MessageRole, SessionId};
 use super::storage::{ConversationStorage, ConversationMetadata};
 use super::streaming::StreamManager;
 use super::tools::register_all_tools;
@@ -107,6 +108,8 @@ pub struct AgentOrchestrator {
     dispatcher: ToolDispatcher,
     /// LLM backend
     llm: Box<dyn LLMBackend + Send + Sync>,
+    /// ReAct executor for tool orchestration
+    react_executor: ReActExecutor,
     /// Stream manager
     stream_manager: Arc<StreamManager>,
     /// Node manager reference
@@ -167,6 +170,7 @@ impl AgentOrchestrator {
             classifier,
             dispatcher,
             llm,
+            react_executor: ReActExecutor::new(),
             stream_manager: Arc::new(StreamManager::new()),
             node_manager,
             wallet_manager,
@@ -395,54 +399,76 @@ impl AgentOrchestrator {
         }
     }
 
-    /// Handle a chat/conversational intent
+    /// Handle a chat/conversational intent using ReAct pattern
+    /// This allows the LLM to reason and optionally invoke tools
     async fn handle_chat_intent(
         &self,
         session: &Arc<AgentSession>,
         _intent: &IntentMatch,
-        _user_message: &str,
+        user_message: &str,
     ) -> OrchestratorResult<(Message, bool, Option<ToolResult>)> {
-        tracing::debug!("handle_chat_intent starting");
+        tracing::debug!("handle_chat_intent starting with ReAct executor");
 
-        // Build context window
-        let system_prompt = self
-            .config
-            .system_prompt
-            .clone()
-            .unwrap_or_else(|| AgentConfig::default_system_prompt());
-
+        // Get system context for the LLM
         let system_context = self.get_system_context().await;
 
-        // Get recent messages for context
+        // Get recent messages for conversation context
         let recent = session.recent_messages(10).await;
         tracing::debug!("Got {} recent messages for context", recent.len());
 
-        let mut history = ConversationHistory::new();
-        for msg in recent {
-            history.add_message(msg);
-        }
+        // Convert to ContextMessage format for ReAct
+        let conversation_history: Vec<ContextMessage> = recent
+            .iter()
+            .filter_map(|msg| {
+                let role = match msg.role {
+                    MessageRole::User => "user",
+                    MessageRole::Assistant => "assistant",
+                    _ => return None, // Skip system messages etc.
+                };
+                Some(ContextMessage {
+                    role: role.to_string(),
+                    content: msg.content.clone(),
+                    name: None,
+                    tool_call_id: None,
+                })
+            })
+            .collect();
 
-        let context_window = history.build_context_window(
-            &system_prompt,
+        tracing::debug!("Calling ReAct executor with {} history messages", conversation_history.len());
+
+        // Execute using ReAct pattern
+        let react_result = self.react_executor.execute(
+            user_message,
+            self.llm.as_ref(),
+            &self.dispatcher,
             Some(system_context),
-            self.config.context.max_context_tokens as usize,
-            10,
+            &conversation_history,
+        ).await;
+
+        tracing::debug!(
+            "ReAct completed: success={}, iterations={}, tools_used={:?}",
+            react_result.success,
+            react_result.iterations,
+            react_result.tools_used
         );
 
-        tracing::debug!("Calling LLM backend: {}", self.llm.name());
+        // Determine if tools were used
+        let tool_invoked = !react_result.tools_used.is_empty();
+        let tool_result = if tool_invoked {
+            Some(ToolResult {
+                tool_name: react_result.tools_used.join(", "),
+                success: react_result.success,
+                output: format!("Used {} tools in {} iterations",
+                    react_result.tools_used.len(),
+                    react_result.iterations
+                ),
+                data: None,
+            })
+        } else {
+            None
+        };
 
-        // Call LLM
-        let response = self
-            .llm
-            .complete(&context_window)
-            .await
-            .map_err(|e| {
-                tracing::error!("LLM error: {}", e);
-                OrchestratorError::LLMError(e.to_string())
-            })?;
-
-        tracing::debug!("Got response: {} chars", response.len());
-        Ok((Message::assistant(response), false, None))
+        Ok((Message::assistant(react_result.response), tool_invoked, tool_result))
     }
 
     /// Format tool result with LLM for natural language
@@ -664,6 +690,7 @@ impl AgentOrchestrator {
     }
 
     /// Find a local model path, checking config first then default locations
+    /// Prefers larger models (7B > 3B > 1.5B > 0.5B) for better reasoning capability
     fn find_local_model(config_path: &Option<String>) -> Option<String> {
         tracing::info!("Searching for local GGUF model...");
 
@@ -680,7 +707,76 @@ impl AgentOrchestrator {
             tracing::info!("No local model path configured, searching default locations...");
         }
 
-        // 2. Check resources directory (bundled with app) - both relative and absolute
+        // 2. Check default data directory FIRST for user-downloaded models
+        // Prefer larger models for better tool calling capability
+        if let Some(data_dir) = dirs::data_local_dir() {
+            let model_dir = data_dir.join("citrate").join("models");
+            if model_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&model_dir) {
+                    let mut models: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.path().extension().map_or(false, |ext| ext == "gguf"))
+                        .map(|e| e.path())
+                        .collect();
+
+                    // Sort by preference: larger models first (7B > 3B > 1.5B > 0.5B), then instruct models
+                    models.sort_by(|a, b| {
+                        let a_name = a.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                        let b_name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+
+                        // Extract size indicator (32b, 14b, 7b, 3b, 1.5b, 0.5b)
+                        let get_size_priority = |name: &str| -> i32 {
+                            if name.contains("32b") { 6 }
+                            else if name.contains("14b") { 5 }
+                            else if name.contains("7b") { 4 }
+                            else if name.contains("3b") { 3 }
+                            else if name.contains("1.5b") || name.contains("1_5b") { 2 }
+                            else if name.contains("0.5b") || name.contains("0_5b") { 1 }
+                            else { 0 }
+                        };
+
+                        let a_size = get_size_priority(&a_name);
+                        let b_size = get_size_priority(&b_name);
+
+                        // Larger size wins
+                        if a_size != b_size {
+                            return b_size.cmp(&a_size);
+                        }
+
+                        // Prefer coder models for better tool calling
+                        let a_coder = a_name.contains("coder");
+                        let b_coder = b_name.contains("coder");
+                        if a_coder && !b_coder {
+                            return std::cmp::Ordering::Less;
+                        } else if !a_coder && b_coder {
+                            return std::cmp::Ordering::Greater;
+                        }
+
+                        // Prefer instruct models
+                        let a_instruct = a_name.contains("instruct");
+                        let b_instruct = b_name.contains("instruct");
+                        if a_instruct && !b_instruct {
+                            std::cmp::Ordering::Less
+                        } else if !a_instruct && b_instruct {
+                            std::cmp::Ordering::Greater
+                        } else {
+                            // Fall back to file size
+                            let a_file_size = std::fs::metadata(a).map(|m| m.len()).unwrap_or(0);
+                            let b_file_size = std::fs::metadata(b).map(|m| m.len()).unwrap_or(0);
+                            b_file_size.cmp(&a_file_size)
+                        }
+                    });
+
+                    if let Some(model_path) = models.first() {
+                        let path_str = model_path.to_string_lossy().to_string();
+                        tracing::info!("Found local model in data dir (preferred): {}", path_str);
+                        return Some(path_str);
+                    }
+                }
+            }
+        }
+
+        // 3. Check resources directory (bundled with app) - both relative and absolute
         let mut resource_paths = vec![
             "resources/models/qwen2-0_5b-instruct-q4_k_m.gguf".to_string(),
             "../resources/models/qwen2-0_5b-instruct-q4_k_m.gguf".to_string(),
@@ -726,46 +822,6 @@ impl AgentOrchestrator {
                 } else {
                     tracing::info!("Found bundled model at: {}", rel_path);
                     return Some(rel_path.clone());
-                }
-            }
-        }
-
-        // 3. Check default data directory
-        if let Some(data_dir) = dirs::data_local_dir() {
-            let model_dir = data_dir.join("citrate").join("models");
-            if model_dir.exists() {
-                // Scan for any .gguf file, prefer instruction-tuned models
-                if let Ok(entries) = std::fs::read_dir(&model_dir) {
-                    let mut models: Vec<_> = entries
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.path().extension().map_or(false, |ext| ext == "gguf"))
-                        .map(|e| e.path())
-                        .collect();
-
-                    // Sort by preference: instruct models first, then by size
-                    models.sort_by(|a, b| {
-                        let a_name = a.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-                        let b_name = b.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-                        let a_instruct = a_name.contains("instruct");
-                        let b_instruct = b_name.contains("instruct");
-
-                        if a_instruct && !b_instruct {
-                            std::cmp::Ordering::Less
-                        } else if !a_instruct && b_instruct {
-                            std::cmp::Ordering::Greater
-                        } else {
-                            // Compare by file size (larger = better quality usually)
-                            let a_size = std::fs::metadata(a).map(|m| m.len()).unwrap_or(0);
-                            let b_size = std::fs::metadata(b).map(|m| m.len()).unwrap_or(0);
-                            b_size.cmp(&a_size)
-                        }
-                    });
-
-                    if let Some(model_path) = models.first() {
-                        let path_str = model_path.to_string_lossy().to_string();
-                        tracing::info!("Found local model in data dir: {}", path_str);
-                        return Some(path_str);
-                    }
                 }
             }
         }

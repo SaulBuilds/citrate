@@ -1872,3 +1872,210 @@ pub async fn get_secure_api_key_status() -> Result<serde_json::Value, String> {
 
     Ok(serde_json::Value::Object(status))
 }
+
+// =============================================================================
+// Enhanced Model Download Commands
+// =============================================================================
+
+/// Download the enhanced 7B model from HuggingFace with progress reporting
+/// This is called automatically during onboarding to give users the best experience
+#[tauri::command]
+pub async fn download_enhanced_model(
+    state: State<'_, AgentState>,
+    app_handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    use std::io::Write;
+
+    let model_url = "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+    let model_filename = "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+    let expected_size: u64 = 4_700_000_000; // ~4.7GB
+
+    // Get the models directory
+    let models_dir = super::llm::local::get_default_models_dir()
+        .ok_or("Could not determine models directory")?;
+
+    // Ensure directory exists
+    std::fs::create_dir_all(&models_dir)
+        .map_err(|e| format!("Failed to create models directory: {}", e))?;
+
+    let dest_path = models_dir.join(model_filename);
+
+    // Check if already downloaded
+    if dest_path.exists() {
+        let metadata = std::fs::metadata(&dest_path)
+            .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+
+        // If file is close to expected size, consider it complete
+        if metadata.len() > expected_size - 100_000_000 {
+            tracing::info!("Enhanced model already downloaded: {:?}", dest_path);
+
+            // Configure as active model
+            let manager_guard = state.manager.read().await;
+            if let Some(manager) = manager_guard.as_ref() {
+                let config = manager.config();
+                let mut cfg = config.write().await;
+                cfg.providers.local_model_path = Some(dest_path.to_string_lossy().to_string());
+            }
+
+            return Ok(serde_json::json!({
+                "success": true,
+                "already_exists": true,
+                "path": dest_path.to_string_lossy().to_string(),
+                "size_mb": metadata.len() / (1024 * 1024),
+                "model_name": "Qwen2.5-Coder-7B-Instruct"
+            }));
+        }
+    }
+
+    tracing::info!("Starting enhanced model download from HuggingFace");
+
+    // Emit initial progress event
+    let _ = app_handle.emit("model-download-progress", serde_json::json!({
+        "status": "starting",
+        "progress": 0,
+        "message": "Connecting to HuggingFace..."
+    }));
+
+    // Start the download
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3600)) // 1 hour timeout for large file
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get(model_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to HuggingFace: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HuggingFace returned error: {}", response.status()));
+    }
+
+    let total_size = response.content_length().unwrap_or(expected_size);
+
+    // Emit download started event
+    let _ = app_handle.emit("model-download-progress", serde_json::json!({
+        "status": "downloading",
+        "progress": 0,
+        "total_size_mb": total_size / (1024 * 1024),
+        "message": "Downloading Qwen2.5-Coder-7B model..."
+    }));
+
+    // Create temporary file for download
+    let temp_path = dest_path.with_extension("gguf.download");
+    let mut file = std::fs::File::create(&temp_path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+
+    // Download in chunks manually using tokio::io::copy with progress
+    let bytes = response.bytes().await
+        .map_err(|e| format!("Failed to download: {}", e))?;
+
+    let downloaded = bytes.len() as u64;
+    let progress = (downloaded as f64 / total_size as f64 * 100.0).min(100.0) as u8;
+    let downloaded_mb = downloaded / (1024 * 1024);
+    let total_mb = total_size / (1024 * 1024);
+
+    // Emit progress updates
+    let _ = app_handle.emit("model-download-progress", serde_json::json!({
+        "status": "downloading",
+        "progress": progress,
+        "downloaded_mb": downloaded_mb,
+        "total_size_mb": total_mb,
+        "message": format!("Downloading: {} MB / {} MB ({}%)", downloaded_mb, total_mb, progress)
+    }));
+
+    // Write the bytes to file
+    file.write_all(&bytes)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    // Flush and rename temp file to final destination
+    file.flush().map_err(|e| format!("Failed to flush file: {}", e))?;
+    drop(file);
+
+    std::fs::rename(&temp_path, &dest_path)
+        .map_err(|e| format!("Failed to finalize download: {}", e))?;
+
+    let final_size = std::fs::metadata(&dest_path)
+        .map(|m| m.len())
+        .unwrap_or(downloaded);
+
+    // Configure as active model
+    let manager_guard = state.manager.read().await;
+    if let Some(manager) = manager_guard.as_ref() {
+        let config = manager.config();
+        let mut cfg = config.write().await;
+        cfg.providers.local_model_path = Some(dest_path.to_string_lossy().to_string());
+    }
+
+    // Emit completion event
+    let _ = app_handle.emit("model-download-progress", serde_json::json!({
+        "status": "complete",
+        "progress": 100,
+        "path": dest_path.to_string_lossy().to_string(),
+        "size_mb": final_size / (1024 * 1024),
+        "message": "Download complete! Enhanced AI model is ready."
+    }));
+
+    tracing::info!("Enhanced model download complete: {:?}", dest_path);
+
+    Ok(serde_json::json!({
+        "success": true,
+        "already_exists": false,
+        "path": dest_path.to_string_lossy().to_string(),
+        "size_mb": final_size / (1024 * 1024),
+        "model_name": "Qwen2.5-Coder-7B-Instruct"
+    }))
+}
+
+/// Check if the enhanced 7B model is already downloaded
+#[tauri::command]
+pub async fn check_enhanced_model_status() -> Result<serde_json::Value, String> {
+    let model_filename = "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+    let expected_size: u64 = 4_700_000_000; // ~4.7GB
+
+    let models_dir = super::llm::local::get_default_models_dir()
+        .ok_or("Could not determine models directory")?;
+
+    let model_path = models_dir.join(model_filename);
+
+    if model_path.exists() {
+        let metadata = std::fs::metadata(&model_path)
+            .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+
+        let is_complete = metadata.len() > expected_size - 100_000_000;
+
+        Ok(serde_json::json!({
+            "exists": true,
+            "complete": is_complete,
+            "path": model_path.to_string_lossy().to_string(),
+            "size_mb": metadata.len() / (1024 * 1024),
+            "model_name": "Qwen2.5-Coder-7B-Instruct"
+        }))
+    } else {
+        Ok(serde_json::json!({
+            "exists": false,
+            "complete": false,
+            "expected_path": model_path.to_string_lossy().to_string()
+        }))
+    }
+}
+
+/// Cancel an in-progress model download
+#[tauri::command]
+pub async fn cancel_model_download() -> Result<(), String> {
+    let model_filename = "qwen2.5-coder-7b-instruct-q4_k_m.gguf";
+
+    let models_dir = super::llm::local::get_default_models_dir()
+        .ok_or("Could not determine models directory")?;
+
+    // Remove the temp download file if it exists
+    let temp_path = models_dir.join(format!("{}.download", model_filename));
+    if temp_path.exists() {
+        std::fs::remove_file(&temp_path)
+            .map_err(|e| format!("Failed to remove temp file: {}", e))?;
+    }
+
+    tracing::info!("Model download cancelled");
+    Ok(())
+}

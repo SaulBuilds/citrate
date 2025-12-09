@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import {
   Sparkles,
   Brain,
@@ -228,6 +229,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
   const [modelSetupStatus, setModelSetupStatus] = useState<'pending' | 'setting-up' | 'ready' | 'error' | 'not-found'>('pending');
   const [modelInfo, setModelInfo] = useState<{ name?: string; size_mb?: number; path?: string } | null>(null);
 
+  // Enhanced model download
+  const [enhancedModelStatus, setEnhancedModelStatus] = useState<'checking' | 'not-downloaded' | 'downloading' | 'complete' | 'error'>('checking');
+  const [downloadProgress, setDownloadProgress] = useState<number>(0);
+  const [downloadMessage, setDownloadMessage] = useState<string>('');
+
   // HuggingFace connection
   const [hfConnected, setHfConnected] = useState(false);
   const [skipHf, setSkipHf] = useState(false);
@@ -251,6 +257,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
   useEffect(() => {
     setPasswordStrength(validatePasswordStrength(password));
   }, [password]);
+
+  // Auto-trigger enhanced model download when bundled model is ready
+  useEffect(() => {
+    if (modelSetupStatus === 'ready' && enhancedModelStatus === 'checking') {
+      // Start checking and downloading enhanced model automatically
+      checkAndDownloadEnhancedModel();
+    }
+  }, [modelSetupStatus, enhancedModelStatus, checkAndDownloadEnhancedModel]);
 
   // ============================================================================
   // API Calls
@@ -317,6 +331,69 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
       setModelSetupStatus('error');
       console.error('Error setting up bundled model:', err);
     }
+  }, []);
+
+  // Check and download enhanced 7B model automatically
+  const checkAndDownloadEnhancedModel = useCallback(async () => {
+    setEnhancedModelStatus('checking');
+    try {
+      // First check if already downloaded
+      const status = await invoke<{ exists: boolean; complete: boolean; size_mb?: number }>('check_enhanced_model_status');
+
+      if (status.exists && status.complete) {
+        setEnhancedModelStatus('complete');
+        setDownloadProgress(100);
+        setDownloadMessage('Enhanced AI model is ready!');
+        return;
+      }
+
+      // Not downloaded, start download automatically
+      setEnhancedModelStatus('downloading');
+      setDownloadProgress(0);
+      setDownloadMessage('Preparing to download enhanced AI model...');
+
+      // Start the download
+      invoke('download_enhanced_model').catch(err => {
+        console.error('Enhanced model download error:', err);
+        setEnhancedModelStatus('error');
+        setDownloadMessage(`Download failed: ${err}`);
+      });
+
+    } catch (err) {
+      console.error('Error checking enhanced model:', err);
+      setEnhancedModelStatus('error');
+    }
+  }, []);
+
+  // Listen for download progress events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const setupListener = async () => {
+      unlisten = await listen<{
+        status: string;
+        progress: number;
+        message: string;
+        downloaded_mb?: number;
+        total_size_mb?: number;
+      }>('model-download-progress', (event) => {
+        const { status, progress, message } = event.payload;
+        setDownloadProgress(progress);
+        setDownloadMessage(message);
+
+        if (status === 'complete') {
+          setEnhancedModelStatus('complete');
+        } else if (status === 'downloading') {
+          setEnhancedModelStatus('downloading');
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
   }, []);
 
   const handleAnswerSelect = async (score: number) => {
@@ -1041,14 +1118,67 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
               </p>
 
               {modelSetupStatus === 'ready' && modelInfo && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-left">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4 text-left">
                   <div className="flex items-center space-x-2 mb-2">
                     <CheckCircle className="w-4 h-4 text-green-600" />
                     <span className="font-medium text-green-800">{modelInfo.name}</span>
                   </div>
                   <p className="text-sm text-green-700">
-                    Size: {modelInfo.size_mb} MB
+                    Size: {modelInfo.size_mb} MB (Fast lightweight model)
                   </p>
+                </div>
+              )}
+
+              {/* Enhanced Model Download Section */}
+              {modelSetupStatus === 'ready' && (
+                <div className="mb-6">
+                  <div className="border-t border-gray-200 pt-4 mt-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center space-x-2">
+                      <Zap className="w-4 h-4 text-orange-500" />
+                      <span>Enhanced AI Model</span>
+                    </h4>
+                    <p className="text-xs text-gray-600 mb-3">
+                      For better AI capabilities, we're downloading the enhanced Qwen2.5-Coder-7B model (~4.4 GB).
+                      This runs in the background and won't block your setup.
+                    </p>
+
+                    {enhancedModelStatus === 'checking' && (
+                      <div className="flex items-center space-x-2 text-gray-600">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-sm">Checking for enhanced model...</span>
+                      </div>
+                    )}
+
+                    {enhancedModelStatus === 'downloading' && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-700">Downloading...</span>
+                          <span className="text-orange-600 font-medium">{downloadProgress.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-orange-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${downloadProgress}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500">{downloadMessage}</p>
+                      </div>
+                    )}
+
+                    {enhancedModelStatus === 'complete' && (
+                      <div className="flex items-center space-x-2 text-green-600">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">Enhanced model ready!</span>
+                      </div>
+                    )}
+
+                    {enhancedModelStatus === 'error' && (
+                      <div className="flex items-center space-x-2 text-amber-600">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span className="text-sm">Download will retry later. You can still use the basic model.</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1067,7 +1197,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
                   onClick={goToNextStep}
                   className="w-full px-4 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 transition-colors flex items-center justify-center space-x-2"
                 >
-                  <span>Continue</span>
+                  <span>{enhancedModelStatus === 'downloading' ? 'Continue (Download in background)' : 'Continue'}</span>
                   <ChevronRight className="w-5 h-5" />
                 </button>
               )}

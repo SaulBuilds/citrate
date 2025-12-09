@@ -1,69 +1,68 @@
 #!/bin/bash
 # Citrate Model Download Script
-# Downloads required AI models for first-run setup
+# Downloads required AI models for enhanced capabilities
 
 set -e
 
-MODELS_DIR="${CITRATE_MODELS_DIR:-$HOME/.citrate/models}"
-IPFS_GATEWAY="${IPFS_GATEWAY:-https://ipfs.io/ipfs}"
+# Platform detection
+case "$(uname -s)" in
+    Darwin*)    PLATFORM="macos" ;;
+    Linux*)     PLATFORM="linux" ;;
+    MINGW*|CYGWIN*|MSYS*) PLATFORM="windows" ;;
+    *)          PLATFORM="unknown" ;;
+esac
 
-# Model CIDs
-MISTRAL_7B_CID="QmUsYyxg71bV8USRQ6Ccm3SdMqeWgEEVnCYkgNDaxvBTZB"
-QWEN2_05B_CID="QmZj4ZaG9v6nXKnT5yqwi8YaH5bm48zooNdh9ff4CHGTY4"
+# Models directory - OS specific
+if [ "$PLATFORM" = "macos" ]; then
+    MODELS_DIR="${CITRATE_MODELS_DIR:-$HOME/Library/Application Support/citrate/models}"
+elif [ "$PLATFORM" = "windows" ]; then
+    MODELS_DIR="${CITRATE_MODELS_DIR:-$APPDATA/citrate/models}"
+else
+    MODELS_DIR="${CITRATE_MODELS_DIR:-$HOME/.citrate/models}"
+fi
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║     Citrate AI Model Download Script       ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}"
+echo -e "${GREEN}╔════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║       Citrate AI Model Download Script             ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # Create models directory
 mkdir -p "$MODELS_DIR"
+echo -e "Platform: ${YELLOW}$PLATFORM${NC}"
 echo -e "Models directory: ${YELLOW}$MODELS_DIR${NC}"
 echo ""
 
-# Function to download from IPFS with fallback gateways
-download_from_ipfs() {
-    local cid=$1
-    local output=$2
-    local name=$3
+# Model definitions
+declare -A MODELS
+MODELS["qwen2-0.5b"]="Qwen/Qwen2-0.5B-Instruct-GGUF|qwen2-0_5b-instruct-q4_k_m.gguf|379M|Fast lightweight model (bundled)"
+MODELS["qwen2.5-coder-7b"]="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF|qwen2.5-coder-7b-instruct-q4_k_m.gguf|4.4G|Enhanced coding model (recommended)"
 
-    local gateways=(
-        "https://ipfs.io/ipfs"
-        "https://cloudflare-ipfs.com/ipfs"
-        "https://gateway.pinata.cloud/ipfs"
-        "https://dweb.link/ipfs"
-    )
+# Function to download from HuggingFace with progress
+download_model() {
+    local key=$1
+    local info="${MODELS[$key]}"
 
-    echo -e "Downloading ${YELLOW}$name${NC}..."
-
-    for gateway in "${gateways[@]}"; do
-        echo -e "  Trying gateway: $gateway"
-        if curl -L --progress-bar --fail "$gateway/$cid" -o "$output" 2>/dev/null; then
-            echo -e "  ${GREEN}✓ Downloaded successfully${NC}"
-            return 0
-        fi
-    done
-
-    echo -e "  ${RED}✗ Failed to download from all gateways${NC}"
-    return 1
-}
-
-# Function to download from HuggingFace
-download_from_huggingface() {
-    local repo=$1
-    local file=$2
-    local output=$3
-    local name=$4
-
+    IFS='|' read -r repo file size desc <<< "$info"
+    local output="$MODELS_DIR/$file"
     local url="https://huggingface.co/$repo/resolve/main/$file"
 
-    echo -e "Downloading ${YELLOW}$name${NC} from HuggingFace..."
+    echo -e "${BLUE}[$key]${NC} $desc"
+    echo -e "  Size: ${YELLOW}$size${NC}"
+
+    if [[ -f "$output" ]]; then
+        local existing_size=$(du -h "$output" 2>/dev/null | cut -f1)
+        echo -e "  ${GREEN}✓ Already downloaded${NC} ($existing_size)"
+        return 0
+    fi
+
+    echo -e "  Downloading from HuggingFace..."
     echo -e "  URL: $url"
 
     if curl -L --progress-bar --fail "$url" -o "$output"; then
@@ -71,76 +70,94 @@ download_from_huggingface() {
         return 0
     else
         echo -e "  ${RED}✗ Failed to download${NC}"
+        rm -f "$output" 2>/dev/null
         return 1
     fi
 }
 
-# Check what's already downloaded
-check_model() {
-    local path=$1
-    local min_size=$2  # Minimum size in bytes
+# Parse arguments
+DOWNLOAD_ALL=false
+DOWNLOAD_7B=false
+DOWNLOAD_05B=false
 
-    if [[ -f "$path" ]]; then
-        local size=$(stat -f%z "$path" 2>/dev/null || stat -c%s "$path" 2>/dev/null)
-        if [[ $size -ge $min_size ]]; then
-            return 0
-        fi
-    fi
-    return 1
-}
-
-echo "Checking existing models..."
-echo ""
-
-# Download Mistral 7B Instruct (4.1GB)
-MISTRAL_PATH="$MODELS_DIR/mistral-7b-instruct-v0.3.gguf"
-if check_model "$MISTRAL_PATH" 4000000000; then
-    echo -e "${GREEN}✓ Mistral 7B already downloaded${NC}"
-else
-    echo -e "${YELLOW}Mistral 7B Instruct v0.3 (~4.1GB)${NC}"
-    download_from_ipfs "$MISTRAL_7B_CID" "$MISTRAL_PATH" "Mistral 7B Instruct"
+if [[ $# -eq 0 ]]; then
+    echo "Usage: $0 [--all | --7b | --0.5b]"
+    echo ""
+    echo "Options:"
+    echo "  --all   Download all models (~4.8GB total)"
+    echo "  --7b    Download Qwen2.5-Coder-7B (~4.4GB) - recommended for best results"
+    echo "  --0.5b  Download Qwen2-0.5B (~379MB) - lightweight, already bundled"
+    echo ""
+    echo "Available models:"
+    for key in "${!MODELS[@]}"; do
+        IFS='|' read -r repo file size desc <<< "${MODELS[$key]}"
+        echo -e "  ${BLUE}$key${NC}: $desc ($size)"
+    done
+    echo ""
+    echo "The 0.5B model is bundled with the app and works immediately."
+    echo "For better AI capabilities, download the 7B model with: $0 --7b"
+    exit 0
 fi
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --all)
+            DOWNLOAD_ALL=true
+            shift
+            ;;
+        --7b)
+            DOWNLOAD_7B=true
+            shift
+            ;;
+        --0.5b)
+            DOWNLOAD_05B=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+echo "Starting downloads..."
 echo ""
 
-# Download Qwen2 0.5B (fast inference, ~400MB)
-QWEN2_PATH="$MODELS_DIR/qwen2-0.5b-instruct-q4.gguf"
-if check_model "$QWEN2_PATH" 300000000; then
-    echo -e "${GREEN}✓ Qwen2 0.5B already downloaded${NC}"
-else
-    echo -e "${YELLOW}Qwen2 0.5B Instruct Q4 (~400MB)${NC}"
-    if [[ -n "$QWEN2_05B_CID" ]]; then
-        download_from_ipfs "$QWEN2_05B_CID" "$QWEN2_PATH" "Qwen2 0.5B"
+# Download requested models
+if $DOWNLOAD_ALL || $DOWNLOAD_05B; then
+    download_model "qwen2-0.5b"
+    echo ""
+fi
+
+if $DOWNLOAD_ALL || $DOWNLOAD_7B; then
+    download_model "qwen2.5-coder-7b"
+    echo ""
+fi
+
+# Summary
+echo -e "${GREEN}╔════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║              Download Summary                       ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+for key in "${!MODELS[@]}"; do
+    IFS='|' read -r repo file size desc <<< "${MODELS[$key]}"
+    local_file="$MODELS_DIR/$file"
+
+    if [[ -f "$local_file" ]]; then
+        actual_size=$(du -h "$local_file" 2>/dev/null | cut -f1)
+        echo -e "  ${GREEN}✓${NC} $key: $actual_size"
     else
-        # Fallback to HuggingFace if no IPFS CID
-        download_from_huggingface "Qwen/Qwen2-0.5B-Instruct-GGUF" \
-            "qwen2-0_5b-instruct-q4_k_m.gguf" \
-            "$QWEN2_PATH" \
-            "Qwen2 0.5B"
+        echo -e "  ${YELLOW}○${NC} $key: Not downloaded"
     fi
-fi
-echo ""
-
-# Verify downloads
-echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           Download Summary                 ║${NC}"
-echo -e "${GREEN}╚════════════════════════════════════════════╝${NC}"
-echo ""
-
-if [[ -f "$MISTRAL_PATH" ]]; then
-    size=$(du -h "$MISTRAL_PATH" | cut -f1)
-    echo -e "  ${GREEN}✓${NC} Mistral 7B:  $size"
-else
-    echo -e "  ${RED}✗${NC} Mistral 7B:  Not downloaded"
-fi
-
-if [[ -f "$QWEN2_PATH" ]]; then
-    size=$(du -h "$QWEN2_PATH" | cut -f1)
-    echo -e "  ${GREEN}✓${NC} Qwen2 0.5B: $size"
-else
-    echo -e "  ${RED}✗${NC} Qwen2 0.5B: Not downloaded"
-fi
+done
 
 echo ""
 echo -e "Models stored in: ${YELLOW}$MODELS_DIR${NC}"
 echo ""
 echo -e "${GREEN}Done!${NC}"
+echo ""
+echo "To use the downloaded model in Citrate:"
+echo "1. Open Citrate"
+echo "2. Go to Settings > AI Provider"
+echo "3. Select 'Local Model' and choose your preferred model"

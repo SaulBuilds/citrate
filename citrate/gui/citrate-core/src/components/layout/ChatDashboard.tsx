@@ -198,40 +198,23 @@ What would you like to do?`,
     setIsLoading(true);
 
     try {
-      // Parse for tool commands
-      const toolCall = parseToolCommand(messageText);
-
-      if (toolCall) {
-        // Execute tool and get response
-        const response = await executeToolCommand(toolCall, messageText);
-        const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: response.content,
-          timestamp: new Date(),
-          model: selectedModel,
-          tokens: response.tokens,
-          toolCall: {
-            tool: toolCall.tool,
-            status: 'completed',
-            result: response.toolResult
-          }
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        // Regular chat
-        const response = await sendToMCP(messageText);
-        const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: response.content,
-          timestamp: new Date(),
-          model: selectedModel,
-          tokens: response.tokens,
-          thinking: response.thinking
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      }
+      // Send all messages to the agent - let it handle tool orchestration via ReAct pattern
+      const response = await sendToMCP(messageText);
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response.content,
+        timestamp: new Date(),
+        model: selectedModel,
+        tokens: response.tokens,
+        thinking: response.thinking,
+        toolCall: response.toolCall ? {
+          tool: response.toolCall.tool,
+          status: 'completed',
+          result: response.toolCall.result
+        } : undefined
+      };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),

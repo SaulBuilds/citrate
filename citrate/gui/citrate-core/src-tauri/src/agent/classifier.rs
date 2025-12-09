@@ -6,9 +6,12 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use super::config::ClassifierConfig;
 use super::intent::{ClassificationSource, Intent, IntentMatch, IntentParams};
+use super::llm::LLMBackend;
 
 /// Error during classification
 #[derive(Debug, Clone)]
@@ -26,6 +29,8 @@ impl std::error::Error for ClassificationError {}
 pub struct IntentClassifier {
     config: ClassifierConfig,
     patterns: Vec<PatternRule>,
+    /// Optional LLM backend for classification fallback
+    llm: Option<Arc<RwLock<Option<Arc<dyn LLMBackend + Send + Sync>>>>>,
 }
 
 /// A pattern rule for intent matching
@@ -47,7 +52,22 @@ impl IntentClassifier {
     /// Create a new classifier with default patterns
     pub fn new(config: ClassifierConfig) -> Self {
         let patterns = Self::default_patterns();
-        Self { config, patterns }
+        Self { config, patterns, llm: None }
+    }
+
+    /// Create a classifier with LLM fallback support
+    pub fn with_llm(config: ClassifierConfig, llm: Arc<RwLock<Option<Arc<dyn LLMBackend + Send + Sync>>>>) -> Self {
+        let patterns = Self::default_patterns();
+        Self {
+            config,
+            patterns,
+            llm: Some(llm),
+        }
+    }
+
+    /// Set the LLM backend for classification fallback
+    pub fn set_llm(&mut self, llm: Arc<RwLock<Option<Arc<dyn LLMBackend + Send + Sync>>>>) {
+        self.llm = Some(llm);
     }
 
     /// Classify a user message
@@ -57,12 +77,33 @@ impl IntentClassifier {
         // Try pattern matching first
         if let Some(pattern_match) = self.match_patterns(&normalized) {
             if pattern_match.confidence >= self.config.pattern_confidence_threshold {
+                tracing::debug!(
+                    "Pattern match: {:?} with confidence {:.2}",
+                    pattern_match.intent,
+                    pattern_match.confidence
+                );
                 return Ok(pattern_match);
+            }
+
+            // Low confidence pattern match - try LLM if enabled
+            if self.config.use_llm_fallback {
+                if let Some(llm_match) = self.classify_with_llm(message, Some(&pattern_match)).await {
+                    return Ok(llm_match);
+                }
+            }
+
+            // Return pattern match if LLM didn't improve confidence
+            return Ok(pattern_match);
+        }
+
+        // No pattern match - try LLM fallback if enabled
+        if self.config.use_llm_fallback {
+            if let Some(llm_match) = self.classify_with_llm(message, None).await {
+                return Ok(llm_match);
             }
         }
 
-        // Fallback to unknown intent
-        // In the full implementation, this would call LLM for classification
+        // Fallback to general chat intent
         Ok(IntentMatch {
             intent: Intent::GeneralChat,
             confidence: 0.5,
@@ -70,6 +111,127 @@ impl IntentClassifier {
             source: ClassificationSource::Fallback,
             alternatives: Vec::new(),
         })
+    }
+
+    /// Classify a message using the LLM
+    async fn classify_with_llm(&self, message: &str, pattern_hint: Option<&IntentMatch>) -> Option<IntentMatch> {
+        let llm_lock = self.llm.as_ref()?;
+        let llm_guard = llm_lock.read().await;
+        let llm = llm_guard.as_ref()?;
+
+        tracing::debug!("Using LLM fallback for intent classification");
+
+        // Build classification prompt
+        let classification_prompt = self.build_classification_prompt(message, pattern_hint);
+
+        // Create minimal context for classification
+        use super::context::{ContextWindow, ContextMessage};
+        let context = ContextWindow {
+            system_prompt: "You are an intent classifier. Respond with ONLY the intent name from the list, nothing else.".to_string(),
+            messages: vec![ContextMessage {
+                role: "user".to_string(),
+                content: classification_prompt,
+                name: None,
+                tool_call_id: None,
+            }],
+            system_context: None,
+            estimated_tokens: 0,
+            was_truncated: false,
+        };
+
+        // Call LLM
+        match llm.complete(&context).await {
+            Ok(response) => {
+                let response_lower = response.trim().to_lowercase();
+
+                // Parse the intent from response
+                if let Some(intent) = self.parse_intent_from_response(&response_lower) {
+                    let params = self.extract_params(message, &[]);
+
+                    tracing::info!("LLM classified intent as: {:?}", intent);
+
+                    return Some(IntentMatch {
+                        intent,
+                        confidence: 0.85, // LLM classifications get moderate-high confidence
+                        params,
+                        source: ClassificationSource::LLM,
+                        alternatives: Vec::new(),
+                    });
+                }
+
+                tracing::debug!("LLM response didn't match known intent: {}", response);
+                None
+            }
+            Err(e) => {
+                tracing::warn!("LLM classification failed: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Build the prompt for LLM classification
+    fn build_classification_prompt(&self, message: &str, pattern_hint: Option<&IntentMatch>) -> String {
+        let intents_list = r#"Available intents:
+- query_balance: Check wallet balance
+- send_transaction: Send tokens to an address
+- get_transaction_history: View transaction history
+- deploy_contract: Deploy a smart contract
+- call_contract: Read from a contract
+- write_contract: Write to a contract
+- get_block_info: Get block information
+- get_dag_status: Get DAG/blockchain status
+- get_node_status: Check node connection status
+- list_models: List AI models
+- run_inference: Run AI inference
+- deploy_model: Deploy an AI model
+- search_marketplace: Search model marketplace
+- help: Get help
+- general_chat: General conversation (default for non-blockchain questions)"#;
+
+        let hint = if let Some(h) = pattern_hint {
+            format!("\nPattern matching suggests: {:?} (confidence: {:.2})", h.intent, h.confidence)
+        } else {
+            String::new()
+        };
+
+        format!(
+            "{}\n{}\nUser message: \"{}\"\n\nRespond with ONLY the intent name (e.g., 'query_balance' or 'general_chat'):",
+            intents_list,
+            hint,
+            message
+        )
+    }
+
+    /// Parse intent from LLM response
+    fn parse_intent_from_response(&self, response: &str) -> Option<Intent> {
+        // Clean up response
+        let clean = response
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .replace('_', "")
+            .replace('-', "")
+            .replace(' ', "");
+
+        // Match against known intents
+        match clean.as_str() {
+            "querybalance" | "balance" | "checkbalance" => Some(Intent::QueryBalance),
+            "sendtransaction" | "send" | "transfer" => Some(Intent::SendTransaction),
+            "gettransactionhistory" | "transactionhistory" | "txhistory" => Some(Intent::GetTransactionHistory),
+            "deploycontract" | "deploy" => Some(Intent::DeployContract),
+            "callcontract" | "readcontract" => Some(Intent::CallContract),
+            "writecontract" | "executecontract" => Some(Intent::WriteContract),
+            "getblockinfo" | "blockinfo" | "block" => Some(Intent::GetBlockInfo),
+            "getdagstatus" | "dagstatus" | "dag" => Some(Intent::GetDAGStatus),
+            "getnodestatus" | "nodestatus" | "status" => Some(Intent::GetNodeStatus),
+            "listmodels" | "models" | "showmodels" => Some(Intent::ListModels),
+            "runinference" | "inference" | "generate" => Some(Intent::RunInference),
+            "deploymodel" | "uploadmodel" => Some(Intent::DeployModel),
+            "searchmarketplace" | "marketplace" | "search" => Some(Intent::SearchMarketplace),
+            "help" | "commands" => Some(Intent::Help),
+            "generalchat" | "chat" | "conversation" => Some(Intent::GeneralChat),
+            _ => None,
+        }
     }
 
     /// Match against pattern rules

@@ -74,6 +74,8 @@ use agent::commands::{
     // Secure API key management commands
     secure_store_api_key, validate_api_key_format, validate_stored_api_key,
     has_secure_api_key, delete_secure_api_key, load_secure_api_keys, get_secure_api_key_status,
+    // Enhanced model download commands
+    download_enhanced_model, check_enhanced_model_status, cancel_model_download,
 };
 
 // Application state
@@ -2581,6 +2583,10 @@ pub fn run() {
             delete_secure_api_key,
             load_secure_api_keys,
             get_secure_api_key_status,
+            // Enhanced model download commands
+            download_enhanced_model,
+            check_enhanced_model_status,
+            cancel_model_download,
             // Window commands
             create_window,
             close_window,

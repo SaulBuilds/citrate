@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# AI model files (large binary files downloaded at runtime)
+*.gguf
+src-tauri/resources/models/*.gguf

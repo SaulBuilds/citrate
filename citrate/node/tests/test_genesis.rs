@@ -26,6 +26,9 @@ fn create_test_genesis_block() -> Block {
             proof: vec![],
             output: Hash::default(),
         },
+        base_fee_per_gas: 0,
+        gas_used: 0,
+        gas_limit: 30_000_000,
     };
 
     Block {

@@ -270,6 +270,9 @@ mod tests {
                     proof: vec![],
                     output: Hash::new([0; 32]),
                 },
+                base_fee_per_gas: 0,
+                gas_used: 0,
+                gas_limit: 30_000_000,
             },
             state_root: Hash::new([3; 32]),
             tx_root: Hash::new([4; 32]),
@@ -278,6 +281,8 @@ mod tests {
             ghostdag_params: GhostDagParams::default(),
             transactions: vec![],
             signature: Signature::new([0; 64]),
+            embedded_models: vec![],
+            required_pins: vec![],
         };
 
         // Test broadcasting

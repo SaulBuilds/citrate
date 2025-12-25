@@ -422,6 +422,9 @@ mod tests {
                         proof: vec![],
                         output: Hash::default(),
                     },
+                    base_fee_per_gas: 0,
+                    gas_used: 0,
+                    gas_limit: 30_000_000,
                 },
                 state_root: Hash::default(),
                 tx_root: Hash::default(),
@@ -430,6 +433,8 @@ mod tests {
                 ghostdag_params: Default::default(),
                 transactions: vec![],
                 signature: citrate_consensus::types::Signature::new([0; 64]),
+                embedded_models: vec![],
+                required_pins: vec![],
             },
         };
         assert_eq!(nb.priority(), MessagePriority::High);

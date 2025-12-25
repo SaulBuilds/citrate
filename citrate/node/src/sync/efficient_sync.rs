@@ -695,6 +695,9 @@ mod tests {
                     proof: vec![],
                     output: Hash::default(),
                 },
+                base_fee_per_gas: 0,
+                gas_used: 0,
+                gas_limit: 30_000_000,
             },
             state_root: Hash::default(),
             tx_root: Hash::default(),
@@ -860,6 +863,9 @@ mod tests {
                 proof: vec![],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 0,
+            gas_used: 0,
+            gas_limit: 30_000_000,
         };
         assert!(manager.validate_block_header(&genesis_header).unwrap());
 
@@ -879,6 +885,9 @@ mod tests {
                 proof: vec![],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 0,
+            gas_used: 0,
+            gas_limit: 30_000_000,
         };
         assert!(!manager.validate_block_header(&invalid_header).unwrap());
 
@@ -901,6 +910,9 @@ mod tests {
                 proof: vec![],
                 output: Hash::default(),
             },
+            base_fee_per_gas: 0,
+            gas_used: 0,
+            gas_limit: 30_000_000,
         };
         assert!(manager.validate_block_header(&valid_header).unwrap());
     }

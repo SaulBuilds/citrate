@@ -55,6 +55,8 @@ fn create_test_wallet(temp_dir: &TempDir) -> Wallet {
         keystore_path: temp_dir.path().join("keystore"),
         rpc_url: get_rpc_url(),
         chain_id: get_chain_id(),
+        default_gas_price: 1_000_000_000,
+        default_gas_limit: 21000,
     };
     Wallet::new(config).expect("Failed to create wallet")
 }

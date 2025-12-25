@@ -8,11 +8,10 @@
   [![macOS](https://img.shields.io/badge/macOS-13%2B-green.svg)](https://www.apple.com/macos/)
   [![Metal](https://img.shields.io/badge/Metal-GPU-purple.svg)](https://developer.apple.com/metal/)
   [![IPFS](https://img.shields.io/badge/IPFS-Distributed-cyan.svg)](https://ipfs.io/)
-  [![Deploy](https://img.shields.io/badge/Deploy-Vercel-black.svg)](https://vercel.com)
 
   **High-Performance BlockDAG with Native AI Inference on Apple Silicon**
 
-  [Documentation](docs/) | [Quick Start](#quick-start) | [Architecture](#architecture) | [Live Demo](https://citrate-explorer.vercel.app)
+  [Quick Start](#quick-start) | [Architecture](#architecture) | [Documentation](docs/)
 </div>
 
 ---
@@ -30,21 +29,6 @@ Citrate is an AI-native Layer-1 BlockDAG blockchain that combines **GhostDAG con
 - **📦 IPFS Storage** - Distributed model weights with pinning incentives
 - **🎯 Model Registry** - On-chain model management with access control
 - **💰 Inference Economy** - Revenue sharing for model developers
-- **🌐 Live Explorer** - Real-time DAG visualization and AI model tracking
-
-## Live Deployments
-
-### Production Services
-- **🌐 Block Explorer**: [citrate-explorer.vercel.app](https://citrate-explorer.vercel.app)
-- **🔗 Testnet RPC**: `https://rpc.testnet.citrate.ai`
-- **📊 Status Page**: [status.citrate.ai](https://status.citrate.ai)
-- **📖 Documentation**: [docs.citrate.ai](https://docs.citrate.ai)
-
-### SDKs & Tools
-- **📦 JavaScript SDK**: [`@citrate-ai/sdk`](https://www.npmjs.com/package/@citrate-ai/sdk)
-- **🐍 Python SDK**: [`citrate-sdk`](https://pypi.org/project/citrate-sdk/)
-- **💻 CLI Tools**: Available via npm and pip
-
 ## Architecture Overview
 
 ```mermaid
@@ -185,7 +169,6 @@ npm run tauri build
 
 # Install development tools
 brew install foundry  # For smart contracts
-npm install -g vercel  # For frontend deployment
 
 # Install SDKs globally
 npm install -g @citrate-ai/sdk
@@ -303,27 +286,7 @@ The GUI also supports cloud AI providers for enhanced capabilities:
 
 ### 4. Network Deployment Options
 
-#### Option A: Join Existing Testnet (Recommended for Development)
-
-```bash
-# Connect to public testnet
-export CITRATE_RPC_URL="https://rpc.testnet.citrate.ai"
-export CITRATE_CHAIN_ID=1337
-
-# Create development wallet
-cargo run --bin citrate-wallet -- create-account
-# Save the private key securely!
-
-# Request testnet tokens
-curl -X POST https://faucet.testnet.citrate.ai/request \
-  -H "Content-Type: application/json" \
-  -d '{"address": "YOUR_ADDRESS"}'
-
-# Verify connection
-cargo run --bin citrate-wallet -- balance
-```
-
-#### Option B: Local Development Network (Single Node)
+#### Option A: Local Development Network (Single Node - Recommended)
 
 ```bash
 # Start local development node
@@ -341,7 +304,7 @@ cargo run --bin citrate-wallet -- create-account
 # Node automatically provides dev tokens in dev-mode
 ```
 
-#### Option C: Multi-Node Local Testnet (Full Network Simulation)
+#### Option B: Multi-Node Local Testnet (Full Network Simulation)
 
 ```bash
 # Launch 10-node testnet with full consensus
@@ -360,18 +323,18 @@ curl http://localhost:8545 -X POST \
   -d '{"jsonrpc":"2.0","method":"citrate_getDagStats","params":[],"id":1}'
 ```
 
-#### Option D: Fork Existing Network (Advanced)
+#### Option C: Fork Existing Network (Advanced)
 
 ```bash
-# Fork from specific block height
+# Fork from an existing node's block height
 cargo run --bin citrate-node -- \
-  --fork-url https://rpc.testnet.citrate.ai \
-  --fork-block 1000000 \
+  --fork-url http://localhost:8545 \
+  --fork-block 1000 \
   --data-dir ~/.citrate-fork \
   --chain-id 1339
 
 # All existing state and contracts will be available
-# Perfect for testing against real network data
+# Perfect for testing against an existing network's data
 ```
 
 ### 4. Deploy an AI Model
@@ -668,17 +631,16 @@ pub const BLOCK_TIME_MS: u64 = 1500; // 1.5 second blocks
 pub const FINALITY_DEPTH: u64 = 12;
 ```
 
-#### 3. Update Branding ()
+#### 3. Update Branding
 
 ```bash
 # Replace logos and branding
 cp your-logo.svg docs/assets/citrate-logo.svg
-sed -i 's/Lattice/MyCitrate/g' README.md
-sed -i 's/citrate.ai/mycitrate.com/g' README.md explorer/src/config.ts
+sed -i 's/Citrate/MyCitrate/g' README.md
 
 # Update package names
 find . -name "package.json" -exec sed -i 's/@citrate-ai/@mycitrate/g' {} \;
-find . -name "Cargo.toml" -exec sed -i 's/lattice-/mycitrate-/g' {} \;
+find . -name "Cargo.toml" -exec sed -i 's/citrate-/mycitrate-/g' {} \;
 ```
 
 #### 4. Deploy Your Network
@@ -692,11 +654,6 @@ cargo build --release
 
 # Launch your testnet
 ./scripts/launch_custom_testnet.sh --config your-config.toml
-
-# Deploy your explorer
-cd explorer
-npm run build
-vercel --prod # or your preferred hosting
 ```
 
 ### Maintaining Your Fork
@@ -1036,20 +993,7 @@ cd sdks/python && pip install -e .       # Install Python SDK
 
 ## Deployment Guide
 
-### Free Tier Deployment Options
-
-#### Frontend (Vercel)
-```bash
-# Deploy block explorer
-cd explorer
-vercel --prod
-
-# Deploy documentation
-cd docs
-vercel --prod
-```
-
-#### Backend (Railway/Render)
+### Container Deployment (Railway/Render)
 ```bash
 # Dockerfile for containerized deployment
 FROM rust:1.75 AS builder
@@ -1069,61 +1013,6 @@ export IPFS_API_URL="https://ipfs.infura.io:5001"
 export PINNING_SERVICE="pinata"
 ```
 
-### Production Deployment Architecture
-
-```mermaid
-graph TB
-    subgraph "CDN & Load Balancing"
-        CF[Cloudflare]
-        LB[Load Balancer]
-    end
-
-    subgraph "Frontend Tier"
-        Explorer[Block Explorer]
-        Docs[Documentation]
-        Status[Status Page]
-    end
-
-    subgraph "API Tier"
-        RPC1[RPC Node 1]
-        RPC2[RPC Node 2]
-        RPC3[RPC Node 3]
-    end
-
-    subgraph "Consensus Tier"
-        Validator1[Validator 1]
-        Validator2[Validator 2]
-        Validator3[Validator 3]
-        Bootstrap[Bootstrap Node]
-    end
-
-    subgraph "Storage Tier"
-        IPFS1[IPFS Node 1]
-        IPFS2[IPFS Node 2]
-        DB[(PostgreSQL)]
-    end
-
-    CF --> LB
-    LB --> Explorer
-    LB --> Docs
-    LB --> Status
-
-    Explorer --> RPC1
-    Explorer --> RPC2
-
-    RPC1 --> Validator1
-    RPC2 --> Validator2
-    RPC3 --> Validator3
-
-    Validator1 -.-> Bootstrap
-    Validator2 -.-> Bootstrap
-    Validator3 -.-> Bootstrap
-
-    Validator1 --> IPFS1
-    Validator2 --> IPFS2
-    Explorer --> DB
-```
-
 ## SDK Documentation
 
 ### JavaScript/TypeScript SDK
@@ -1133,8 +1022,8 @@ import { CitrateClient, ModelDeployment } from '@citrate-ai/sdk';
 
 // Initialize client
 const client = new CitrateClient({
-  rpcUrl: 'https://rpc.testnet.citrate.ai',
-  chainId: 1337
+  rpcUrl: 'http://localhost:8545',
+  chainId: 1338
 });
 
 // Deploy a model
@@ -1168,8 +1057,8 @@ import asyncio
 async def main():
     # Initialize client
     client = CitrateClient(
-        rpc_url="https://rpc.testnet.citrate.ai",
-        chain_id=1337
+        rpc_url="http://localhost:8545",
+        chain_id=1338
     )
 
     # Deploy model
@@ -1200,12 +1089,12 @@ if __name__ == "__main__":
 
 ```bash
 # Standard Ethereum methods
-curl -X POST https://rpc.testnet.citrate.ai \
+curl -X POST http://localhost:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
 
 # Get transaction receipt
-curl -X POST https://rpc.testnet.citrate.ai \
+curl -X POST http://localhost:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_getTransactionReceipt","params":["0x..."],"id":1}'
 ```
@@ -1214,17 +1103,17 @@ curl -X POST https://rpc.testnet.citrate.ai \
 
 ```bash
 # Get DAG statistics
-curl -X POST https://rpc.testnet.citrate.ai \
+curl -X POST http://localhost:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"citrate_getDagStats","params":[],"id":1}'
 
 # Get mempool snapshot
-curl -X POST https://rpc.testnet.citrate.ai \
+curl -X POST http://localhost:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"citrate_getMempoolSnapshot","params":[],"id":1}'
 
 # Check transaction status
-curl -X POST https://rpc.testnet.citrate.ai \
+curl -X POST http://localhost:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"citrate_getTransactionStatus","params":["0x..."],"id":1}'
 ```
@@ -1232,11 +1121,11 @@ curl -X POST https://rpc.testnet.citrate.ai \
 ### Model Context Protocol (MCP) API
 
 ```bash
-# List available models
-curl https://api.citrate.ai/v1/models
+# List available models (local node)
+curl http://localhost:8545/v1/models
 
 # Create chat completion (OpenAI compatible)
-curl https://api.citrate.ai/v1/chat/completions \
+curl http://localhost:8545/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "0x1234...",
@@ -1245,7 +1134,7 @@ curl https://api.citrate.ai/v1/chat/completions \
   }'
 
 # Generate embeddings
-curl https://api.citrate.ai/v1/embeddings \
+curl http://localhost:8545/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "model": "0x5678...",
@@ -1319,10 +1208,9 @@ top -pid $(pgrep citrate-node)
 
 ### Getting Help
 
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/citrate-ai/citrate/issues)
-- **💬 Community**: [Discord #support](https://discord.gg/lattice)
-- **📧 Direct Contact**: support@citrate.ai
-- **📚 Documentation**: [docs.citrate.ai](https://docs.citrate.ai)
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/SaulBuilds/citrate/issues)
+- **💬 Community**: [Discord](https://discord.gg/citrate)
+- **📚 Documentation**: See the `docs/` folder in this repository
 
 ## Contributing
 
@@ -1406,17 +1294,14 @@ Report security issues to: security@citrate.ai
 ## Community & Support
 
 ### Official Channels
-- **🌐 Website**: [citrate.ai](https://citrate.ai)
-- **📖 Documentation**: [docs.citrate.ai](https://docs.citrate.ai)
+- **📖 GitHub**: [github.com/SaulBuilds/citrate](https://github.com/SaulBuilds/citrate)
 - **💬 Discord**: [discord.gg/citrate](https://discord.gg/citrate)
 - **🐦 Twitter**: [@CitrateNetwork](https://twitter.com/CitrateNetwork)
-- **📧 Email**: developers@citrate.ai
 
 ### Developer Resources
-- **📚 Examples**: [github.com/citrate-ai/examples](https://github.com/citrate-ai/examples)
-- **🎯 Tutorials**: [tutorials.citrate.ai](https://tutorials.citrate.ai)
-- **🔧 Tools**: [tools.citrate.ai](https://tools.citrate.ai)
-- **📊 Status**: [status.citrate.ai](https://status.citrate.ai)
+- **📚 Documentation**: See `docs/` folder in this repository
+- **🔧 Examples**: See `examples/` folder in this repository
+- **📦 SDKs**: `sdk/javascript/` and `sdks/python/` directories
 
 ## Roadmap
 
@@ -1469,5 +1354,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <div align="center">
   <strong>Built with ❤️ by the Citrate Team</strong>
 
-  [Website](https://citrate.ai) | [Documentation](https://docs.citrate.ai) | [Discord](https://discord.gg/lattice) | [GitHub](https://github.com/citrate-ai)
+  [GitHub](https://github.com/SaulBuilds/citrate) | [Discord](https://discord.gg/citrate)
 </div>

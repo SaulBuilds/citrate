@@ -314,7 +314,7 @@ contract ModelMarketplaceTest is Test {
         ModelMarketplace.ModelListing memory listing = marketplace.getListing(testModelId);
         assertEq(listing.reviewCount, 1);
         assertEq(listing.totalRating, rating);
-        assertEq(listing.averageRating, rating * 100); // Stored as percentage
+        assertEq(listing.averageRating, uint256(rating) * 100); // Stored as percentage
     }
 
     function testAddReviewUnverified() public {

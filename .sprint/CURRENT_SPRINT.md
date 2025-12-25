@@ -1,48 +1,47 @@
 # Current Sprint
 
-**Active Sprint**: Sprint 9 - Bundled Models & Agent-Guided Onboarding
-**Phase**: v1.0 Release - User Experience
+**Active Sprint**: Sprint 11 - GUI Final Delivery & Documentation
+**Phase**: v1.0 Release
 **Status**: IN PROGRESS
-**Started**: 2025-12-07
+**Started**: 2025-12-25
 
 ---
 
 ## Sprint Goal
 
-Transform the initial user experience with:
-1. Bundled AI model (Qwen2 0.5B) in DMG for offline use
-2. IPFS pinning flow with local deletion option
-3. Multi-provider API key settings (OpenAI, Anthropic, Gemini, xAI)
-4. Agent-guided onboarding that walks users through setup
+Finalize the Citrate GUI application for public release:
+1. Clean, accurate README with working instructions
+2. Installers available on GitHub Releases
+3. Out-of-the-box experience with automatic model download
+4. Verified CLI/SDK/Node operations
 
 ---
 
 ## Quick Reference
 
-| Work Package | Status | Points |
-|--------------|--------|--------|
-| WP-9.1: Bundle Model in DMG | IN PROGRESS | 8 |
-| WP-9.2: First-Run Detection | PENDING | 5 |
-| WP-9.3: IPFS Pinning Flow | PENDING | 8 |
-| WP-9.4: Multi-Provider API Keys | PENDING | 8 |
-| WP-9.5: API Key Settings UI | PENDING | 5 |
-| WP-9.6: Agent Onboarding | PENDING | 8 |
-| WP-9.7: Testing & Polish | PENDING | 5 |
-
-**Total Points**: 47
+| Work Package | Status | Priority |
+|--------------|--------|----------|
+| WP-11.1: README Cleanup | IN PROGRESS | HIGH |
+| WP-11.2: GitHub Releases Setup | PENDING | HIGH |
+| WP-11.3: Fix Test Failures | PENDING | MEDIUM |
+| WP-11.4: CLI/SDK/Node Verification | PENDING | MEDIUM |
+| WP-11.5: First-Run Experience | PENDING | MEDIUM |
+| WP-11.6: CI/CD Pipeline | PENDING | LOW |
 
 ---
 
 ## Today's Focus
 
 ### Immediate Tasks
-1. Configure Tauri to bundle Qwen2 model
-2. Create first-run detection module
-3. Add API key settings to Settings page
-4. Wire up agent onboarding flow
+1. Update README (remove explorer/docs references)
+2. Add direct installer download links
+3. Verify fresh clone build works
+4. Fix remaining test failures
 
-### Blocked By
-- Need Qwen2 0.5B GGUF model downloaded
+### Current State
+- **Rust Tests**: 314/315 passing (1 async runtime issue)
+- **Contract Tests**: 42/43 passing (1 arithmetic overflow)
+- **Build**: Compiles on fresh clone after model fix
 
 ---
 
@@ -50,24 +49,21 @@ Transform the initial user experience with:
 
 | Purpose | Path |
 |---------|------|
-| Sprint Plan | `.sprint/sprints/sprint-09-bundled-models-onboarding/SPRINT.md` |
+| Sprint Plan | `.sprint/sprints/sprint-11-gui-final-delivery/SPRINT.md` |
+| Main README | `citrate/README.md` |
 | Tauri Config | `gui/citrate-core/src-tauri/tauri.conf.json` |
-| Agent Config | `gui/citrate-core/src-tauri/src/agent/config.rs` |
-| IPFS Manager | `gui/citrate-core/src-tauri/src/ipfs/mod.rs` |
-| Settings UI | `gui/citrate-core/src/components/Settings.tsx` |
-| Onboarding | `gui/citrate-core/src-tauri/src/agent/onboarding.rs` |
+| Model Download | `gui/citrate-core/src-tauri/src/agent/download_models.rs` |
 
 ---
 
-## Previous Sprint (Sprint 8)
+## Previous Sprint (Sprint 10)
 
 **Status**: COMPLETED
 **Achievements**:
-- Fixed styled-jsx Babel configuration
-- Fixed rpc_call → agent_send_message
-- Built production DMG
-- Branded loading screen
+- Fixed bundled model requirement for fresh clone
+- ReAct tool orchestration
+- Qwen2.5-Coder-7B auto-download
 
 ---
 
-*Last updated: 2025-12-07*
+*Last updated: 2025-12-25*

@@ -258,14 +258,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
     setPasswordStrength(validatePasswordStrength(password));
   }, [password]);
 
-  // Auto-trigger enhanced model download when bundled model is ready
-  useEffect(() => {
-    if (modelSetupStatus === 'ready' && enhancedModelStatus === 'checking') {
-      // Start checking and downloading enhanced model automatically
-      checkAndDownloadEnhancedModel();
-    }
-  }, [modelSetupStatus, enhancedModelStatus, checkAndDownloadEnhancedModel]);
-
   // ============================================================================
   // API Calls
   // ============================================================================
@@ -364,6 +356,14 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
       setEnhancedModelStatus('error');
     }
   }, []);
+
+  // Auto-trigger enhanced model download when bundled model is ready
+  useEffect(() => {
+    if (modelSetupStatus === 'ready' && enhancedModelStatus === 'checking') {
+      // Start checking and downloading enhanced model automatically
+      checkAndDownloadEnhancedModel();
+    }
+  }, [modelSetupStatus, enhancedModelStatus, checkAndDownloadEnhancedModel]);
 
   // Listen for download progress events
   useEffect(() => {

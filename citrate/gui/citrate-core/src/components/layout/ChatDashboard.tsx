@@ -380,7 +380,8 @@ Just tell me which one, or describe your requirements!`;
           return {
             content: `I'm still initializing. Please try again in a moment, or check that a local AI model is loaded in Settings.\n\nYou can also use the quick actions above to interact with the blockchain directly.`,
             tokens: 0,
-            thinking: 'Agent initializing...'
+            thinking: 'Agent initializing...',
+            toolCall: undefined
           };
         }
       }
@@ -400,7 +401,11 @@ Just tell me which one, or describe your requirements!`;
       return {
         content: response.content,
         tokens: 0, // Agent doesn't report token counts
-        thinking: response.intent ? `Intent: ${response.intent} (${((response.intent_confidence || 0) * 100).toFixed(0)}%)` : `Using ${model.name}`
+        thinking: response.intent ? `Intent: ${response.intent} (${((response.intent_confidence || 0) * 100).toFixed(0)}%)` : `Using ${model.name}`,
+        toolCall: response.tool_invoked && response.tool_name ? {
+          tool: response.tool_name,
+          result: 'completed'
+        } : undefined
       };
     } catch (error) {
       // If session expired or agent reset, clear session and retry once

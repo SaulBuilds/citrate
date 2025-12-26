@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { nodeService } from '../services/tauri';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { nodeService, walletService } from '../services/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import type { NodeConfig, NodeStatus, PeerInfoSummary } from '../types';
 import { validateIPv4, validatePort, ValidationResult } from '../utils/validation';
 import { useTheme } from '../contexts/ThemeContext';
-import { Sun, Moon, Monitor, Bot } from 'lucide-react';
+import { Sun, Moon, Monitor, Bot, Shield, Lock } from 'lucide-react';
 import AIProviderSettings from './AIProviderSettings';
 
 export const Settings: React.FC = () => {
@@ -26,6 +27,39 @@ export const Settings: React.FC = () => {
   // Validation error states
   const [bootnodeError, setBootnodeError] = useState('');
   const [peerError, setPeerError] = useState('');
+
+  // Session management state
+  const [activeSessions, setActiveSessions] = useState<number>(0);
+  const [lockingAll, setLockingAll] = useState(false);
+
+  // Load active session count
+  const loadSessionCount = useCallback(async () => {
+    try {
+      const accounts = await walletService.getAccounts();
+      let count = 0;
+      for (const acc of accounts) {
+        const isActive = await invoke<boolean>('is_session_active', { address: acc.address });
+        if (isActive) count++;
+      }
+      setActiveSessions(count);
+    } catch (e) {
+      console.error('Failed to load session count:', e);
+    }
+  }, []);
+
+  // Lock all wallets handler
+  const handleLockAllWallets = async () => {
+    setLockingAll(true);
+    try {
+      const lockedCount = await invoke<number>('lock_all_wallets');
+      setActiveSessions(0);
+      setSuccess(`Locked ${lockedCount} wallet session${lockedCount !== 1 ? 's' : ''}`);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setLockingAll(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -77,7 +111,8 @@ export const Settings: React.FC = () => {
       }
     };
     load();
-  }, []);
+    loadSessionCount();
+  }, [loadSessionCount]);
 
   // Minimal helper used after mutations
   const loadConfig = async () => {
@@ -471,6 +506,64 @@ export const Settings: React.FC = () => {
         </div>
       </div>
 
+      {/* Session Security Section */}
+      <div className="settings-section">
+        <div className="section-header-with-icon">
+          <Shield size={20} style={{ color: 'var(--brand-primary)' }} />
+          <h3>Session Security</h3>
+        </div>
+        <div className="session-info">
+          <p className="session-description">
+            Wallet sessions allow you to sign transactions without re-entering your password for 15 minutes.
+            Sessions are automatically extended with activity and cleared on lock or timeout.
+          </p>
+          <div className="session-status-card">
+            <div className="session-status-header">
+              <span className="session-label">Active Sessions</span>
+              <span className={`session-count ${activeSessions > 0 ? 'active' : ''}`}>
+                {activeSessions}
+              </span>
+            </div>
+            {activeSessions > 0 && (
+              <p className="session-hint">
+                You have {activeSessions} wallet{activeSessions !== 1 ? 's' : ''} with active sessions.
+                Transactions can be signed without password for these wallets.
+              </p>
+            )}
+          </div>
+          <div className="session-actions">
+            <button
+              className="btn btn-lock"
+              onClick={handleLockAllWallets}
+              disabled={lockingAll || activeSessions === 0}
+            >
+              <Lock size={16} />
+              {lockingAll ? 'Locking...' : 'Lock All Wallets'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={loadSessionCount}
+            >
+              Refresh Status
+            </button>
+          </div>
+          <div className="session-settings-info">
+            <h4>Session Settings</h4>
+            <div className="setting-row">
+              <span className="setting-label">Session Timeout</span>
+              <span className="setting-value">15 minutes</span>
+            </div>
+            <div className="setting-row">
+              <span className="setting-label">High-Value Re-auth Threshold</span>
+              <span className="setting-value">10 SALT</span>
+            </div>
+            <p className="setting-note">
+              Sessions are managed automatically. High-value transactions (&gt;10 SALT) always require password confirmation.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* AI Provider Settings Section */}
       <div className="settings-section">
         <div className="section-header-with-icon">
@@ -852,6 +945,105 @@ export const Settings: React.FC = () => {
         }
         .theme-button svg {
           flex-shrink: 0;
+        }
+
+        /* Session Security Styles */
+        .session-info {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .session-description {
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+          margin: 0;
+          line-height: 1.5;
+        }
+        .session-status-card {
+          background: var(--bg-secondary);
+          border-radius: 0.5rem;
+          padding: 1rem;
+          border: 1px solid var(--border-primary);
+        }
+        .session-status-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .session-label {
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+        .session-count {
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: var(--text-muted);
+        }
+        .session-count.active {
+          color: var(--success);
+        }
+        .session-hint {
+          margin: 0.5rem 0 0 0;
+          font-size: 0.875rem;
+          color: var(--text-secondary);
+        }
+        .session-actions {
+          display: flex;
+          gap: 0.75rem;
+        }
+        .btn-lock {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: #ef4444;
+          color: white;
+          border: none;
+          border-radius: 0.5rem;
+          padding: 0.75rem 1rem;
+          cursor: pointer;
+          font-weight: 500;
+        }
+        .btn-lock:hover:not(:disabled) {
+          background: #dc2626;
+        }
+        .btn-lock:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .session-settings-info {
+          background: var(--bg-tertiary);
+          border-radius: 0.5rem;
+          padding: 1rem;
+        }
+        .session-settings-info h4 {
+          margin: 0 0 0.75rem 0;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--text-primary);
+        }
+        .setting-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 0.5rem 0;
+          border-bottom: 1px solid var(--border-primary);
+        }
+        .setting-row:last-of-type {
+          border-bottom: none;
+        }
+        .setting-label {
+          color: var(--text-secondary);
+          font-size: 0.875rem;
+        }
+        .setting-value {
+          font-weight: 500;
+          color: var(--text-primary);
+          font-size: 0.875rem;
+        }
+        .setting-note {
+          margin: 0.75rem 0 0 0;
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          font-style: italic;
         }
       `}</style>
     </div>

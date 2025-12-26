@@ -14,6 +14,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { SkeletonCard, SkeletonList } from './Skeleton';
+import { SessionStatus } from './SessionStatus';
 
 export const Wallet: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -247,6 +248,19 @@ export const Wallet: React.FC = () => {
                   <span className="balance-value">
                     {formatBalance(account.balance)} SALT
                   </span>
+                </div>
+
+                <div className="account-session">
+                  <SessionStatus
+                    address={account.address}
+                    compact={true}
+                    onSessionExpired={() => {
+                      console.log('Session expired for', account.address);
+                    }}
+                    onLock={() => {
+                      console.log('Wallet locked:', account.address);
+                    }}
+                  />
                 </div>
 
                 <div className="account-footer">
@@ -620,7 +634,7 @@ export const Wallet: React.FC = () => {
         .account-balance {
           display: flex;
           justify-content: space-between;
-          margin-bottom: 1rem;
+          margin-bottom: 0.75rem;
         }
 
         .balance-label {
@@ -632,6 +646,13 @@ export const Wallet: React.FC = () => {
           font-size: 1.25rem;
           font-weight: 600;
           color: var(--text-primary);
+        }
+
+        .account-session {
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 0.75rem;
+          padding: 0.25rem 0;
         }
 
         .account-footer {
@@ -1320,13 +1341,45 @@ const SendTransactionModal: React.FC<{
   const [toError, setToError] = useState('');
   const [amountError, setAmountError] = useState('');
 
+  // Session-based signing state
+  const [passwordRequired, setPasswordRequired] = useState<boolean | null>(null);
+  const [checkingSession, setCheckingSession] = useState(false);
+
   // Recent addresses from AppContext
   const { recentAddresses, addRecentAddress } = useRecentAddresses();
+
+  // Check if password is required when amount changes
+  useEffect(() => {
+    const checkPassword = async () => {
+      if (!amount || parseFloat(amount) <= 0) {
+        setPasswordRequired(null);
+        return;
+      }
+
+      setCheckingSession(true);
+      try {
+        const valueWei = BigInt(Math.floor(parseFloat(amount) * 1e18)).toString();
+        const required = await walletService.checkPasswordRequired(account.address, valueWei);
+        setPasswordRequired(required);
+        // Clear password if not required
+        if (!required) {
+          setPassword('');
+        }
+      } catch (err) {
+        console.error('Failed to check password requirement:', err);
+        setPasswordRequired(true); // Default to requiring password on error
+      } finally {
+        setCheckingSession(false);
+      }
+    };
+
+    checkPassword();
+  }, [amount, account.address]);
 
   const handleSend = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const value = BigInt(Math.floor(parseFloat(amount) * 1e18));
       const txRequest = {
@@ -1337,8 +1390,12 @@ const SendTransactionModal: React.FC<{
         gasPrice: BigInt(20e9), // 20 gwei
         data: [],
       };
-      
-      const hash = await walletService.sendTransaction(txRequest, password);
+
+      // Send with or without password based on session status
+      const hash = await walletService.sendTransaction(
+        txRequest,
+        passwordRequired ? password : undefined
+      );
       setTxHash(hash);
 
       // Add recipient address to recent addresses
@@ -1447,15 +1504,32 @@ const SendTransactionModal: React.FC<{
           {amountError && <div className="error-text">{amountError}</div>}
         </div>
 
-        <div className="form-group">
-          <label>Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder="Enter password to sign"
-          />
-        </div>
+        {/* Password field - only show if required (no active session) */}
+        {passwordRequired !== false && (
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="Enter password to sign"
+            />
+          </div>
+        )}
+
+        {/* Session-based signing indicator */}
+        {passwordRequired === false && (
+          <div className="session-signing-info">
+            <div className="session-badge">
+              <span className="session-dot"></span>
+              Session active - no password needed
+            </div>
+          </div>
+        )}
+
+        {checkingSession && (
+          <div className="session-checking">Checking session status...</div>
+        )}
 
         <div className="modal-actions">
           <button className="btn btn-secondary" onClick={onClose}>
@@ -1464,7 +1538,16 @@ const SendTransactionModal: React.FC<{
           <button
             className="btn btn-primary"
             onClick={handleSend}
-            disabled={loading || !to || !amount || !password || !!txHash || !!toError || !!amountError}
+            disabled={
+              loading ||
+              !to ||
+              !amount ||
+              (passwordRequired && !password) ||
+              !!txHash ||
+              !!toError ||
+              !!amountError ||
+              checkingSession
+            }
           >
             {loading ? 'Sending...' : 'Send Transaction'}
           </button>
@@ -1550,6 +1633,43 @@ const SendTransactionModal: React.FC<{
           padding: 0.75rem;
           border-radius: 0.5rem;
           margin-bottom: 1rem;
+        }
+
+        .session-signing-info {
+          margin-bottom: 1rem;
+        }
+
+        .session-badge {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem;
+          background: var(--success-bg);
+          border: 1px solid var(--success);
+          border-radius: 0.5rem;
+          color: var(--success);
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+
+        .session-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--success);
+          animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        .session-checking {
+          color: var(--text-muted);
+          font-size: 0.875rem;
+          margin-bottom: 1rem;
+          font-style: italic;
         }
 
         .modal-actions {

@@ -182,15 +182,19 @@ impl RateLimiter {
 
 /// Session manager for wallet unlock state
 /// Tracks when wallet was unlocked and enforces timeouts
+/// Also caches decrypted signing keys during active sessions for faster signing
 pub struct SessionManager {
     // Address -> (unlock time, last activity time)
     sessions: HashMap<String, (Instant, Instant)>,
+    // Cached signing keys for active sessions (cleared on session end/expiry)
+    cached_keys: HashMap<String, SigningKey>,
 }
 
 impl SessionManager {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
+            cached_keys: HashMap::new(),
         }
     }
 
@@ -199,6 +203,28 @@ impl SessionManager {
         let now = Instant::now();
         self.sessions.insert(address.to_string(), (now, now));
         info!("Created session for address: {}", address);
+    }
+
+    /// Create a session and cache the signing key for passwordless signing
+    pub fn create_session_with_key(&mut self, address: &str, signing_key: SigningKey) {
+        let now = Instant::now();
+        self.sessions.insert(address.to_string(), (now, now));
+        self.cached_keys.insert(address.to_string(), signing_key);
+        info!("Created session with cached key for address: {}", address);
+    }
+
+    /// Get cached signing key if session is valid
+    pub fn get_cached_key(&self, address: &str) -> Option<&SigningKey> {
+        if self.is_session_valid(address) {
+            self.cached_keys.get(address)
+        } else {
+            None
+        }
+    }
+
+    /// Clear cached key for an address
+    pub fn clear_cached_key(&mut self, address: &str) {
+        self.cached_keys.remove(address);
     }
 
     /// Update the last activity time for a session
@@ -217,10 +243,11 @@ impl SessionManager {
         false
     }
 
-    /// End a session (lock the wallet)
+    /// End a session (lock the wallet) and clear cached key
     pub fn end_session(&mut self, address: &str) {
         self.sessions.remove(address);
-        info!("Ended session for address: {}", address);
+        self.cached_keys.remove(address);
+        info!("Ended session and cleared cached key for address: {}", address);
     }
 
     /// Get remaining session time in seconds
@@ -235,17 +262,23 @@ impl SessionManager {
         None
     }
 
-    /// Clean up expired sessions
+    /// Clean up expired sessions and their cached keys
     pub fn cleanup_expired(&mut self) {
         let now = Instant::now();
         let timeout = Duration::from_secs(SESSION_TIMEOUT_SECS);
+        let mut expired_addrs = Vec::new();
         self.sessions.retain(|addr, (_, last_activity)| {
             let valid = now.duration_since(*last_activity) < timeout;
             if !valid {
                 info!("Session expired for address: {}", addr);
+                expired_addrs.push(addr.clone());
             }
             valid
         });
+        // Clear cached keys for expired sessions
+        for addr in expired_addrs {
+            self.cached_keys.remove(&addr);
+        }
     }
 }
 
@@ -491,6 +524,18 @@ impl WalletManager {
         session_mgr.create_session(address);
     }
 
+    /// Create a session with cached signing key for passwordless signing
+    pub async fn create_session_with_key(&self, address: &str, signing_key: SigningKey) {
+        let mut session_mgr = self.session_manager.write().await;
+        session_mgr.create_session_with_key(address, signing_key);
+    }
+
+    /// Get cached signing key if session is active (for passwordless signing)
+    pub async fn get_cached_signing_key(&self, address: &str) -> Option<SigningKey> {
+        let session_mgr = self.session_manager.read().await;
+        session_mgr.get_cached_key(address).cloned()
+    }
+
     /// Update session activity timestamp
     pub async fn touch_session(&self, address: &str) {
         let mut session_mgr = self.session_manager.write().await;
@@ -532,7 +577,7 @@ impl WalletManager {
         ReauthChecker::get_reauth_threshold()
     }
 
-    /// Authenticate and create session (validates password and creates session)
+    /// Authenticate and create session (validates password, creates session, caches key)
     pub async fn authenticate(&self, address: &str, password: &str) -> Result<()> {
         // Check if locked out
         if self.is_locked_out(address).await {
@@ -549,11 +594,11 @@ impl WalletManager {
 
         // Try to get key (validates password)
         match self.keystore.get_key(address, password) {
-            Ok(_) => {
-                // Password correct - reset failed attempts and create session
+            Ok(signing_key) => {
+                // Password correct - reset failed attempts and create session with cached key
                 self.reset_failed_attempts(address).await;
-                self.create_session(address).await;
-                info!("Authentication successful for address: {}", address);
+                self.create_session_with_key(address, signing_key).await;
+                info!("Authentication successful for address: {} (key cached)", address);
                 Ok(())
             }
             Err(e) => {
@@ -987,7 +1032,8 @@ impl WalletManager {
     }
 
     /// Sign a transaction with rate limiting and session management
-    /// High-value transactions require re-authentication
+    /// Uses cached signing key if session is active (no password required for low-value txs)
+    /// High-value transactions require re-authentication regardless of session
     pub async fn sign_transaction(
         &self,
         tx: &mut Transaction,
@@ -1008,22 +1054,67 @@ impl WalletManager {
         self.check_rate_limit(address, SensitiveOperation::SignTransaction).await?;
 
         // Check if high-value transaction requires re-authentication
-        if Self::requires_reauth(tx.value, SensitiveOperation::SignTransaction) {
-            // High-value transactions ALWAYS require password verification
+        let requires_reauth = Self::requires_reauth(tx.value, SensitiveOperation::SignTransaction);
+        if requires_reauth {
             info!("High-value transaction (>= {} SALT) requires re-authentication",
                   Self::get_reauth_threshold() / 1_000_000_000_000_000_000);
         }
 
-        // Get private key from keystore (validates password)
-        let signing_key = match self.keystore.get_key(address, password) {
-            Ok(key) => {
-                self.reset_failed_attempts(address).await;
-                self.touch_session(address).await;
-                key
+        // Try to use cached key if session is active and not high-value transaction
+        let signing_key = if !requires_reauth && !password.is_empty() {
+            // Password provided - authenticate and cache key
+            match self.keystore.get_key(address, password) {
+                Ok(key) => {
+                    self.reset_failed_attempts(address).await;
+                    self.create_session_with_key(address, key.clone()).await;
+                    key
+                }
+                Err(e) => {
+                    let _ = self.record_failed_password_attempt(address).await;
+                    return Err(e);
+                }
             }
-            Err(e) => {
-                let _ = self.record_failed_password_attempt(address).await;
-                return Err(e);
+        } else if !requires_reauth {
+            // Try to use cached key (session-based signing)
+            if let Some(cached_key) = self.get_cached_signing_key(address).await {
+                self.touch_session(address).await;
+                info!("Using cached key for session-based signing: {}", address);
+                cached_key
+            } else if !password.is_empty() {
+                // No cached key, use password
+                match self.keystore.get_key(address, password) {
+                    Ok(key) => {
+                        self.reset_failed_attempts(address).await;
+                        self.create_session_with_key(address, key.clone()).await;
+                        key
+                    }
+                    Err(e) => {
+                        let _ = self.record_failed_password_attempt(address).await;
+                        return Err(e);
+                    }
+                }
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Session expired or not active. Please enter your password."
+                ));
+            }
+        } else {
+            // High-value transaction - always require password
+            if password.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "High-value transaction requires password re-authentication."
+                ));
+            }
+            match self.keystore.get_key(address, password) {
+                Ok(key) => {
+                    self.reset_failed_attempts(address).await;
+                    self.touch_session(address).await;
+                    key
+                }
+                Err(e) => {
+                    let _ = self.record_failed_password_attempt(address).await;
+                    return Err(e);
+                }
             }
         };
 

@@ -772,16 +772,98 @@ async fn get_account(
     Ok(state.wallet_manager.get_account(&address).await)
 }
 
+// ===== Session Management Commands =====
+
+/// Get remaining session time in seconds for an address
+#[tauri::command]
+async fn get_session_remaining(
+    state: State<'_, AppState>,
+    address: String,
+) -> Result<u64, String> {
+    match state.wallet_manager.get_session_remaining(&address).await {
+        Some(remaining) => Ok(remaining),
+        None => Ok(0), // No active session
+    }
+}
+
+/// Check if a session is currently active for an address
+#[tauri::command]
+async fn is_session_active(
+    state: State<'_, AppState>,
+    address: String,
+) -> Result<bool, String> {
+    Ok(state.wallet_manager.is_session_valid(&address).await)
+}
+
+/// Lock wallet (end session) for an address
+#[tauri::command]
+async fn lock_wallet(
+    state: State<'_, AppState>,
+    address: String,
+) -> Result<(), String> {
+    state.wallet_manager.lock_wallet(&address).await;
+    info!("Wallet locked via Tauri command for address: {}", address);
+    Ok(())
+}
+
+/// Lock all wallets (end all sessions)
+#[tauri::command]
+async fn lock_all_wallets(
+    state: State<'_, AppState>,
+) -> Result<u32, String> {
+    let accounts = state.wallet_manager.get_accounts().await;
+    let mut locked_count = 0u32;
+    for account in accounts {
+        if state.wallet_manager.is_session_valid(&account.address).await {
+            state.wallet_manager.lock_wallet(&account.address).await;
+            locked_count += 1;
+        }
+    }
+    info!("Locked {} wallet sessions via lock_all_wallets command", locked_count);
+    Ok(locked_count)
+}
+
+/// Check if password is required for a transaction
+/// Returns true if password needed, false if session can be used
+#[tauri::command]
+async fn check_password_required(
+    state: State<'_, AppState>,
+    address: String,
+    value: String,
+) -> Result<bool, String> {
+    // Parse value to check if high-value transaction
+    let value_u128: u128 = value.parse().unwrap_or(0);
+    let requires_reauth = wallet::WalletManager::requires_reauth(
+        value_u128,
+        wallet::SensitiveOperation::SignTransaction,
+    );
+
+    // If high-value, always require password
+    if requires_reauth {
+        return Ok(true);
+    }
+
+    // Check if session is active with cached key
+    let has_session = state.wallet_manager.is_session_valid(&address).await;
+    let has_cached_key = state.wallet_manager.get_cached_signing_key(&address).await.is_some();
+
+    // Password required if no active session or no cached key
+    Ok(!has_session || !has_cached_key)
+}
+
 #[tauri::command]
 async fn send_transaction(
     state: State<'_, AppState>,
     request: TransactionRequest,
-    password: String,
+    password: Option<String>,
 ) -> Result<String, String> {
+    // Use empty string if password not provided (will try session-based signing)
+    let pwd = password.unwrap_or_default();
+
     // Always use embedded node for transactions
     let tx = state
         .wallet_manager
-        .create_signed_transaction(request.clone(), &password)
+        .create_signed_transaction(request.clone(), &pwd)
         .await
         .map_err(|e| e.to_string())?;
     let tx_hash_hex = hex::encode(tx.hash.as_bytes());
@@ -2507,6 +2589,12 @@ pub fn run() {
             verify_signature,
             export_private_key,
             update_balance,
+            // Session management commands
+            get_session_remaining,
+            is_session_active,
+            lock_wallet,
+            lock_all_wallets,
+            check_password_required,
             // DAG commands
             get_dag_data,
             get_block_details,

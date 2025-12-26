@@ -723,8 +723,13 @@ export const walletService = {
   getObservedBalance: (address: string, blockWindow = 256) =>
     safeInvoke<string>('get_address_observed_balance', { address, blockWindow }),
   
-  sendTransaction: (txRequest: TransactionRequest, password: string) =>
-    safeInvoke<string>('send_transaction', { 
+  // Check if password is required for a transaction (session-based signing support)
+  checkPasswordRequired: (address: string, value: string) =>
+    safeInvoke<boolean>('check_password_required', { address, value }),
+
+  // Send transaction - password is optional if session is active
+  sendTransaction: (txRequest: TransactionRequest, password?: string) =>
+    safeInvoke<string>('send_transaction', {
       request: {
         ...txRequest,
         // Serialize BigInt fields to strings to avoid JSON errors and preserve precision
@@ -733,8 +738,8 @@ export const walletService = {
         data: Array.isArray(txRequest.data)
           ? '0x' + Array.from(txRequest.data).map(b => Number(b).toString(16).padStart(2, '0')).join('')
           : (txRequest.data as any),
-      }, 
-      password 
+      },
+      password: password || null
     }),
 
   // Wallet activity

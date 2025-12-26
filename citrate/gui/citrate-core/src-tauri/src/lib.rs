@@ -311,6 +311,43 @@ async fn get_address_observed_balance(
         .map_err(|e| e.to_string())
 }
 
+// ===== Tracked Addresses =====
+
+/// Get the path to the tracked addresses file
+fn tracked_addresses_path() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("citrate-core")
+        .join("tracked_addresses.json")
+}
+
+#[tauri::command]
+async fn get_tracked_addresses() -> Result<Vec<String>, String> {
+    let path = tracked_addresses_path();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let contents = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read tracked addresses: {}", e))?;
+    let addresses: Vec<String> = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse tracked addresses: {}", e))?;
+    Ok(addresses)
+}
+
+#[tauri::command]
+async fn save_tracked_addresses(addresses: Vec<String>) -> Result<(), String> {
+    let path = tracked_addresses_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    let contents = serde_json::to_string_pretty(&addresses)
+        .map_err(|e| format!("Failed to serialize addresses: {}", e))?;
+    std::fs::write(&path, contents)
+        .map_err(|e| format!("Failed to save tracked addresses: {}", e))?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct JoinTestnetArgs {
     chain_id: Option<u64>,
@@ -2570,6 +2607,9 @@ pub fn run() {
             get_tx_overview,
             get_mempool_pending,
             get_address_observed_balance,
+            // Tracked addresses
+            get_tracked_addresses,
+            save_tracked_addresses,
             set_reward_address,
             get_reward_address,
             // Wallet commands

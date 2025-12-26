@@ -745,6 +745,13 @@ export const walletService = {
   // Wallet activity
   getAccountActivity: (address: string, blockWindow = 256, limit = 100) =>
     safeInvoke<TxActivity[]>('get_account_activity', { address, blockWindow, limit }),
+
+  // Tracked addresses (persisted in backend)
+  getTrackedAddresses: () =>
+    safeInvoke<string[]>('get_tracked_addresses'),
+
+  saveTrackedAddresses: (addresses: string[]) =>
+    safeInvoke<void>('save_tracked_addresses', { addresses }),
 };
 
 // DAG Management

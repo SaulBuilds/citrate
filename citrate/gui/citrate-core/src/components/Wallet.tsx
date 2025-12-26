@@ -36,15 +36,23 @@ export const Wallet: React.FC = () => {
   const [verifySignature, setVerifySignature] = useState('');
   const [verifyAddress, setVerifyAddress] = useState('');
   const [verifyResult, setVerifyResult] = useState<boolean | null>(null);
-  // Tracked external addresses
-  const [tracked, setTracked] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem('citrate_tracked_addresses');
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  });
+  // Tracked external addresses (persisted in backend)
+  const [tracked, setTracked] = useState<string[]>([]);
   const [trackedInput, setTrackedInput] = useState('');
   const [trackedData, setTrackedData] = useState<Record<string, { balance: string; activity: TxActivity[] }>>({});
+
+  // Load tracked addresses from backend on mount
+  useEffect(() => {
+    const loadTrackedAddresses = async () => {
+      try {
+        const addresses = await walletService.getTrackedAddresses();
+        setTracked(addresses);
+      } catch (e) {
+        console.error('Failed to load tracked addresses:', e);
+      }
+    };
+    loadTrackedAddresses();
+  }, []);
 
   useEffect(() => {
     loadAccounts();
@@ -98,9 +106,13 @@ export const Wallet: React.FC = () => {
     }
   };
 
-  const persistTracked = (list: string[]) => {
+  const persistTracked = async (list: string[]) => {
     setTracked(list);
-    try { localStorage.setItem('citrate_tracked_addresses', JSON.stringify(list)); } catch {}
+    try {
+      await walletService.saveTrackedAddresses(list);
+    } catch (e) {
+      console.error('Failed to save tracked addresses:', e);
+    }
   };
 
   const addTracked = async () => {
@@ -108,14 +120,14 @@ export const Wallet: React.FC = () => {
     if (!addr) return;
     if (tracked.includes(addr)) return;
     const list = [...tracked, addr];
-    persistTracked(list);
+    await persistTracked(list);
     setTrackedInput('');
     await refreshTrackedOne(addr);
   };
 
-  const removeTracked = (addr: string) => {
+  const removeTracked = async (addr: string) => {
     const list = tracked.filter(a => a.toLowerCase() !== addr.toLowerCase());
-    persistTracked(list);
+    await persistTracked(list);
     setTrackedData(prev => { const c = { ...prev }; delete c[addr]; return c; });
   };
 

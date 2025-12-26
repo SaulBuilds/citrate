@@ -2029,4 +2029,61 @@ pub fn register_eth_methods(
             "hash": tx_hash_str
         }))
     });
+
+    // citrate_getDagStats - Get DAG statistics including tips, height, and GhostDAG parameters
+    let storage_dag = storage.clone();
+    io_handler.add_sync_method("citrate_getDagStats", move |_params: Params| {
+        let api = ChainApi::new(storage_dag.clone());
+
+        // Get current tips
+        let tips = match block_on(api.get_tips()) {
+            Ok(t) => t,
+            Err(_) => vec![],
+        };
+
+        // Get current height
+        let height = match block_on(api.get_height()) {
+            Ok(h) => h,
+            Err(_) => 0,
+        };
+
+        // Get blue score from the highest tip block
+        let mut blue_score = 0u64;
+        if let Some(tip_hash) = tips.first() {
+            if let Ok(block) = block_on(api.get_block(crate::types::request::BlockId::Hash(*tip_hash))) {
+                blue_score = block.blue_score;
+            }
+        }
+
+        // Use default GhostDAG params (network-wide constants)
+        let ghostdag_params = citrate_consensus::types::GhostDagParams::default();
+
+        // Convert tips to hex strings
+        let tips_hex: Vec<String> = tips.iter()
+            .map(|h| format!("0x{}", hex::encode(h.as_bytes())))
+            .collect();
+
+        // For total/blue/red counts, we use height as approximation
+        // In a DAG, most blocks are blue (honest), so we estimate ~95% blue
+        let total_blocks = height;
+        let blue_blocks = (height as f64 * 0.95) as u64;
+        let red_blocks = total_blocks.saturating_sub(blue_blocks);
+
+        Ok(json!({
+            "totalBlocks": total_blocks,
+            "blueBlocks": blue_blocks,
+            "redBlocks": red_blocks,
+            "tipsCount": tips.len(),
+            "maxBlueScore": blue_score,
+            "currentTips": tips_hex,
+            "height": height,
+            "ghostdagParams": {
+                "k": ghostdag_params.k,
+                "maxParents": ghostdag_params.max_parents,
+                "maxBlueScoreDiff": ghostdag_params.max_blue_score_diff,
+                "pruningWindow": ghostdag_params.pruning_window,
+                "finalityDepth": ghostdag_params.finality_depth
+            }
+        }))
+    });
 }

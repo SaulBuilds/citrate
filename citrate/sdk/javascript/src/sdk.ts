@@ -171,16 +171,26 @@ export class CitrateSDK extends EventEmitter {
     tipsCount: number;
     maxBlueScore: number;
     currentTips: string[];
+    height: number;
+    ghostdagParams: {
+      k: number;
+      maxParents: number;
+      maxBlueScoreDiff: number;
+      pruningWindow: number;
+      finalityDepth: number;
+    };
   }> {
     const stats = await this.rpcCall('citrate_getDagStats');
-    
+
     return {
       totalBlocks: stats.totalBlocks,
       blueBlocks: stats.blueBlocks,
       redBlocks: stats.redBlocks,
       tipsCount: stats.tipsCount,
       maxBlueScore: stats.maxBlueScore,
-      currentTips: stats.currentTips || []
+      currentTips: stats.currentTips || [],
+      height: stats.height,
+      ghostdagParams: stats.ghostdagParams
     };
   }
   

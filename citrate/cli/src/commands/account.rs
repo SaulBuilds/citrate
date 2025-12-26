@@ -1,10 +1,12 @@
 //citrate/cli/src/commands/account.rs
+//
+// Ed25519 account management - aligned with wallet for account portability
 
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use colored::Colorize;
+use ed25519_dalek::SigningKey;
 use rand::RngCore;
-use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use sha3::{Digest, Keccak256};
 use std::fs;
 use std::path::PathBuf;
@@ -82,23 +84,15 @@ fn create_account(
     password: Option<String>,
     output: Option<PathBuf>,
 ) -> Result<()> {
-    // Generate new keypair
-    let secp = Secp256k1::new();
-    // Generate 32 random bytes and construct a SecretKey (retry on rare invalid draw)
-    let secret_key = {
-        let mut rng = rand::thread_rng();
-        let mut sk = [0u8; 32];
-        loop {
-            rng.fill_bytes(&mut sk);
-            if let Ok(k) = SecretKey::from_slice(&sk) {
-                break k;
-            }
-        }
-    };
-    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
+    // Generate new ed25519 keypair from random bytes
+    let mut rng = rand::thread_rng();
+    let mut secret_bytes = [0u8; 32];
+    rng.fill_bytes(&mut secret_bytes);
+    let signing_key = SigningKey::from_bytes(&secret_bytes);
+    let verifying_key = signing_key.verifying_key();
 
     // Derive address from public key
-    let address = derive_address(&public_key);
+    let address = derive_address(verifying_key.as_bytes());
 
     // Get password (prompt if not provided)
     let password = password.unwrap_or_else(|| {
@@ -113,10 +107,14 @@ fn create_account(
             .join(format!("{}.json", hex::encode(address)))
     });
 
-    keystore::save_key(&secret_key, &password, &keystore_path)?;
+    keystore::save_key(&signing_key, &password, &keystore_path)?;
 
     println!("{}", "✓ Account created successfully".green());
     println!("Address: {}", format!("0x{}", hex::encode(address)).cyan());
+    println!(
+        "Public Key: {}",
+        format!("0x{}", hex::encode(verifying_key.as_bytes())).dimmed()
+    );
     println!("Keystore: {:?}", keystore_path);
 
     Ok(())
@@ -195,16 +193,20 @@ async fn get_balance(config: &Config, address: &str) -> Result<()> {
 }
 
 fn import_account(config: &Config, private_key: &str, password: Option<String>) -> Result<()> {
-    // Parse private key
+    // Parse private key (32 bytes for ed25519)
     let key_bytes =
         hex::decode(private_key.trim_start_matches("0x")).context("Invalid private key format")?;
 
-    let secret_key = SecretKey::from_slice(&key_bytes).context("Invalid private key")?;
+    if key_bytes.len() != 32 {
+        anyhow::bail!("Invalid private key length. Expected 32 bytes for ed25519.");
+    }
+
+    let key_array: [u8; 32] = key_bytes.try_into().unwrap();
+    let signing_key = SigningKey::from_bytes(&key_array);
 
     // Derive public key and address
-    let secp = Secp256k1::new();
-    let public_key = PublicKey::from_secret_key(&secp, &secret_key);
-    let address = derive_address(&public_key);
+    let verifying_key = signing_key.verifying_key();
+    let address = derive_address(verifying_key.as_bytes());
 
     // Get password
     let password = password.unwrap_or_else(|| {
@@ -221,7 +223,7 @@ fn import_account(config: &Config, private_key: &str, password: Option<String>) 
         anyhow::bail!("Account already exists in keystore");
     }
 
-    keystore::save_key(&secret_key, &password, &keystore_path)?;
+    keystore::save_key(&signing_key, &password, &keystore_path)?;
 
     println!("{}", "✓ Account imported successfully".green());
     println!("Address: {}", format!("0x{}", hex::encode(address)).cyan());
@@ -243,26 +245,39 @@ fn export_account(config: &Config, address: &str, password: Option<String>) -> R
     });
 
     // Load and decrypt key
-    let secret_key = keystore::load_key(&keystore_path, &password)?;
+    let signing_key = keystore::load_key(&keystore_path, &password)?;
 
     println!(
         "{}",
         "⚠️  WARNING: Never share your private key!".red().bold()
     );
-    println!("Private key: {}", hex::encode(secret_key.secret_bytes()));
+    println!("Private key: {}", hex::encode(signing_key.to_bytes()));
 
     Ok(())
 }
 
-fn derive_address(public_key: &PublicKey) -> [u8; 20] {
-    let public_key_bytes = public_key.serialize_uncompressed();
+/// Derive Ethereum-compatible address from ed25519 public key
+///
+/// Address derivation follows the same logic as citrate-execution:
+/// 1. If pubkey has embedded EVM address (20 bytes + 12 zeros), use directly
+/// 2. Otherwise, Keccak256 hash the full 32-byte pubkey, take last 20 bytes
+fn derive_address(pubkey: &[u8; 32]) -> [u8; 20] {
+    // Check if embedded EVM address (20 bytes + 12 zeros)
+    let is_evm_address = pubkey[20..].iter().all(|&b| b == 0)
+        && !pubkey[..20].iter().all(|&b| b == 0);
 
-    // Skip the first byte (0x04 prefix) and hash the remaining 64 bytes
+    if is_evm_address {
+        // Use first 20 bytes directly
+        let mut address = [0u8; 20];
+        address.copy_from_slice(&pubkey[..20]);
+        return address;
+    }
+
+    // Full pubkey: Keccak256 hash, take last 20 bytes
     let mut hasher = Keccak256::new();
-    hasher.update(&public_key_bytes[1..]);
+    hasher.update(pubkey);
     let hash = hasher.finalize();
 
-    // Take last 20 bytes as address
     let mut address = [0u8; 20];
     address.copy_from_slice(&hash[12..]);
     address

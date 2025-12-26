@@ -1,12 +1,14 @@
 //citrate/cli/src/utils/keystore.rs
+//
+// Ed25519 keystore - aligned with wallet for account portability
 
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
-    Aes256Gcm, Nonce, Key
+    Aes256Gcm, Key, Nonce,
 };
 use anyhow::{Context, Result};
+use ed25519_dalek::SigningKey;
 use rand::RngCore;
-use secp256k1::SecretKey;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::fs;
@@ -15,17 +17,20 @@ use std::path::Path;
 #[derive(Serialize, Deserialize)]
 struct Keystore {
     version: u32,
+    key_type: String, // "ed25519" for new keys
     encrypted_key: String,
     salt: String,
     nonce: String,
+    public_key: Option<String>, // Store public key for reference
 }
 
-pub fn save_key(secret_key: &SecretKey, password: &str, path: &Path) -> Result<()> {
+/// Save an ed25519 signing key to an encrypted keystore file
+pub fn save_key(signing_key: &SigningKey, password: &str, path: &Path) -> Result<()> {
     // Generate random salt
     let mut salt = [0u8; 32];
     OsRng.fill_bytes(&mut salt);
 
-    // Derive key from password using PBKDF2-like approach
+    // Derive encryption key from password
     let encryption_key = derive_key(password, &salt)?;
 
     // Generate random nonce for AES-GCM
@@ -35,17 +40,22 @@ pub fn save_key(secret_key: &SecretKey, password: &str, path: &Path) -> Result<(
 
     // Encrypt the private key using AES-256-GCM
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&encryption_key));
-    let key_bytes = secret_key.secret_bytes();
+    let key_bytes = signing_key.to_bytes();
 
     let ciphertext = cipher
         .encrypt(nonce, key_bytes.as_ref())
         .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
 
+    // Store public key for reference (not encrypted)
+    let public_key = signing_key.verifying_key();
+
     let keystore = Keystore {
-        version: 1,
+        version: 2, // Version 2 = ed25519
+        key_type: "ed25519".to_string(),
         encrypted_key: hex::encode(ciphertext),
         salt: hex::encode(salt),
         nonce: hex::encode(nonce_bytes),
+        public_key: Some(hex::encode(public_key.to_bytes())),
     };
 
     // Create parent directory if needed
@@ -59,11 +69,17 @@ pub fn save_key(secret_key: &SecretKey, password: &str, path: &Path) -> Result<(
     Ok(())
 }
 
-pub fn load_key(path: &Path, password: &str) -> Result<SecretKey> {
+/// Load an ed25519 signing key from an encrypted keystore file
+pub fn load_key(path: &Path, password: &str) -> Result<SigningKey> {
     let contents = fs::read_to_string(path)
         .with_context(|| format!("Failed to read keystore from {:?}", path))?;
 
     let keystore: Keystore = serde_json::from_str(&contents).context("Invalid keystore format")?;
+
+    // Check key type
+    if keystore.version >= 2 && keystore.key_type != "ed25519" {
+        anyhow::bail!("Unsupported key type: {}", keystore.key_type);
+    }
 
     // Decode salt and nonce
     let salt = hex::decode(&keystore.salt).context("Invalid salt format")?;
@@ -75,13 +91,19 @@ pub fn load_key(path: &Path, password: &str) -> Result<SecretKey> {
 
     // Decrypt the private key
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&encryption_key));
-    let ciphertext = hex::decode(&keystore.encrypted_key).context("Invalid encrypted key format")?;
+    let ciphertext =
+        hex::decode(&keystore.encrypted_key).context("Invalid encrypted key format")?;
 
     let plaintext = cipher
         .decrypt(nonce, ciphertext.as_ref())
         .map_err(|_| anyhow::anyhow!("Decryption failed - invalid password or corrupted keystore"))?;
 
-    SecretKey::from_slice(&plaintext).context("Failed to recover private key")
+    // Convert to ed25519 signing key
+    let key_bytes: [u8; 32] = plaintext
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("Invalid key length"))?;
+
+    Ok(SigningKey::from_bytes(&key_bytes))
 }
 
 fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32]> {
